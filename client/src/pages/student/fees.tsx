@@ -10,7 +10,7 @@ export default function StudentFees() {
   const { data: user } = useUser();
   const { data: fees, isLoading } = useFees();
 
-  const myFees = fees?.filter(f => f.studentId === user?.id).sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+  const myFees = fees?.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
   return (
     <Layout>

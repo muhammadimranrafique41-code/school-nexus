@@ -76,7 +76,7 @@ export function AppSidebar() {
                         h-11 px-4 rounded-xl transition-all duration-200
                         ${isActive 
                           ? 'bg-primary text-primary-foreground font-semibold shadow-md shadow-primary/20' 
-                          : 'text-sidebar-foreground/70 hover:bg-white/5 hover:text-sidebar-foreground'}
+                          : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}
                       `}
                     >
                       <Link href={item.url} className="flex items-center gap-3">

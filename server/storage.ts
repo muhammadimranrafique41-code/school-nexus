@@ -64,17 +64,17 @@ export class DatabaseStorage implements IStorage {
 
   async getAttendance(): Promise<AttendanceWithStudent[]> {
     const records = await db.select().from(attendance);
-    const students = await this.getStudents();
+    const allUsers = await db.select().from(users);
     
     return records.map(record => ({
       ...record,
-      student: students.find(s => s.id === record.studentId)
+      student: allUsers.find(s => s.id === record.studentId)
     }));
   }
 
   async getAttendanceByStudent(studentId: number): Promise<AttendanceWithStudent[]> {
     const records = await db.select().from(attendance).where(eq(attendance.studentId, studentId));
-    const student = await this.getUser(studentId);
+    const [student] = await db.select().from(users).where(eq(users.id, studentId));
     
     return records.map(record => ({
       ...record,
@@ -89,17 +89,17 @@ export class DatabaseStorage implements IStorage {
 
   async getResults(): Promise<ResultWithStudent[]> {
     const allResults = await db.select().from(results);
-    const students = await this.getStudents();
+    const allUsers = await db.select().from(users);
     
     return allResults.map(record => ({
       ...record,
-      student: students.find(s => s.id === record.studentId)
+      student: allUsers.find(s => s.id === record.studentId)
     }));
   }
 
   async getResultsByStudent(studentId: number): Promise<ResultWithStudent[]> {
     const allResults = await db.select().from(results).where(eq(results.studentId, studentId));
-    const student = await this.getUser(studentId);
+    const [student] = await db.select().from(users).where(eq(users.id, studentId));
     
     return allResults.map(record => ({
       ...record,
@@ -114,17 +114,17 @@ export class DatabaseStorage implements IStorage {
 
   async getFees(): Promise<FeeWithStudent[]> {
     const allFees = await db.select().from(fees);
-    const students = await this.getStudents();
+    const allUsers = await db.select().from(users);
     
     return allFees.map(record => ({
       ...record,
-      student: students.find(s => s.id === record.studentId)
+      student: allUsers.find(s => s.id === record.studentId)
     }));
   }
 
   async getFeesByStudent(studentId: number): Promise<FeeWithStudent[]> {
     const allFees = await db.select().from(fees).where(eq(fees.studentId, studentId));
-    const student = await this.getUser(studentId);
+    const [student] = await db.select().from(users).where(eq(users.id, studentId));
     
     return allFees.map(record => ({
       ...record,

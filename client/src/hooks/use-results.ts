@@ -1,15 +1,26 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import { useUser } from "./use-auth";
 
 export function useResults() {
+  const { data: user } = useUser();
   return useQuery({
-    queryKey: [api.results.list.path],
+    queryKey: [api.results.list.path, user?.id],
     queryFn: async () => {
-      const res = await fetch(api.results.list.path, { credentials: "include" });
+      const headers: Record<string, string> = {};
+      if (user) {
+        headers['x-user-role'] = user.role;
+        headers['x-user-id'] = String(user.id);
+      }
+      const res = await fetch(api.results.list.path, { 
+        headers,
+        credentials: "include" 
+      });
       if (!res.ok) throw new Error("Failed to fetch results");
       return api.results.list.responses[200].parse(await res.json());
     },
+    enabled: !!user,
   });
 }
 

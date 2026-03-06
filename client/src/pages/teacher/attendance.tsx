@@ -37,12 +37,12 @@ export default function TeacherAttendance() {
   const students = users?.filter(u => u.role === 'student') || [];
   const myRecords = attendance?.filter(a => a.teacherId === currentUser?.id);
 
-  const onSubmit = (data: z.infer<typeof attendanceSchema>) => {
-    createAttendance.mutate({ ...data, teacherId: currentUser!.id }, {
-      onSuccess: () => {
-        setIsOpen(false);
-        form.reset({ ...form.getValues(), studentId: 0 }); // keep date/status same for quick entry
-      }
+  const markAttendance = (studentId: number, status: "Present" | "Absent") => {
+    createAttendance.mutate({
+      studentId,
+      teacherId: currentUser!.id,
+      date: format(new Date(), 'yyyy-MM-dd'),
+      status
     });
   };
 
@@ -54,96 +54,83 @@ export default function TeacherAttendance() {
             <h1 className="text-3xl font-display font-bold">Attendance</h1>
             <p className="text-muted-foreground mt-1">Mark and view daily attendance.</p>
           </div>
-          
-          <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogTrigger asChild>
-              <Button className="rounded-xl shadow-lg shadow-primary/20">
-                <CalendarPlus className="mr-2 h-4 w-4" /> Mark Attendance
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Mark Student Attendance</DialogTitle>
-              </DialogHeader>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-                  <FormField control={form.control} name="date" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Date</FormLabel>
-                      <FormControl><Input type="date" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name="studentId" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Student</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={String(field.value)}>
-                        <FormControl>
-                          <SelectTrigger><SelectValue placeholder="Select student" /></SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {students.map(s => (
-                            <SelectItem key={s.id} value={String(s.id)}>{s.name} ({s.className})</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name="status" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Status</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="Present">Present</SelectItem>
-                          <SelectItem value="Absent">Absent</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <Button type="submit" className="w-full mt-4" disabled={createAttendance.isPending}>
-                    {createAttendance.isPending ? <Loader2 className="animate-spin h-4 w-4" /> : "Save Record"}
-                  </Button>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
         </div>
 
-        <div className="bg-white dark:bg-card border rounded-2xl overflow-hidden shadow-sm">
-          <Table>
-            <TableHeader className="bg-slate-50/50 dark:bg-slate-900/50">
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Student</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {attendanceLoading ? (
-                <TableRow><TableCell colSpan={3} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></TableCell></TableRow>
-              ) : myRecords?.length === 0 ? (
-                <TableRow><TableCell colSpan={3} className="text-center py-8 text-muted-foreground">You haven't marked any attendance yet.</TableCell></TableRow>
-              ) : (
-                myRecords?.map((record) => (
-                  <TableRow key={record.id}>
-                    <TableCell className="font-medium">{format(new Date(record.date), 'MMM dd, yyyy')}</TableCell>
-                    <TableCell>{record.student?.name || `ID: ${record.studentId}`}</TableCell>
-                    <TableCell>
-                      <Badge variant={record.status === 'Present' ? 'default' : 'destructive'} 
-                             className={record.status === 'Present' ? 'bg-emerald-500 hover:bg-emerald-600' : ''}>
-                        {record.status}
-                      </Badge>
-                    </TableCell>
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Mark Attendance (Today)</h2>
+            <div className="bg-white dark:bg-card border rounded-2xl overflow-hidden shadow-sm">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Student</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                </TableHeader>
+                <TableBody>
+                  {students.map(student => (
+                    <TableRow key={student.id}>
+                      <TableCell className="font-medium">{student.name} ({student.className})</TableCell>
+                      <TableCell className="text-right space-x-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100"
+                          onClick={() => markAttendance(student.id, "Present")}
+                          disabled={createAttendance.isPending}
+                        >
+                          Present
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
+                          onClick={() => markAttendance(student.id, "Absent")}
+                          disabled={createAttendance.isPending}
+                        >
+                          Absent
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Attendance History</h2>
+            <div className="bg-white dark:bg-card border rounded-2xl overflow-hidden shadow-sm">
+              <Table>
+                <TableHeader className="bg-slate-50/50 dark:bg-slate-900/50">
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Student</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {attendanceLoading ? (
+                    <TableRow><TableCell colSpan={3} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></TableCell></TableRow>
+                  ) : myRecords?.length === 0 ? (
+                    <TableRow><TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No records found.</TableCell></TableRow>
+                  ) : (
+                    myRecords?.map((record) => (
+                      <TableRow key={record.id}>
+                        <TableCell className="font-medium text-xs">{format(new Date(record.date), 'MMM dd')}</TableCell>
+                        <TableCell className="text-xs">{record.student?.name || `ID: ${record.studentId}`}</TableCell>
+                        <TableCell>
+                          <Badge variant={record.status === 'Present' ? 'default' : 'destructive'} className="text-[10px] h-5">
+                            {record.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
         </div>
       </div>
     </Layout>

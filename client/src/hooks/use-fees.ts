@@ -1,15 +1,26 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import { z } from "zod";
+import { useUser } from "./use-auth";
 
 export function useFees() {
+  const { data: user } = useUser();
   return useQuery({
-    queryKey: [api.fees.list.path],
+    queryKey: [api.fees.list.path, user?.id],
     queryFn: async () => {
-      const res = await fetch(api.fees.list.path, { credentials: "include" });
+      const headers: Record<string, string> = {};
+      if (user) {
+        headers['x-user-role'] = user.role;
+        headers['x-user-id'] = String(user.id);
+      }
+      const res = await fetch(api.fees.list.path, { 
+        headers,
+        credentials: "include" 
+      });
       if (!res.ok) throw new Error("Failed to fetch fees");
       return api.fees.list.responses[200].parse(await res.json());
     },
+    enabled: !!user,
   });
 }
 

@@ -9,7 +9,7 @@ export default function StudentGrades() {
   const { data: user } = useUser();
   const { data: results, isLoading } = useResults();
 
-  const myResults = results?.filter(r => r.studentId === user?.id);
+  const myResults = results;
 
   return (
     <Layout>

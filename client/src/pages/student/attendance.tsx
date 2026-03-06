@@ -10,7 +10,7 @@ export default function StudentAttendance() {
   const { data: user } = useUser();
   const { data: attendance, isLoading } = useAttendance();
 
-  const myRecords = attendance?.filter(a => a.studentId === user?.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const myRecords = attendance?.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
     <Layout>

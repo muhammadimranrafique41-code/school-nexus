@@ -68,7 +68,15 @@ export async function registerRoutes(
 
   // Attendance
   app.get(api.attendance.list.path, async (req, res) => {
-    // In a real app, if student, filter by studentId
+    // In a real app, use auth middleware to get current user
+    const role = req.headers['x-user-role'];
+    const userId = parseInt(req.headers['x-user-id'] as string);
+
+    if (role === 'student' && userId) {
+      const records = await storage.getAttendanceByStudent(userId);
+      return res.json(records);
+    }
+
     const records = await storage.getAttendance();
     res.json(records);
   });
@@ -88,6 +96,14 @@ export async function registerRoutes(
 
   // Results
   app.get(api.results.list.path, async (req, res) => {
+    const role = req.headers['x-user-role'];
+    const userId = parseInt(req.headers['x-user-id'] as string);
+
+    if (role === 'student' && userId) {
+      const records = await storage.getResultsByStudent(userId);
+      return res.json(records);
+    }
+
     const records = await storage.getResults();
     res.json(records);
   });
@@ -107,6 +123,14 @@ export async function registerRoutes(
 
   // Fees
   app.get(api.fees.list.path, async (req, res) => {
+    const role = req.headers['x-user-role'];
+    const userId = parseInt(req.headers['x-user-id'] as string);
+
+    if (role === 'student' && userId) {
+      const records = await storage.getFeesByStudent(userId);
+      return res.json(records);
+    }
+
     const records = await storage.getFees();
     res.json(records);
   });
