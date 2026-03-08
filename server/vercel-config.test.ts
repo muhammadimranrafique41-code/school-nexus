@@ -18,7 +18,7 @@ const config = JSON.parse(
 test("vercel rewrites preserve API routes before the SPA fallback", () => {
   const rewrites = config.rewrites ?? [];
   const apiRewriteIndex = rewrites.findIndex(
-    (rule) => rule.source === "/api/:path*" && rule.destination === "/api/:path*",
+    (rule) => rule.source === "/api/:path*" && rule.destination === "/api",
   );
   const spaRewriteIndex = rewrites.findIndex(
     (rule) =>
@@ -26,13 +26,13 @@ test("vercel rewrites preserve API routes before the SPA fallback", () => {
       rule.destination === "/index.html",
   );
 
-  assert.notEqual(apiRewriteIndex, -1, "expected an explicit /api passthrough rewrite");
+  assert.notEqual(apiRewriteIndex, -1, "expected an explicit /api rewrite to the concrete Vercel function entrypoint");
   assert.notEqual(
     spaRewriteIndex,
     -1,
     "expected an SPA fallback rewrite that excludes /api paths",
   );
-  assert.ok(apiRewriteIndex < spaRewriteIndex, "expected /api passthrough to run before SPA fallback");
+  assert.ok(apiRewriteIndex < spaRewriteIndex, "expected the /api rewrite to run before the SPA fallback");
 });
 
 test("SPA fallback pattern does not match API routes", () => {
