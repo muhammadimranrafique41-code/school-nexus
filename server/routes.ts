@@ -1,13 +1,10 @@
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";
-import session from "express-session";
-import MemoryStore from "memorystore";
 import { z } from "zod";
 import { api } from "@shared/routes";
 import { attendanceSessionSchema, attendanceStatusSchema, timetableDays, type ResultWithStudent, type User } from "@shared/schema";
+import { createSessionMiddleware } from "./session";
 import { storage } from "./storage";
-
-const SessionStore = MemoryStore(session);
 
 declare module "express-session" {
   interface SessionData {
@@ -135,15 +132,7 @@ function buildStudentResultsPayload(records: ResultWithStudent[]) {
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
-  app.use(
-    session({
-      secret: "school-nexus-secret-key",
-      resave: false,
-      saveUninitialized: false,
-      store: new SessionStore({ checkPeriod: 86400000 }),
-      cookie: { secure: false },
-    }),
-  );
+  app.use(createSessionMiddleware());
 
   const getSessionUser = async (req: Request) => (req.session.userId ? storage.getUser(req.session.userId) : undefined);
 
@@ -180,7 +169,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!user || user.password !== input.password) {
         return res.status(401).json({ message: "Invalid credentials" });
       }
+
       req.session.userId = user.id;
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          resolve();
+        });
+      });
+
       res.json(user);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -189,7 +190,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.post(api.auth.logout.path, (req, res) => {
-    req.session.destroy(() => res.json({ success: true }));
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ message: "Failed to log out" });
+      }
+
+      res.clearCookie("school-nexus.sid");
+      return res.json({ success: true });
+    });
   });
 
   app.get(api.settings.publicGet.path, async (_req, res) => {
