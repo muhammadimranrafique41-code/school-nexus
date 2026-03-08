@@ -1,6 +1,15 @@
-import { pgTable, text, serial, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import type { SchoolSettingsAuditAction, SchoolSettingsData } from "./settings";
+
+export const attendanceStatuses = ["Present", "Absent", "Late", "Excused"] as const;
+export const attendanceSessions = ["Full Day", "Morning", "Afternoon"] as const;
+export const timetableDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+
+export const attendanceStatusSchema = z.enum(attendanceStatuses);
+export const attendanceSessionSchema = z.enum(attendanceSessions);
+export const timetableDaySchema = z.enum(timetableDays);
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -12,44 +21,155 @@ export const users = pgTable("users", {
   className: text("class_name"), // For students
 });
 
+export const students = pgTable("students", {
+  userId: integer("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  className: text("class_name").notNull(),
+});
+
+export const teachers = pgTable("teachers", {
+  userId: integer("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  subject: text("subject").notNull(),
+});
+
+export const academics = pgTable("academics", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  code: text("code").notNull().unique(),
+  description: text("description"),
+  className: text("class_name"),
+  teacherUserId: integer("teacher_user_id").references(() => teachers.userId, {
+    onDelete: "set null",
+  }),
+});
+
 export const attendance = pgTable("attendance", {
   id: serial("id").primaryKey(),
-  studentId: integer("student_id").notNull(),
-  teacherId: integer("teacher_id").notNull(),
+  studentId: integer("student_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  teacherId: integer("teacher_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   date: text("date").notNull(), // YYYY-MM-DD
-  status: text("status").notNull(), // 'Present', 'Absent'
+  status: text("status").notNull(), // 'Present', 'Absent', 'Late', 'Excused'
+  session: text("session").notNull().default("Full Day"),
+  remarks: text("remarks"),
 });
 
 export const results = pgTable("results", {
   id: serial("id").primaryKey(),
-  studentId: integer("student_id").notNull(),
+  studentId: integer("student_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   subject: text("subject").notNull(),
   marks: integer("marks").notNull(),
   grade: text("grade").notNull(),
+  totalMarks: integer("total_marks"),
+  examTitle: text("exam_title"),
+  examType: text("exam_type"),
+  term: text("term"),
+  examDate: text("exam_date"),
+  remarks: text("remarks"),
+});
+
+export const timetable = pgTable("timetable", {
+  id: serial("id").primaryKey(),
+  academicId: integer("academic_id").references(() => academics.id, { onDelete: "set null" }),
+  className: text("class_name").notNull(),
+  dayOfWeek: text("day_of_week").notNull(),
+  periodLabel: text("period_label").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  room: text("room"),
+  classType: text("class_type"),
+  teacherId: integer("teacher_id").references(() => users.id, { onDelete: "set null" }),
+  sortOrder: integer("sort_order").notNull().default(0),
 });
 
 export const fees = pgTable("fees", {
   id: serial("id").primaryKey(),
-  studentId: integer("student_id").notNull(),
+  studentId: integer("student_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   amount: integer("amount").notNull(),
   dueDate: text("due_date").notNull(),
   status: text("status").notNull(), // 'Paid', 'Unpaid'
 });
 
+export const schoolSettings = pgTable("school_settings", {
+  id: serial("id").primaryKey(),
+  version: integer("version").notNull().default(1),
+  data: jsonb("data").$type<SchoolSettingsData>().notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" }),
+});
+
+export const schoolSettingsVersions = pgTable("school_settings_versions", {
+  id: serial("id").primaryKey(),
+  settingsId: integer("settings_id")
+    .notNull()
+    .references(() => schoolSettings.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  data: jsonb("data").$type<SchoolSettingsData>().notNull(),
+  changeSummary: text("change_summary"),
+  createdAt: text("created_at").notNull(),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+});
+
+export const schoolSettingsAuditLogs = pgTable("school_settings_audit_logs", {
+  id: serial("id").primaryKey(),
+  settingsId: integer("settings_id")
+    .notNull()
+    .references(() => schoolSettings.id, { onDelete: "cascade" }),
+  action: text("action").$type<SchoolSettingsAuditAction>().notNull(),
+  category: text("category"),
+  fieldPath: text("field_path"),
+  previousValue: text("previous_value"),
+  nextValue: text("next_value"),
+  changeSummary: text("change_summary"),
+  createdAt: text("created_at").notNull(),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
+export const insertStudentSchema = createInsertSchema(students);
+export const insertTeacherSchema = createInsertSchema(teachers);
+export const insertAcademicSchema = createInsertSchema(academics).omit({ id: true });
 export const insertAttendanceSchema = createInsertSchema(attendance).omit({ id: true });
 export const insertResultSchema = createInsertSchema(results).omit({ id: true });
+export const insertTimetableSchema = createInsertSchema(timetable).omit({ id: true });
 export const insertFeeSchema = createInsertSchema(fees).omit({ id: true });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type Student = typeof students.$inferSelect;
+export type InsertStudent = z.infer<typeof insertStudentSchema>;
+export type Teacher = typeof teachers.$inferSelect;
+export type InsertTeacher = z.infer<typeof insertTeacherSchema>;
+export type Academic = typeof academics.$inferSelect;
+export type InsertAcademic = z.infer<typeof insertAcademicSchema>;
 export type Attendance = typeof attendance.$inferSelect;
 export type InsertAttendance = z.infer<typeof insertAttendanceSchema>;
 export type Result = typeof results.$inferSelect;
 export type InsertResult = z.infer<typeof insertResultSchema>;
+export type Timetable = typeof timetable.$inferSelect;
+export type InsertTimetable = z.infer<typeof insertTimetableSchema>;
 export type Fee = typeof fees.$inferSelect;
 export type InsertFee = z.infer<typeof insertFeeSchema>;
+export type SchoolSettings = typeof schoolSettings.$inferSelect;
+export type SchoolSettingsVersion = typeof schoolSettingsVersions.$inferSelect;
+export type SchoolSettingsAuditLog = typeof schoolSettingsAuditLogs.$inferSelect;
 
-export type AttendanceWithStudent = Attendance & { student?: User };
+export type AttendanceWithStudent = Attendance & { student?: User; teacher?: User };
 export type ResultWithStudent = Result & { student?: User };
 export type FeeWithStudent = Fee & { student?: User };
+export type AcademicWithTeacher = Academic & { teacher?: User };
+export type TimetableWithDetails = Timetable & {
+  academic?: Academic;
+  teacher?: User;
+};

@@ -4,7 +4,7 @@ import { useUser } from "@/hooks/use-auth";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
-import { format } from "date-fns";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
 export default function StudentFees() {
   const { data: user } = useUser();
@@ -37,11 +37,11 @@ export default function StudentFees() {
               ) : (
                 myFees?.map((fee) => (
                   <TableRow key={fee.id}>
-                    <TableCell className="font-semibold text-base">${fee.amount.toLocaleString()}</TableCell>
-                    <TableCell>{format(new Date(fee.dueDate), 'MMMM dd, yyyy')}</TableCell>
+                    <TableCell className="font-semibold text-base">{formatCurrency(fee.amount)}</TableCell>
+                    <TableCell>{formatDate(fee.dueDate, 'MMMM dd, yyyy')}</TableCell>
                     <TableCell>
-                      <Badge variant={fee.status === 'Paid' ? 'default' : 'destructive'} 
-                             className={fee.status === 'Paid' ? 'bg-emerald-500' : ''}>
+                      <Badge variant={fee.status === 'Paid' ? 'default' : 'destructive'}
+                        className={fee.status === 'Paid' ? 'bg-emerald-500' : ''}>
                         {fee.status}
                       </Badge>
                     </TableCell>

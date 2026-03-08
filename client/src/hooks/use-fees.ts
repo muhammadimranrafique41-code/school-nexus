@@ -2,6 +2,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import { z } from "zod";
 import { useUser } from "./use-auth";
+import { getResponseErrorMessage } from "@/lib/utils";
+
+function invalidateFeeQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: [api.fees.list.path] });
+  queryClient.invalidateQueries({ queryKey: [api.dashboard.adminStats.path] });
+  queryClient.invalidateQueries({ queryKey: [api.dashboard.studentStats.path] });
+}
 
 export function useFees() {
   const { data: user } = useUser();
@@ -13,11 +20,11 @@ export function useFees() {
         headers['x-user-role'] = user.role;
         headers['x-user-id'] = String(user.id);
       }
-      const res = await fetch(api.fees.list.path, { 
+      const res = await fetch(api.fees.list.path, {
         headers,
-        credentials: "include" 
+        credentials: "include"
       });
-      if (!res.ok) throw new Error("Failed to fetch fees");
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch fees"));
       return api.fees.list.responses[200].parse(await res.json());
     },
     enabled: !!user,
@@ -35,11 +42,11 @@ export function useCreateFee() {
         body: JSON.stringify(validated),
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to add fee");
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to add fee"));
       return api.fees.create.responses[201].parse(await res.json());
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.fees.list.path] });
+      invalidateFeeQueries(queryClient);
     },
   });
 }
@@ -56,11 +63,28 @@ export function useUpdateFee() {
         body: JSON.stringify(validated),
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to update fee");
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to update fee"));
       return api.fees.update.responses[200].parse(await res.json());
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.fees.list.path] });
+      invalidateFeeQueries(queryClient);
+    },
+  });
+}
+
+export function useDeleteFee() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(buildUrl(api.fees.delete.path, { id }), {
+        method: api.fees.delete.method,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to delete fee"));
+      return api.fees.delete.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      invalidateFeeQueries(queryClient);
     },
   });
 }
