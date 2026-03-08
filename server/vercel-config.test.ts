@@ -1,0 +1,30 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+
+type RewriteRule = {
+  source?: string;
+  destination?: string;
+};
+
+type VercelConfig = {
+  rewrites?: RewriteRule[];
+};
+
+const config = JSON.parse(
+  fs.readFileSync(new URL("../vercel.json", import.meta.url), "utf8"),
+) as VercelConfig;
+
+test("vercel rewrites preserve API routes before the SPA fallback", () => {
+  const rewrites = config.rewrites ?? [];
+  const apiRewriteIndex = rewrites.findIndex(
+    (rule) => rule.source === "/api/:path*" && rule.destination === "/api/:path*",
+  );
+  const spaRewriteIndex = rewrites.findIndex(
+    (rule) => rule.source === "/:path*" && rule.destination === "/index.html",
+  );
+
+  assert.notEqual(apiRewriteIndex, -1, "expected an explicit /api passthrough rewrite");
+  assert.notEqual(spaRewriteIndex, -1, "expected an SPA fallback rewrite to /index.html");
+  assert.ok(apiRewriteIndex < spaRewriteIndex, "expected /api passthrough to run before SPA fallback");
+});
