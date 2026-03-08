@@ -2,13 +2,24 @@ import { z } from "zod";
 import {
   insertAcademicSchema,
   insertAttendanceSchema,
-  insertFeeSchema,
   insertResultSchema,
   insertUserSchema,
   attendanceSessionSchema,
   attendanceStatusSchema,
   timetableDaySchema,
 } from "./schema";
+import {
+  billingMonthSchema,
+  billingProfileInputSchema,
+  createFeeInputSchema,
+  feeLineItemSchema,
+  feeStatusSchema,
+  generateMonthlyFeesInputSchema,
+  invoiceSourceSchema,
+  paymentMethodSchema,
+  recordFeePaymentInputSchema,
+  updateFeeInputSchema,
+} from "./finance";
 import {
   adminSchoolSettingsResponseSchema,
   exportSchoolSettingsResponseSchema,
@@ -63,13 +74,94 @@ const resultRecordSchema = z.object({
   student: userSchema.optional(),
 });
 
+const feePaymentSchema = z.object({
+  id: z.number(),
+  feeId: z.number(),
+  studentId: z.number(),
+  amount: z.number(),
+  paymentDate: z.string(),
+  method: paymentMethodSchema,
+  receiptNumber: z.string().nullable().optional(),
+  reference: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  createdAt: z.string(),
+  createdBy: z.number().nullable().optional(),
+  createdByUser: userSchema.optional(),
+});
+
+const billingProfileSchema = z.object({
+  studentId: z.number(),
+  monthlyAmount: z.number(),
+  dueDay: z.number(),
+  isActive: z.boolean(),
+  notes: z.string().nullable().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  student: userSchema.optional(),
+});
+
 const feeSchema = z.object({
   id: z.number(),
   studentId: z.number(),
   amount: z.number(),
-  status: z.string(),
+  paidAmount: z.number(),
+  remainingBalance: z.number(),
   dueDate: z.string(),
+  status: feeStatusSchema,
+  invoiceNumber: z.string().nullable().optional(),
+  billingMonth: z.string(),
+  billingPeriod: z.string(),
+  description: z.string(),
+  feeType: z.string(),
+  source: invoiceSourceSchema,
+  generatedMonth: z.string().nullable().optional(),
+  lineItems: z.array(feeLineItemSchema),
+  notes: z.string().nullable().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  isOverdue: z.boolean(),
+  paymentCount: z.number(),
   student: userSchema.optional(),
+  payments: z.array(feePaymentSchema).optional(),
+});
+
+const financeReportSchema = z.object({
+  summary: z.object({
+    totalInvoices: z.number(),
+    totalBilled: z.number(),
+    totalPaid: z.number(),
+    totalOutstanding: z.number(),
+    paidInvoices: z.number(),
+    partiallyPaidInvoices: z.number(),
+    unpaidInvoices: z.number(),
+    overdueInvoices: z.number(),
+    paymentsCount: z.number(),
+  }),
+  monthlyRevenue: z.array(
+    z.object({
+      month: z.string(),
+      billed: z.number(),
+      paid: z.number(),
+    }),
+  ),
+  statusBreakdown: z.array(
+    z.object({
+      status: feeStatusSchema,
+      count: z.number(),
+      amount: z.number(),
+    }),
+  ),
+  outstandingStudents: z.array(
+    z.object({
+      studentId: z.number(),
+      studentName: z.string(),
+      outstandingBalance: z.number(),
+      overdueBalance: z.number(),
+      invoiceCount: z.number(),
+    }),
+  ),
+  invoices: z.array(feeSchema),
+  payments: z.array(feePaymentSchema),
 });
 
 const timetableItemSchema = z.object({
@@ -269,19 +361,71 @@ export const api = {
     create: {
       path: "/api/fees",
       method: "POST",
-      input: insertFeeSchema,
+      input: createFeeInputSchema,
       responses: { 201: feeSchema },
     },
     update: {
       path: "/api/fees/:id",
       method: "PUT",
-      input: insertFeeSchema.partial(),
+      input: updateFeeInputSchema,
       responses: { 200: feeSchema },
     },
     delete: {
       path: "/api/fees/:id",
       method: "DELETE",
       responses: { 200: z.object({ success: z.boolean().optional(), message: z.string().optional() }) },
+    },
+    payments: {
+      record: {
+        path: "/api/fees/:id/payments",
+        method: "POST",
+        input: recordFeePaymentInputSchema,
+        responses: { 201: feeSchema },
+      },
+    },
+    profiles: {
+      list: {
+        path: "/api/fees/profiles",
+        method: "GET",
+        responses: { 200: z.array(billingProfileSchema) },
+      },
+      upsert: {
+        path: "/api/fees/profiles",
+        method: "POST",
+        input: billingProfileInputSchema,
+        responses: { 200: billingProfileSchema },
+      },
+    },
+    generateMonthly: {
+      path: "/api/fees/generate-monthly",
+      method: "POST",
+      input: generateMonthlyFeesInputSchema,
+      responses: {
+        200: z.object({
+          billingMonth: billingMonthSchema,
+          generatedCount: z.number(),
+          skippedDuplicates: z.number(),
+          skippedMissingProfiles: z.number(),
+          invoices: z.array(feeSchema),
+          skippedStudents: z.array(
+            z.object({
+              studentId: z.number(),
+              studentName: z.string(),
+              reason: z.string(),
+            }),
+          ),
+        }),
+      },
+    },
+    report: {
+      path: "/api/fees/report",
+      method: "GET",
+      input: z.object({
+        month: billingMonthSchema.optional(),
+        studentId: z.coerce.number().int().positive().optional(),
+        status: feeStatusSchema.optional(),
+      }),
+      responses: { 200: financeReportSchema },
     },
   },
   dashboard: {
@@ -296,6 +440,7 @@ export const api = {
           activeClasses: z.number(),
           outstandingFees: z.number(),
           pendingPayments: z.number(),
+          overdueInvoices: z.number(),
           attendanceMarkedToday: z.number(),
           monthlyRevenue: z.array(z.object({ month: z.string(), revenue: z.number() })),
           recentActivity: z.array(
@@ -317,6 +462,8 @@ export const api = {
         200: z.object({
           attendanceRate: z.number(),
           unpaidFees: z.number(),
+          openInvoices: z.number(),
+          overdueInvoices: z.number(),
         }),
       },
     },

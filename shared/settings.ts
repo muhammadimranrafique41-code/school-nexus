@@ -151,7 +151,7 @@ export const schoolSettingsAuditEntrySchema = z.object({
 export const publicSchoolSettingsSchema = z.object({
   schoolInformation: schoolInformationSettingsSchema.pick({ schoolName: true, shortName: true, schoolEmail: true, schoolPhone: true, schoolAddress: true, websiteUrl: true, motto: true }),
   academicConfiguration: academicConfigurationSettingsSchema.pick({ currentAcademicYear: true, currentTerm: true, weekStartsOn: true }),
-  financialSettings: financialSettingsSchema.pick({ locale: true, currencyCode: true, currencySymbol: true, timezone: true, dateFormat: true, invoicePrefix: true }),
+  financialSettings: financialSettingsSchema.pick({ locale: true, currencyCode: true, currencySymbol: true, timezone: true, dateFormat: true, invoicePrefix: true, receiptPrefix: true }),
   branding: brandingSettingsSchema,
   systemPreferences: systemPreferencesSettingsSchema.pick({ enablePublicBranding: true, enableDocumentWatermark: true, maintenanceMode: true, maintenanceMessage: true }),
   documentTemplates: documentTemplatesSettingsSchema.pick({ invoiceHeader: true, reportCardHeader: true, certificateHeader: true, signatureLineLabel: true, footerNote: true, reportCardFooter: true, certificateFooter: true }),

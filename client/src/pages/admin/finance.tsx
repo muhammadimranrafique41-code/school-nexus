@@ -1,430 +1,454 @@
 import { useEffect, useMemo, useState } from "react";
+import { feeStatuses, buildDueDateForBillingMonth, formatBillingPeriod } from "@shared/finance";
 import { Layout } from "@/components/layout";
-import { useFees, useCreateFee, useDeleteFee, useUpdateFee } from "@/hooks/use-fees";
-import { useUsers } from "@/hooks/use-users";
 import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-import { Card, CardContent } from "@/components/ui/card";
+import { usePublicSchoolSettings } from "@/hooks/use-settings";
+import { useStudents } from "@/hooks/use-users";
+import {
+  type BillingProfileRecord,
+  type FinanceReportFilters,
+  type MonthlyGenerationResult,
+  useBillingProfiles,
+  useCreateFee,
+  useDeleteFee,
+  useFinanceReport,
+  useGenerateMonthlyFees,
+  useRecordFeePayment,
+  useUpdateFee,
+  useUpsertBillingProfile,
+} from "@/hooks/use-fees";
 import { Badge } from "@/components/ui/badge";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Banknote, CheckCircle2, Download, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
-import { downloadCsv, formatCurrency, formatDate, getErrorMessage, paginateItems } from "@/lib/utils";
-
-type ListedFee = {
-  id: number;
-  studentId: number;
-  amount: number;
-  dueDate: string;
-  status: string;
-  student?: { name: string; className?: string | null };
-};
-
-const feeSchema = z.object({
-  studentId: z.coerce.number().min(1, "Student is required"),
-  amount: z.coerce.number().min(1, "Amount must be greater than 0"),
-  dueDate: z.string().min(1, "Due date is required"),
-  status: z.enum(["Paid", "Unpaid"]),
-});
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Banknote, CalendarDays, CreditCard, Download, Eye, FilePlus2, Loader2, Pencil, Printer, ReceiptText, RefreshCcw, Search, Settings2, Trash2, Users } from "lucide-react";
+import { buildInvoicePrintHtml, buildPaymentReceiptPrintHtml, type FeePaymentRecord, type FeeRecord, getCurrentBillingMonth, getFeeStatusClassName, getLatestRecordedPayment } from "@/lib/finance";
+import { downloadCsv, formatCurrency, formatDate, getErrorMessage, openPrintWindow, paginateItems } from "@/lib/utils";
 
 const PAGE_SIZE = 8;
+type InvoiceFormState = { studentId: string; amount: string; billingMonth: string; dueDate: string; description: string; feeType: string; notes: string };
+type PaymentFormState = { amount: string; paymentDate: string; method: "Cash" | "Bank Transfer" | "Card" | "Mobile Money" | "Cheque" | "Other"; reference: string; notes: string };
+type BillingProfileFormState = { studentId: string; monthlyAmount: string; dueDay: string; isActive: boolean; notes: string };
+type GenerationFormState = { billingMonth: string; dueDayOverride: string };
+
+function createDefaultInvoiceForm(studentId = ""): InvoiceFormState {
+  const billingMonth = getCurrentBillingMonth();
+  return { studentId, amount: "", billingMonth, dueDate: buildDueDateForBillingMonth(billingMonth, 5), description: "Monthly tuition fee", feeType: "Monthly Fee", notes: "" };
+}
+function createDefaultPaymentForm(balance = 0): PaymentFormState {
+  return { amount: balance > 0 ? String(balance) : "", paymentDate: new Date().toISOString().slice(0, 10), method: "Cash", reference: "", notes: "" };
+}
+function createDefaultBillingProfileForm(studentId = ""): BillingProfileFormState {
+  return { studentId, monthlyAmount: "", dueDay: "5", isActive: true, notes: "" };
+}
+function buildStatusBadge(status: FeeRecord["status"]) {
+  return <Badge variant="outline" className={getFeeStatusClassName(status)}>{status}</Badge>;
+}
 
 export default function Finance() {
-  const { data: fees, isLoading } = useFees();
-  const { data: users } = useUsers();
+  usePublicSchoolSettings();
+  const { toast } = useToast();
+  const { data: students = [] } = useStudents();
+  const { data: profiles = [], isLoading: profilesLoading } = useBillingProfiles();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | FeeRecord["status"]>("all");
+  const [studentFilter, setStudentFilter] = useState<string>("all");
+  const [monthFilter, setMonthFilter] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentInvoiceId, setPaymentInvoiceId] = useState<number | null>(null);
+  const [detailInvoiceId, setDetailInvoiceId] = useState<number | null>(null);
+  const [deleteInvoiceId, setDeleteInvoiceId] = useState<number | null>(null);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [editingProfileStudentId, setEditingProfileStudentId] = useState<number | null>(null);
+  const [generationDialogOpen, setGenerationDialogOpen] = useState(false);
+  const [lastGenerationResult, setLastGenerationResult] = useState<MonthlyGenerationResult | null>(null);
+  const [invoiceForm, setInvoiceForm] = useState<InvoiceFormState>(() => createDefaultInvoiceForm());
+  const [paymentForm, setPaymentForm] = useState<PaymentFormState>(() => createDefaultPaymentForm());
+  const [profileForm, setProfileForm] = useState<BillingProfileFormState>(() => createDefaultBillingProfileForm());
+  const [generationForm, setGenerationForm] = useState<GenerationFormState>({ billingMonth: getCurrentBillingMonth(), dueDayOverride: "" });
   const createFee = useCreateFee();
   const updateFee = useUpdateFee();
   const deleteFee = useDeleteFee();
-  const { toast } = useToast();
-  const [isOpen, setIsOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "Paid" | "Unpaid">("all");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [editingFee, setEditingFee] = useState<ListedFee | null>(null);
-  const [feeToDelete, setFeeToDelete] = useState<ListedFee | null>(null);
-
-  const form = useForm<z.infer<typeof feeSchema>>({
-    resolver: zodResolver(feeSchema),
-    defaultValues: { studentId: 0, amount: 0, dueDate: "", status: "Unpaid" },
-  });
-
-  const students = useMemo(() => (users ?? []).filter((user) => user.role === "student"), [users]);
-  const mutationPending = createFee.isPending || updateFee.isPending;
+  const recordPayment = useRecordFeePayment();
+  const upsertBillingProfile = useUpsertBillingProfile();
+  const generateMonthlyFees = useGenerateMonthlyFees();
+  const reportFilters = useMemo<FinanceReportFilters>(() => ({ month: monthFilter === "all" ? undefined : monthFilter, studentId: studentFilter === "all" ? undefined : Number(studentFilter), status: statusFilter === "all" ? undefined : statusFilter }), [monthFilter, statusFilter, studentFilter]);
+  const { data: report, isLoading: reportLoading } = useFinanceReport(reportFilters);
+  const studentsList = useMemo(() => [...students].sort((a, b) => a.name.localeCompare(b.name)), [students]);
+  const studentDirectory = useMemo(() => new Map(studentsList.map((student) => [student.id, student])), [studentsList]);
+  const invoices = report?.invoices ?? [];
+  const recentPayments = useMemo(() => [...(report?.payments ?? [])].sort((a, b) => +new Date(b.paymentDate) - +new Date(a.paymentDate)).slice(0, 6), [report?.payments]);
+  const invoiceDirectory = useMemo(() => new Map(invoices.map((invoice) => [invoice.id, invoice])), [invoices]);
+  const selectedInvoice = useMemo(() => invoices.find((i) => i.id === detailInvoiceId), [detailInvoiceId, invoices]);
+  const editingInvoice = useMemo(() => invoices.find((i) => i.id === editingInvoiceId), [editingInvoiceId, invoices]);
+  const paymentInvoice = useMemo(() => invoices.find((i) => i.id === paymentInvoiceId), [invoices, paymentInvoiceId]);
+  const deletingInvoice = useMemo(() => invoices.find((i) => i.id === deleteInvoiceId), [deleteInvoiceId, invoices]);
+  const editingProfile = useMemo(() => profiles.find((p) => p.studentId === editingProfileStudentId), [editingProfileStudentId, profiles]);
+  const filteredInvoices = useMemo(() => invoices.filter((invoice) => [invoice.invoiceNumber ?? `INV-${invoice.id}`, invoice.student?.name ?? "", invoice.student?.className ?? "", invoice.billingPeriod, invoice.description, invoice.status].join(" ").toLowerCase().includes(searchTerm.trim().toLowerCase())), [invoices, searchTerm]);
+  const paginated = paginateItems(filteredInvoices, currentPage, PAGE_SIZE);
+  const missingProfiles = useMemo(() => { const existing = new Set(profiles.map((p) => p.studentId)); return studentsList.filter((student) => !existing.has(student.id)); }, [profiles, studentsList]);
+  const billingMonths = useMemo(() => Array.from(new Set(invoices.map((invoice) => invoice.billingMonth))).sort((a, b) => b.localeCompare(a)), [invoices]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter]);
+  }, [searchTerm, monthFilter, statusFilter, studentFilter]);
 
-  const filteredFees = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-    return (fees ?? []).filter((fee) => {
-      const matchesStatus = statusFilter === "all" ? true : fee.status === statusFilter;
-      const studentName = fee.student?.name?.toLowerCase() ?? "";
-      const className = fee.student?.className?.toLowerCase() ?? "";
-      const searchable = `${studentName} ${className} ${fee.id} ${fee.amount}`;
-      return matchesStatus && searchable.includes(query);
+  const openCreateInvoiceDialog = () => {
+    setEditingInvoiceId(null);
+    setInvoiceForm(createDefaultInvoiceForm(studentFilter === "all" ? "" : studentFilter));
+    setInvoiceDialogOpen(true);
+  };
+
+  const openEditInvoiceDialog = (invoice: FeeRecord) => {
+    setEditingInvoiceId(invoice.id);
+    setInvoiceForm({
+      studentId: String(invoice.studentId),
+      amount: String(invoice.amount),
+      billingMonth: invoice.billingMonth,
+      dueDate: invoice.dueDate,
+      description: invoice.description,
+      feeType: invoice.feeType,
+      notes: invoice.notes ?? "",
     });
-  }, [fees, searchTerm, statusFilter]);
-
-  const paginated = paginateItems(filteredFees, currentPage, PAGE_SIZE);
-
-  const summary = useMemo(() => {
-    const items = fees ?? [];
-    const totalBilled = items.reduce((sum, fee) => sum + fee.amount, 0);
-    const collected = items.filter((fee) => fee.status === "Paid").reduce((sum, fee) => sum + fee.amount, 0);
-    const outstanding = items.filter((fee) => fee.status === "Unpaid").reduce((sum, fee) => sum + fee.amount, 0);
-    const unpaidInvoices = items.filter((fee) => fee.status === "Unpaid").length;
-    return { totalBilled, collected, outstanding, unpaidInvoices };
-  }, [fees]);
-
-  const resetForm = () => {
-    form.reset({ studentId: 0, amount: 0, dueDate: "", status: "Unpaid" });
+    setInvoiceDialogOpen(true);
   };
 
-  const openCreateDialog = () => {
-    setEditingFee(null);
-    resetForm();
-    setIsOpen(true);
+  const openPaymentDialog = (invoice: FeeRecord) => {
+    setPaymentInvoiceId(invoice.id);
+    setPaymentForm(createDefaultPaymentForm(invoice.remainingBalance));
+    setPaymentDialogOpen(true);
   };
 
-  const openEditDialog = (fee: ListedFee) => {
-    setEditingFee(fee);
-    form.reset({ studentId: fee.studentId, amount: fee.amount, dueDate: fee.dueDate, status: fee.status === "Paid" ? "Paid" : "Unpaid" });
-    setIsOpen(true);
+  const openProfileDialog = (profile?: BillingProfileRecord) => {
+    setEditingProfileStudentId(profile?.studentId ?? null);
+    setProfileForm(
+      profile
+        ? {
+          studentId: String(profile.studentId),
+          monthlyAmount: String(profile.monthlyAmount),
+          dueDay: String(profile.dueDay),
+          isActive: profile.isActive,
+          notes: profile.notes ?? "",
+        }
+        : createDefaultBillingProfileForm(studentFilter === "all" ? "" : studentFilter),
+    );
+    setProfileDialogOpen(true);
   };
 
-  const onSubmit = async (values: z.infer<typeof feeSchema>) => {
-    try {
-      if (editingFee) {
-        await updateFee.mutateAsync({ id: editingFee.id, ...values });
-      } else {
-        await createFee.mutateAsync(values);
-      }
-
-      toast({
-        title: editingFee ? "Fee updated" : "Fee assigned",
-        description: `Invoice for ${formatCurrency(values.amount)} has been saved.`,
-      });
-      setIsOpen(false);
-      setEditingFee(null);
-      resetForm();
-    } catch (error) {
-      toast({ title: "Unable to save fee", description: getErrorMessage(error), variant: "destructive" });
-    }
+  const handlePrintInvoice = (invoice: FeeRecord) => {
+    openPrintWindow(invoice.invoiceNumber ?? `Invoice ${invoice.id}`, buildInvoicePrintHtml(invoice), {
+      documentType: "invoice",
+      subtitle: `${invoice.student?.name ?? `Student #${invoice.studentId}`} • ${invoice.billingPeriod}`,
+    });
   };
 
-  const markAsPaid = async (fee: ListedFee) => {
-    try {
-      await updateFee.mutateAsync({ id: fee.id, status: "Paid" });
-      toast({ title: "Fee updated", description: `Invoice #${fee.id} has been marked as paid.` });
-    } catch (error) {
-      toast({ title: "Unable to update fee", description: getErrorMessage(error), variant: "destructive" });
-    }
+  const handlePrintReceipt = (invoice: FeeRecord, payment: FeePaymentRecord) => {
+    openPrintWindow(payment.receiptNumber ?? `Receipt ${payment.id}`, buildPaymentReceiptPrintHtml(invoice, payment), {
+      documentType: "receipt",
+      subtitle: `${invoice.student?.name ?? `Student #${invoice.studentId}`} • ${invoice.invoiceNumber ?? `INV-${invoice.id}`}`,
+    });
   };
 
-  const handleDelete = async () => {
-    if (!feeToDelete) return;
-    try {
-      await deleteFee.mutateAsync(feeToDelete.id);
-      toast({ title: "Fee deleted", description: `Invoice #${feeToDelete.id} has been removed.` });
-      setFeeToDelete(null);
-    } catch (error) {
-      toast({ title: "Unable to delete fee", description: getErrorMessage(error), variant: "destructive" });
-    }
-  };
-
-  const exportFees = () => {
+  const handleExportInvoices = () => {
     downloadCsv(
-      "fees-export.csv",
-      filteredFees.map((fee) => ({
-        Invoice: fee.id,
-        Student: fee.student?.name ?? `ID: ${fee.studentId}`,
-        Class: fee.student?.className ?? "",
-        Amount: fee.amount,
-        DueDate: fee.dueDate,
-        Status: fee.status,
+      `finance-report-${monthFilter === "all" ? "all" : monthFilter}.csv`,
+      filteredInvoices.map((invoice) => ({
+        Invoice: invoice.invoiceNumber ?? `INV-${invoice.id}`,
+        Student: invoice.student?.name ?? `Student #${invoice.studentId}`,
+        Class: invoice.student?.className ?? "",
+        BillingMonth: invoice.billingMonth,
+        BillingPeriod: invoice.billingPeriod,
+        DueDate: invoice.dueDate,
+        TotalAmount: invoice.amount,
+        PaidAmount: invoice.paidAmount,
+        RemainingBalance: invoice.remainingBalance,
+        Status: invoice.status,
       })),
     );
   };
 
+  const handleInvoiceSubmit = async () => {
+    try {
+      const amount = Number(invoiceForm.amount);
+      const payload = {
+        studentId: Number(invoiceForm.studentId),
+        amount,
+        billingMonth: invoiceForm.billingMonth,
+        billingPeriod: formatBillingPeriod(invoiceForm.billingMonth),
+        dueDate: invoiceForm.dueDate,
+        description: invoiceForm.description.trim(),
+        feeType: invoiceForm.feeType.trim() || "Monthly Fee",
+        notes: invoiceForm.notes.trim() || null,
+        lineItems: [{ label: invoiceForm.description.trim() || "Invoice item", amount }],
+        source: "manual" as const,
+      };
+
+      if (editingInvoice) {
+        await updateFee.mutateAsync({ id: editingInvoice.id, ...payload });
+      } else {
+        await createFee.mutateAsync(payload);
+      }
+
+      toast({
+        title: editingInvoice ? "Invoice updated" : "Invoice created",
+        description: `${invoiceForm.description} for ${formatCurrency(amount)} has been saved.`,
+      });
+      setInvoiceDialogOpen(false);
+      setEditingInvoiceId(null);
+      setInvoiceForm(createDefaultInvoiceForm(studentFilter === "all" ? "" : studentFilter));
+    } catch (error) {
+      toast({ title: "Unable to save invoice", description: getErrorMessage(error), variant: "destructive" });
+    }
+  };
+
+  const handlePaymentSubmit = async () => {
+    if (!paymentInvoice) return;
+
+    try {
+      const amount = Number(paymentForm.amount);
+      if (amount > paymentInvoice.remainingBalance) {
+        throw new Error("Payment amount cannot exceed the remaining invoice balance");
+      }
+
+      const updatedInvoice = await recordPayment.mutateAsync({
+        id: paymentInvoice.id,
+        amount,
+        paymentDate: paymentForm.paymentDate,
+        method: paymentForm.method,
+        reference: paymentForm.reference.trim() || null,
+        notes: paymentForm.notes.trim() || null,
+      });
+      const recordedPayment = getLatestRecordedPayment(updatedInvoice);
+
+      toast({
+        title: "Payment recorded",
+        description: `${formatCurrency(amount)} has been applied to ${paymentInvoice.invoiceNumber ?? `invoice ${paymentInvoice.id}`}.`,
+      });
+      setPaymentDialogOpen(false);
+      setPaymentInvoiceId(null);
+      setPaymentForm(createDefaultPaymentForm());
+      setDetailInvoiceId(null);
+
+      if (recordedPayment) {
+        handlePrintReceipt(updatedInvoice, recordedPayment);
+      }
+    } catch (error) {
+      toast({ title: "Unable to record payment", description: getErrorMessage(error), variant: "destructive" });
+    }
+  };
+
+  const handleProfileSubmit = async () => {
+    try {
+      await upsertBillingProfile.mutateAsync({
+        studentId: Number(profileForm.studentId),
+        monthlyAmount: Number(profileForm.monthlyAmount),
+        dueDay: Number(profileForm.dueDay),
+        isActive: profileForm.isActive,
+        notes: profileForm.notes.trim() || null,
+      });
+      toast({
+        title: editingProfile ? "Billing profile updated" : "Billing profile saved",
+        description: "Monthly billing defaults are now available for fee generation.",
+      });
+      setProfileDialogOpen(false);
+      setEditingProfileStudentId(null);
+      setProfileForm(createDefaultBillingProfileForm(studentFilter === "all" ? "" : studentFilter));
+    } catch (error) {
+      toast({ title: "Unable to save billing profile", description: getErrorMessage(error), variant: "destructive" });
+    }
+  };
+
+  const handleGenerateMonthlyFees = async () => {
+    try {
+      const result = await generateMonthlyFees.mutateAsync({
+        billingMonth: generationForm.billingMonth,
+        dueDayOverride: generationForm.dueDayOverride ? Number(generationForm.dueDayOverride) : undefined,
+      });
+      setLastGenerationResult(result);
+      toast({
+        title: "Monthly fee generation complete",
+        description: `Generated ${result.generatedCount} invoice(s), skipped ${result.skippedDuplicates} duplicate(s), and flagged ${result.skippedMissingProfiles} student(s) without active billing setup.`,
+      });
+    } catch (error) {
+      toast({ title: "Unable to generate monthly invoices", description: getErrorMessage(error), variant: "destructive" });
+    }
+  };
+
+  const handleDeleteInvoice = async () => {
+    if (!deletingInvoice) return;
+
+    try {
+      await deleteFee.mutateAsync(deletingInvoice.id);
+      toast({
+        title: "Invoice deleted",
+        description: `${deletingInvoice.invoiceNumber ?? `Invoice ${deletingInvoice.id}`} has been removed.`,
+      });
+      setDeleteInvoiceId(null);
+    } catch (error) {
+      toast({ title: "Unable to delete invoice", description: getErrorMessage(error), variant: "destructive" });
+    }
+  };
+
   return (
     <Layout>
-      <div className="space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="space-y-8 pb-8">
+        <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-3xl font-display font-bold">Finance</h1>
-            <p className="mt-1 text-muted-foreground">Track invoices, payment status, and outstanding balances for students.</p>
+            <h1 className="text-3xl font-display font-bold tracking-tight">Finance Workspace</h1>
+            <p className="mt-1 text-muted-foreground">Manage invoices, payments, monthly fee generation, reporting, and print-ready student billing documents.</p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Button variant="outline" onClick={exportFees} disabled={filteredFees.length === 0} data-testid="finance-export-button">
-              <Download className="mr-2 h-4 w-4" /> Export CSV
-            </Button>
-            <Button onClick={openCreateDialog} data-testid="finance-add-button">
-              <Plus className="mr-2 h-4 w-4" /> Assign Fee
-            </Button>
+            <Button variant="outline" onClick={() => setGenerationDialogOpen(true)}><RefreshCcw className="mr-2 h-4 w-4" />Generate monthly fees</Button>
+            <Button variant="outline" onClick={() => openProfileDialog()}><Settings2 className="mr-2 h-4 w-4" />Billing profiles</Button>
+            <Button variant="outline" onClick={handleExportInvoices} disabled={filteredInvoices.length === 0}><Download className="mr-2 h-4 w-4" />Export invoices</Button>
+            <Button onClick={openCreateInvoiceDialog}><FilePlus2 className="mr-2 h-4 w-4" />Create invoice</Button>
           </div>
-        </div>
+        </section>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           {[
-            { label: "Total billed", value: formatCurrency(summary.totalBilled) },
-            { label: "Collected", value: formatCurrency(summary.collected) },
-            { label: "Outstanding", value: formatCurrency(summary.outstanding) },
-            { label: "Unpaid invoices", value: summary.unpaidInvoices },
+            { label: "Total billed", value: formatCurrency(report?.summary.totalBilled ?? 0), hint: `${report?.summary.totalInvoices ?? 0} invoice(s)`, icon: Banknote },
+            { label: "Collected", value: formatCurrency(report?.summary.totalPaid ?? 0), hint: `${report?.summary.paymentsCount ?? 0} payment(s)`, icon: ReceiptText },
+            { label: "Outstanding", value: formatCurrency(report?.summary.totalOutstanding ?? 0), hint: `${report?.summary.partiallyPaidInvoices ?? 0} partial invoice(s)`, icon: CreditCard },
+            { label: "Overdue invoices", value: report?.summary.overdueInvoices ?? 0, hint: `${report?.summary.unpaidInvoices ?? 0} unpaid invoice(s)`, icon: CalendarDays },
+            { label: "Students without profile", value: missingProfiles.length, hint: `${profiles.length} billing profile(s) set`, icon: Users },
           ].map((item) => (
-            <Card key={item.label} className="shadow-sm">
-              <CardContent className="flex items-center justify-between p-5">
-                <div>
-                  <p className="text-sm text-muted-foreground">{item.label}</p>
-                  <p className="mt-1 text-3xl font-display font-bold">{item.value}</p>
-                </div>
-                <div className="rounded-2xl bg-primary/10 p-3 text-primary">
-                  <Banknote className="h-5 w-5" />
-                </div>
-              </CardContent>
-            </Card>
+            <Card key={item.label} className="bg-white/80"><CardContent className="flex items-center justify-between p-5"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</p><p className="mt-2 text-3xl font-display font-bold text-slate-900">{item.value}</p><p className="mt-2 text-xs text-slate-500">{item.hint}</p></div><div className="rounded-2xl bg-violet-50 p-3 text-violet-600"><item.icon className="h-5 w-5" /></div></CardContent></Card>
           ))}
-        </div>
+        </section>
 
-        <Dialog
-          open={isOpen}
-          onOpenChange={(open) => {
-            setIsOpen(open);
-            if (!open) {
-              setEditingFee(null);
-              resetForm();
-            }
-          }}
-        >
-          <DialogContent className="sm:max-w-[520px]">
-            <DialogHeader>
-              <DialogTitle>{editingFee ? "Edit fee" : "Assign new fee"}</DialogTitle>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-                <FormField
-                  control={form.control}
-                  name="studentId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Student</FormLabel>
-                      <Select value={String(field.value ?? 0)} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select student" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {students.map((student) => (
-                            <SelectItem key={student.id} value={String(student.id)}>
-                              {student.name} {student.className ? `(${student.className})` : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+        <Card className="bg-white/80">
+          <CardHeader><CardTitle>Report filters</CardTitle><CardDescription>Filter finance activity by month, student, status, and free-text search.</CardDescription></CardHeader>
+          <CardContent className="grid gap-4 lg:grid-cols-[1.5fr_repeat(3,minmax(0,1fr))_auto]">
+            <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search by student, invoice number, class, or description" className="pl-9" /></div>
+            <Select value={monthFilter} onValueChange={setMonthFilter}><SelectTrigger><SelectValue placeholder="All months" /></SelectTrigger><SelectContent><SelectItem value="all">All months</SelectItem>{billingMonths.map((month) => <SelectItem key={month} value={month}>{formatBillingPeriod(month)}</SelectItem>)}</SelectContent></Select>
+            <Select value={studentFilter} onValueChange={setStudentFilter}><SelectTrigger><SelectValue placeholder="All students" /></SelectTrigger><SelectContent><SelectItem value="all">All students</SelectItem>{studentsList.map((student) => <SelectItem key={student.id} value={String(student.id)}>{student.name} {student.className ? `(${student.className})` : ""}</SelectItem>)}</SelectContent></Select>
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as "all" | FeeRecord["status"])}><SelectTrigger><SelectValue placeholder="All statuses" /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem>{feeStatuses.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select>
+            <Button variant="outline" onClick={() => { setSearchTerm(""); setMonthFilter("all"); setStudentFilter("all"); setStatusFilter("all"); }}>Clear filters</Button>
+          </CardContent>
+        </Card>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="amount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Amount</FormLabel>
-                        <FormControl>
-                          <Input type="number" min="1" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="dueDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Due date</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,2.15fr)_320px]">
+          <Card className="overflow-hidden bg-white/80">
+            <CardHeader className="gap-4 border-b pb-4"><div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle>Invoices</CardTitle><CardDescription>Detailed invoice ledger with clear billing, payment, balance, due-date, and status visibility.</CardDescription></div><div className="grid gap-2 sm:grid-cols-2"><div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Matching invoices</p><p className="mt-1 text-lg font-semibold text-slate-900">{filteredInvoices.length}</p></div><div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Outstanding</p><p className="mt-1 text-lg font-semibold text-slate-900">{formatCurrency(filteredInvoices.reduce((sum, invoice) => sum + invoice.remainingBalance, 0))}</p></div></div></div></CardHeader>
+            <CardContent className="p-0">
+              <div className="hidden border-b bg-slate-50/70 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 lg:grid lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1.05fr)_minmax(96px,0.5fr)_minmax(96px,0.5fr)_minmax(110px,0.55fr)_minmax(110px,0.65fr)_auto] lg:gap-4">
+                <span>Student</span>
+                <span>Invoice</span>
+                <span>Total</span>
+                <span>Paid</span>
+                <span>Balance</span>
+                <span>Status</span>
+                <span className="text-right">Actions</span>
+              </div>
 
-                <FormField
-                  control={form.control}
-                  name="status"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Status</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="Unpaid">Unpaid</SelectItem>
-                          <SelectItem value="Paid">Paid</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <Button type="submit" className="w-full" disabled={mutationPending}>
-                  {mutationPending ? <Loader2 className="h-4 w-4 animate-spin" /> : editingFee ? "Save changes" : "Save fee"}
-                </Button>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-
-        <div className="rounded-2xl border bg-card shadow-sm">
-          <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-2">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by student, class, invoice, or amount"
-                className="max-w-md"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                data-testid="finance-search-input"
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={(value: "all" | "Paid" | "Unpaid") => setStatusFilter(value)}>
-              <SelectTrigger className="w-full lg:w-[220px]">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="Paid">Paid</SelectItem>
-                <SelectItem value="Unpaid">Unpaid</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Table>
-            <TableHeader className="bg-muted/40">
-              <TableRow>
-                <TableHead>Student</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Due date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center">
-                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
-                  </TableCell>
-                </TableRow>
-              ) : filteredFees.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                    No fee records match the current filters.
-                  </TableCell>
-                </TableRow>
+              {reportLoading ? (
+                <div className="py-10 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" /></div>
+              ) : filteredInvoices.length === 0 ? (
+                <div className="py-10 text-center text-muted-foreground">No invoices match the current filters.</div>
               ) : (
-                paginated.pageItems.map((fee) => (
-                  <TableRow key={fee.id}>
-                    <TableCell>
-                      <div className="font-medium">{fee.student?.name || `ID: ${fee.studentId}`}</div>
-                      <div className="text-xs text-muted-foreground">{fee.student?.className || "Class not set"}</div>
-                    </TableCell>
-                    <TableCell>{formatCurrency(fee.amount)}</TableCell>
-                    <TableCell>{formatDate(fee.dueDate, "MMM dd, yyyy")}</TableCell>
-                    <TableCell>
-                      <Badge variant={fee.status === "Paid" ? "secondary" : "destructive"}>{fee.status}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex flex-wrap justify-end gap-2">
-                        {fee.status === "Unpaid" && (
-                          <Button variant="outline" size="sm" onClick={() => markAsPaid(fee)} disabled={updateFee.isPending}>
-                            <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Mark paid
-                          </Button>
-                        )}
-                        <Button variant="outline" size="sm" onClick={() => openEditDialog(fee)}>
-                          <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => setFeeToDelete(fee)}>
-                          <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
-                        </Button>
+                paginated.pageItems.map((invoice) => (
+                  <div key={invoice.id} className="border-b border-slate-200/70 px-5 py-4 last:border-b-0">
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1.05fr)_minmax(96px,0.5fr)_minmax(96px,0.5fr)_minmax(110px,0.55fr)_minmax(110px,0.65fr)_auto] lg:items-center">
+                      <div className="min-w-0">
+                        <p className="truncate text-base font-semibold text-slate-900">{invoice.student?.name ?? `Student #${invoice.studentId}`}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                          <span>{invoice.student?.className ?? "Class not assigned"}</span>
+                          <span className="hidden sm:inline">•</span>
+                          <span className="truncate">{invoice.description}</span>
+                        </div>
                       </div>
-                    </TableCell>
-                  </TableRow>
+
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-slate-900">{invoice.invoiceNumber ?? `INV-${invoice.id}`}</p>
+                        <div className="mt-1 space-y-1 text-xs text-slate-500">
+                          <p>{invoice.billingPeriod}</p>
+                          <p>Due {formatDate(invoice.dueDate, "MMM dd, yyyy")}</p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50/80 p-3 lg:bg-transparent lg:p-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 lg:hidden">Total</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-900 lg:mt-0">{formatCurrency(invoice.amount)}</p>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50/80 p-3 lg:bg-transparent lg:p-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 lg:hidden">Paid</p>
+                        <p className="mt-1 text-sm font-semibold text-emerald-700 lg:mt-0">{formatCurrency(invoice.paidAmount)}</p>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50/80 p-3 lg:bg-transparent lg:p-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 lg:hidden">Balance</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-900 lg:mt-0">{formatCurrency(invoice.remainingBalance)}</p>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50/80 p-3 lg:bg-transparent lg:p-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 lg:hidden">Status</p>
+                        <div className="mt-1 flex flex-col gap-2 lg:mt-0">
+                          <div>{buildStatusBadge(invoice.status)}</div>
+                          <p className="text-xs text-slate-500">{invoice.paymentCount} payment{invoice.paymentCount === 1 ? "" : "s"}</p>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
+                          <Button variant="outline" size="icon" className="h-8 w-8 rounded-xl" title="View invoice details" aria-label={`View details for ${invoice.invoiceNumber ?? `invoice ${invoice.id}`}`} onClick={() => setDetailInvoiceId(invoice.id)}><Eye className="h-3.5 w-3.5" /></Button>
+                          {invoice.remainingBalance > 0 && <Button variant="outline" size="icon" className="h-8 w-8 rounded-xl" title="Record payment" aria-label={`Record payment for ${invoice.invoiceNumber ?? `invoice ${invoice.id}`}`} onClick={() => openPaymentDialog(invoice)}><ReceiptText className="h-3.5 w-3.5" /></Button>}
+                          <Button variant="outline" size="icon" className="h-8 w-8 rounded-xl" title="Print invoice" aria-label={`Print ${invoice.invoiceNumber ?? `invoice ${invoice.id}`}`} onClick={() => handlePrintInvoice(invoice)}><Printer className="h-3.5 w-3.5" /></Button>
+                          <Button variant="outline" size="icon" className="h-8 w-8 rounded-xl" title="Edit invoice" aria-label={`Edit ${invoice.invoiceNumber ?? `invoice ${invoice.id}`}`} onClick={() => openEditInvoiceDialog(invoice)}><Pencil className="h-3.5 w-3.5" /></Button>
+                          <Button variant="outline" size="icon" className="h-8 w-8 rounded-xl" title="Delete invoice" aria-label={`Delete ${invoice.invoiceNumber ?? `invoice ${invoice.id}`}`} onClick={() => setDeleteInvoiceId(invoice.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 ))
               )}
-            </TableBody>
-          </Table>
+            </CardContent>
+            {filteredInvoices.length > 0 && <div className="flex flex-col gap-3 border-t p-4 md:flex-row md:items-center md:justify-between"><p className="text-sm text-muted-foreground">Showing {(paginated.currentPage - 1) * PAGE_SIZE + 1}-{Math.min(paginated.currentPage * PAGE_SIZE, filteredInvoices.length)} of {filteredInvoices.length} invoice(s)</p><Pagination className="mx-0 w-auto justify-end"><PaginationContent><PaginationItem><PaginationPrevious href="#" className={paginated.currentPage === 1 ? "pointer-events-none opacity-50" : ""} onClick={(event) => { event.preventDefault(); setCurrentPage((page) => Math.max(1, page - 1)); }} /></PaginationItem><PaginationItem><span className="px-4 text-sm text-muted-foreground">Page {paginated.currentPage} of {paginated.totalPages}</span></PaginationItem><PaginationItem><PaginationNext href="#" className={paginated.currentPage === paginated.totalPages ? "pointer-events-none opacity-50" : ""} onClick={(event) => { event.preventDefault(); setCurrentPage((page) => Math.min(paginated.totalPages, page + 1)); }} /></PaginationItem></PaginationContent></Pagination></div>}
+          </Card>
 
-          {filteredFees.length > 0 && (
-            <div className="flex flex-col gap-3 border-t p-4 md:flex-row md:items-center md:justify-between">
-              <p className="text-sm text-muted-foreground">
-                Showing {(paginated.currentPage - 1) * PAGE_SIZE + 1}-{Math.min(paginated.currentPage * PAGE_SIZE, filteredFees.length)} of {filteredFees.length} invoices
-              </p>
-              <Pagination className="mx-0 w-auto justify-end">
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious
-                      href="#"
-                      className={paginated.currentPage === 1 ? "pointer-events-none opacity-50" : ""}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        setCurrentPage((page) => Math.max(1, page - 1));
-                      }}
-                    />
-                  </PaginationItem>
-                  <PaginationItem>
-                    <span className="px-4 text-sm text-muted-foreground">Page {paginated.currentPage} of {paginated.totalPages}</span>
-                  </PaginationItem>
-                  <PaginationItem>
-                    <PaginationNext
-                      href="#"
-                      className={paginated.currentPage === paginated.totalPages ? "pointer-events-none opacity-50" : ""}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        setCurrentPage((page) => Math.min(paginated.totalPages, page + 1));
-                      }}
-                    />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-            </div>
-          )}
+          <div className="space-y-4">
+            <Card className="bg-white/80"><CardHeader className="space-y-1 pb-3"><CardTitle className="text-base">Status breakdown</CardTitle><CardDescription className="text-xs">Invoice count and billed value by status.</CardDescription></CardHeader><CardContent className="grid gap-2">{(report?.statusBreakdown ?? []).length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-500">No invoice status data for the active filters.</div> : (report?.statusBreakdown ?? []).map((item) => <div key={item.status} className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-3"><div className="flex items-start justify-between gap-3"><div className="space-y-1"><div>{buildStatusBadge(item.status)}</div><p className="text-[11px] text-slate-500">{item.count} invoice(s)</p></div><p className="text-sm font-semibold text-slate-900">{formatCurrency(item.amount)}</p></div></div>)}</CardContent></Card>
+            <Card className="bg-white/80"><CardHeader className="space-y-1 pb-3"><CardTitle className="text-base">Outstanding students</CardTitle><CardDescription className="text-xs">Students with open or overdue balances.</CardDescription></CardHeader><CardContent className="space-y-2.5">{(report?.outstandingStudents ?? []).length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-500">No outstanding balances for the active filter set.</div> : report?.outstandingStudents.slice(0, 5).map((student) => <div key={student.studentId} className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-900">{student.studentName}</p><p className="mt-1 text-[11px] text-slate-500">{student.invoiceCount} open invoice(s)</p></div><div className="text-right"><p className="text-sm font-semibold text-slate-900">{formatCurrency(student.outstandingBalance)}</p>{student.overdueBalance > 0 && <p className="mt-1 text-[11px] text-rose-600">Overdue {formatCurrency(student.overdueBalance)}</p>}</div></div></div>)}</CardContent></Card>
+          </div>
         </div>
 
-        <AlertDialog open={!!feeToDelete} onOpenChange={(open) => !open && setFeeToDelete(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete fee record?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will permanently remove invoice #{feeToDelete?.id} for {feeToDelete?.student?.name || `student ${feeToDelete?.studentId}`}. This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete}>
-                {deleteFee.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete fee"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
+        <div className="grid gap-6 xl:grid-cols-[1.2fr_1fr_1fr]">
+          <Card className="bg-white/80"><CardHeader><CardTitle>Recent payments</CardTitle><CardDescription>Latest recorded payment activity for the selected report filters.</CardDescription></CardHeader><CardContent className="space-y-3">{recentPayments.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500">Payments will appear here once receipts are recorded.</div> : recentPayments.map((payment) => { const invoice = invoiceDirectory.get(payment.feeId); return <div key={payment.id} className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4"><div className="flex items-center justify-between gap-3"><div><p className="font-semibold text-slate-900">{studentDirectory.get(payment.studentId)?.name ?? `Student #${payment.studentId}`}</p><p className="text-xs text-slate-500">{payment.receiptNumber ?? "Receipt pending"} • {payment.method} • {formatDate(payment.paymentDate, "MMM dd, yyyy")}</p>{invoice ? <p className="mt-1 text-xs text-slate-500">{invoice.invoiceNumber ?? `INV-${invoice.id}`} • {invoice.billingPeriod}</p> : null}</div><div className="flex items-center gap-3"><p className="text-sm font-semibold text-slate-900">{formatCurrency(payment.amount)}</p>{invoice ? <Button size="sm" variant="outline" onClick={() => handlePrintReceipt(invoice, payment)}><Printer className="mr-1.5 h-3.5 w-3.5" />Receipt</Button> : null}</div></div></div>; })}</CardContent></Card>
+          <Card className="bg-white/80"><CardHeader><CardTitle>Monthly revenue</CardTitle><CardDescription>Month-by-month billed and collected totals from the finance report.</CardDescription></CardHeader><CardContent className="space-y-3">{(report?.monthlyRevenue ?? []).slice(0, 6).map((item) => <div key={item.month} className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4"><div className="flex items-center justify-between gap-3"><p className="font-semibold text-slate-900">{formatBillingPeriod(item.month)}</p><p className="text-sm text-slate-500">{item.month}</p></div><div className="mt-3 grid gap-3 sm:grid-cols-2"><div><p className="text-xs uppercase tracking-[0.16em] text-slate-500">Billed</p><p className="text-lg font-semibold text-slate-900">{formatCurrency(item.billed)}</p></div><div><p className="text-xs uppercase tracking-[0.16em] text-slate-500">Collected</p><p className="text-lg font-semibold text-slate-900">{formatCurrency(item.paid)}</p></div></div></div>)}</CardContent></Card>
+          <Card className="bg-white/80"><CardHeader><CardTitle>Billing profiles</CardTitle><CardDescription>Monthly defaults used for duplicate-safe invoice generation.</CardDescription></CardHeader><CardContent className="space-y-3"><div className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4"><div><p className="text-sm font-semibold text-slate-900">Configured profiles</p><p className="text-xs text-slate-500">{profiles.length} active records in the finance setup.</p></div><Button size="sm" variant="outline" onClick={() => openProfileDialog()}><Settings2 className="mr-1.5 h-3.5 w-3.5" />Add profile</Button></div>{profilesLoading ? <div className="py-6 text-center text-sm text-slate-500">Loading billing profiles…</div> : profiles.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500">No billing profiles yet. Add one to support monthly fee generation.</div> : profiles.slice(0, 6).map((profile) => <div key={profile.studentId} className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-slate-900">{profile.student?.name ?? `Student #${profile.studentId}`}</p><p className="text-xs text-slate-500">Due day {profile.dueDay} • {formatCurrency(profile.monthlyAmount)}</p></div><Button size="sm" variant="ghost" onClick={() => openProfileDialog(profile)}>Edit</Button></div><div className="mt-2">{profile.isActive ? <Badge variant="outline">Active</Badge> : <Badge variant="outline">Inactive</Badge>}</div></div>)}</CardContent></Card>
+        </div>
+
+        <Dialog open={invoiceDialogOpen} onOpenChange={(open) => { setInvoiceDialogOpen(open); if (!open) { setEditingInvoiceId(null); setInvoiceForm(createDefaultInvoiceForm(studentFilter === "all" ? "" : studentFilter)); } }}>
+          <DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>{editingInvoice ? "Edit invoice" : "Create invoice"}</DialogTitle></DialogHeader><div className="grid gap-4 pt-2 md:grid-cols-2"><div className="space-y-2 md:col-span-2"><label className="text-sm font-medium">Student</label><Select value={invoiceForm.studentId} onValueChange={(value) => setInvoiceForm((current) => ({ ...current, studentId: value }))}><SelectTrigger><SelectValue placeholder="Select student" /></SelectTrigger><SelectContent>{studentsList.map((student) => <SelectItem key={student.id} value={String(student.id)}>{student.name} {student.className ? `(${student.className})` : ""}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><label className="text-sm font-medium">Billing month</label><Input type="month" value={invoiceForm.billingMonth} onChange={(event) => setInvoiceForm((current) => ({ ...current, billingMonth: event.target.value }))} /></div><div className="space-y-2"><label className="text-sm font-medium">Due date</label><Input type="date" value={invoiceForm.dueDate} onChange={(event) => setInvoiceForm((current) => ({ ...current, dueDate: event.target.value }))} /></div><div className="space-y-2"><label className="text-sm font-medium">Amount</label><Input type="number" min="1" value={invoiceForm.amount} onChange={(event) => setInvoiceForm((current) => ({ ...current, amount: event.target.value }))} /></div><div className="space-y-2"><label className="text-sm font-medium">Fee type</label><Input value={invoiceForm.feeType} onChange={(event) => setInvoiceForm((current) => ({ ...current, feeType: event.target.value }))} /></div><div className="space-y-2 md:col-span-2"><label className="text-sm font-medium">Description</label><Input value={invoiceForm.description} onChange={(event) => setInvoiceForm((current) => ({ ...current, description: event.target.value }))} /></div><div className="space-y-2 md:col-span-2"><label className="text-sm font-medium">Internal notes</label><Textarea value={invoiceForm.notes} onChange={(event) => setInvoiceForm((current) => ({ ...current, notes: event.target.value }))} rows={4} /></div></div><div className="flex justify-end gap-3 pt-2"><Button variant="outline" onClick={() => setInvoiceDialogOpen(false)}>Cancel</Button><Button onClick={handleInvoiceSubmit} disabled={createFee.isPending || updateFee.isPending}>{createFee.isPending || updateFee.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : editingInvoice ? "Save invoice" : "Create invoice"}</Button></div></DialogContent>
+        </Dialog>
+
+        <Dialog open={paymentDialogOpen} onOpenChange={(open) => { setPaymentDialogOpen(open); if (!open) { setPaymentInvoiceId(null); setPaymentForm(createDefaultPaymentForm()); } }}>
+          <DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>Record payment</DialogTitle></DialogHeader><div className="space-y-4 pt-2"><div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4"><p className="font-semibold text-slate-900">{paymentInvoice?.invoiceNumber ?? (paymentInvoice ? `Invoice ${paymentInvoice.id}` : "Invoice")}</p><p className="text-sm text-slate-500">{paymentInvoice?.student?.name ?? "Select an invoice"}</p><div className="mt-3 grid gap-3 sm:grid-cols-3"><div><p className="text-xs uppercase tracking-[0.16em] text-slate-500">Total</p><p className="font-semibold text-slate-900">{formatCurrency(paymentInvoice?.amount ?? 0)}</p></div><div><p className="text-xs uppercase tracking-[0.16em] text-slate-500">Paid</p><p className="font-semibold text-slate-900">{formatCurrency(paymentInvoice?.paidAmount ?? 0)}</p></div><div><p className="text-xs uppercase tracking-[0.16em] text-slate-500">Balance</p><p className="font-semibold text-slate-900">{formatCurrency(paymentInvoice?.remainingBalance ?? 0)}</p></div></div></div><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><label className="text-sm font-medium">Amount</label><Input type="number" min="1" value={paymentForm.amount} onChange={(event) => setPaymentForm((current) => ({ ...current, amount: event.target.value }))} /></div><div className="space-y-2"><label className="text-sm font-medium">Payment date</label><Input type="date" value={paymentForm.paymentDate} onChange={(event) => setPaymentForm((current) => ({ ...current, paymentDate: event.target.value }))} /></div><div className="space-y-2"><label className="text-sm font-medium">Payment method</label><Select value={paymentForm.method} onValueChange={(value) => setPaymentForm((current) => ({ ...current, method: value as PaymentFormState["method"] }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Cash", "Bank Transfer", "Card", "Mobile Money", "Cheque", "Other"].map((method) => <SelectItem key={method} value={method}>{method}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><label className="text-sm font-medium">Reference</label><Input value={paymentForm.reference} onChange={(event) => setPaymentForm((current) => ({ ...current, reference: event.target.value }))} placeholder="Transaction reference" /></div><div className="space-y-2 md:col-span-2"><label className="text-sm font-medium">Notes</label><Textarea value={paymentForm.notes} onChange={(event) => setPaymentForm((current) => ({ ...current, notes: event.target.value }))} rows={4} /></div></div></div><div className="flex justify-end gap-3 pt-2"><Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>Cancel</Button><Button onClick={handlePaymentSubmit} disabled={recordPayment.isPending || !paymentInvoice}>{recordPayment.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Record payment"}</Button></div></DialogContent>
+        </Dialog>
+
+        <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
+          <DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>{editingProfile ? "Edit billing profile" : "Add billing profile"}</DialogTitle></DialogHeader><div className="grid gap-4 pt-2 md:grid-cols-2"><div className="space-y-2 md:col-span-2"><label className="text-sm font-medium">Student</label><Select value={profileForm.studentId} onValueChange={(value) => setProfileForm((current) => ({ ...current, studentId: value }))}><SelectTrigger><SelectValue placeholder="Select student" /></SelectTrigger><SelectContent>{studentsList.map((student) => <SelectItem key={student.id} value={String(student.id)}>{student.name} {student.className ? `(${student.className})` : ""}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><label className="text-sm font-medium">Monthly amount</label><Input type="number" min="1" value={profileForm.monthlyAmount} onChange={(event) => setProfileForm((current) => ({ ...current, monthlyAmount: event.target.value }))} /></div><div className="space-y-2"><label className="text-sm font-medium">Due day</label><Input type="number" min="1" max="28" value={profileForm.dueDay} onChange={(event) => setProfileForm((current) => ({ ...current, dueDay: event.target.value }))} /></div><div className="space-y-2 md:col-span-2"><label className="text-sm font-medium">Status</label><Select value={profileForm.isActive ? "active" : "inactive"} onValueChange={(value) => setProfileForm((current) => ({ ...current, isActive: value === "active" }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="inactive">Inactive</SelectItem></SelectContent></Select></div><div className="space-y-2 md:col-span-2"><label className="text-sm font-medium">Notes</label><Textarea value={profileForm.notes} onChange={(event) => setProfileForm((current) => ({ ...current, notes: event.target.value }))} rows={4} /></div></div><div className="flex justify-end gap-3 pt-2"><Button variant="outline" onClick={() => setProfileDialogOpen(false)}>Cancel</Button><Button onClick={handleProfileSubmit} disabled={upsertBillingProfile.isPending}>{upsertBillingProfile.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save profile"}</Button></div></DialogContent>
+        </Dialog>
+
+        <Dialog open={generationDialogOpen} onOpenChange={setGenerationDialogOpen}>
+          <DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Generate monthly fees</DialogTitle></DialogHeader><div className="grid gap-4 pt-2 md:grid-cols-2"><div className="space-y-2"><label className="text-sm font-medium">Billing month</label><Input type="month" value={generationForm.billingMonth} onChange={(event) => setGenerationForm((current) => ({ ...current, billingMonth: event.target.value }))} /></div><div className="space-y-2"><label className="text-sm font-medium">Due day override (optional)</label><Input type="number" min="1" max="28" value={generationForm.dueDayOverride} onChange={(event) => setGenerationForm((current) => ({ ...current, dueDayOverride: event.target.value }))} placeholder="Use profile due day if blank" /></div></div><div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4 text-sm text-slate-600">Duplicate invoice generation is prevented automatically per student and billing month. Students without an active billing profile are skipped and reported.</div>{lastGenerationResult && <div className="space-y-3 rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4"><div className="grid gap-3 sm:grid-cols-3"><div><p className="text-xs uppercase tracking-[0.16em] text-slate-500">Generated</p><p className="text-2xl font-display font-bold text-slate-900">{lastGenerationResult.generatedCount}</p></div><div><p className="text-xs uppercase tracking-[0.16em] text-slate-500">Duplicates skipped</p><p className="text-2xl font-display font-bold text-slate-900">{lastGenerationResult.skippedDuplicates}</p></div><div><p className="text-xs uppercase tracking-[0.16em] text-slate-500">Missing profiles</p><p className="text-2xl font-display font-bold text-slate-900">{lastGenerationResult.skippedMissingProfiles}</p></div></div>{lastGenerationResult.skippedStudents.length > 0 && <div className="space-y-2"><p className="text-sm font-semibold text-slate-900">Skipped students</p>{lastGenerationResult.skippedStudents.slice(0, 6).map((student) => <div key={`${student.studentId}-${student.reason}`} className="rounded-xl border border-slate-200/70 bg-white p-3 text-sm"><span className="font-medium text-slate-900">{student.studentName}</span><span className="ml-2 text-slate-500">{student.reason}</span></div>)}</div>}</div>}<div className="flex justify-end gap-3 pt-2"><Button variant="outline" onClick={() => setGenerationDialogOpen(false)}>Close</Button><Button onClick={handleGenerateMonthlyFees} disabled={generateMonthlyFees.isPending}>{generateMonthlyFees.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Run generation"}</Button></div></DialogContent>
+        </Dialog>
+
+        <Dialog open={!!selectedInvoice} onOpenChange={(open) => !open && setDetailInvoiceId(null)}>
+          <DialogContent className="sm:max-w-3xl"><DialogHeader><DialogTitle>{selectedInvoice?.invoiceNumber ?? (selectedInvoice ? `Invoice ${selectedInvoice.id}` : "Invoice details")}</DialogTitle></DialogHeader>{selectedInvoice && <div className="space-y-6 pt-2"><div className="grid gap-4 md:grid-cols-4">{[{ label: "Student", value: selectedInvoice.student?.name ?? `Student #${selectedInvoice.studentId}` }, { label: "Billing period", value: selectedInvoice.billingPeriod }, { label: "Due date", value: formatDate(selectedInvoice.dueDate, "MMMM dd, yyyy") }, { label: "Status", value: selectedInvoice.status }].map((item) => <div key={item.label} className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4"><p className="text-xs uppercase tracking-[0.16em] text-slate-500">{item.label}</p><p className="mt-2 font-semibold text-slate-900">{item.value}</p></div>)}</div><div className="grid gap-6 lg:grid-cols-2"><div className="space-y-3"><h3 className="font-semibold text-slate-900">Invoice items</h3>{(selectedInvoice.lineItems.length ? selectedInvoice.lineItems : [{ label: selectedInvoice.description, amount: selectedInvoice.amount }]).map((item, index) => <div key={`${item.label}-${index}`} className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4"><div><p className="font-medium text-slate-900">{item.label}</p><p className="text-xs text-slate-500">{selectedInvoice.description}</p></div><p className="font-semibold text-slate-900">{formatCurrency(item.amount)}</p></div>)}{selectedInvoice.notes && <div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4 text-sm text-slate-600"><span className="font-medium text-slate-900">Notes:</span> {selectedInvoice.notes}</div>}</div><div className="space-y-3"><h3 className="font-semibold text-slate-900">Payments</h3>{(selectedInvoice.payments ?? []).length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500">No payments recorded yet for this invoice.</div> : (selectedInvoice.payments ?? []).map((payment) => <div key={payment.id} className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4"><div className="flex items-center justify-between gap-3"><div><p className="font-medium text-slate-900">{formatDate(payment.paymentDate, "MMM dd, yyyy")}</p><p className="text-xs text-slate-500">{payment.method} • {payment.receiptNumber ?? "Receipt pending"}</p></div><div className="flex items-center gap-3"><p className="font-semibold text-slate-900">{formatCurrency(payment.amount)}</p><Button size="sm" variant="outline" onClick={() => handlePrintReceipt(selectedInvoice, payment)}><Printer className="mr-1.5 h-3.5 w-3.5" />Receipt</Button></div></div>{(payment.reference || payment.notes) && <p className="mt-2 text-xs text-slate-500">{payment.reference ?? payment.notes}</p>}</div>)}</div></div><div className="flex flex-wrap justify-end gap-3">{selectedInvoice.remainingBalance > 0 && <Button variant="outline" onClick={() => openPaymentDialog(selectedInvoice)}><ReceiptText className="mr-2 h-4 w-4" />Record payment</Button>}<Button variant="outline" onClick={() => handlePrintInvoice(selectedInvoice)}><Printer className="mr-2 h-4 w-4" />Print invoice / Save PDF</Button></div></div>}</DialogContent>
+        </Dialog>
+
+        <AlertDialog open={!!deletingInvoice} onOpenChange={(open) => !open && setDeleteInvoiceId(null)}>
+          <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete invoice?</AlertDialogTitle><AlertDialogDescription>This will permanently remove {deletingInvoice?.invoiceNumber ?? (deletingInvoice ? `invoice ${deletingInvoice.id}` : "the selected invoice")} and its payment ledger history.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleDeleteInvoice}>{deleteFee.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete invoice"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
         </AlertDialog>
       </div>
     </Layout>

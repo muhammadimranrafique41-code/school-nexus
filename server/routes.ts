@@ -641,6 +641,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(201).json(await storage.createFee(input));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -659,6 +660,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -668,6 +670,68 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!user) return;
     if (!(await storage.deleteFee(parseNumberValue(req.params.id)))) return res.status(404).json({ message: "Fee record not found" });
     res.json({ success: true });
+  });
+
+  app.post(api.fees.payments.record.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const input = api.fees.payments.record.input.parse(req.body);
+      const updated = await storage.recordFeePayment(parseNumberValue(req.params.id), input, user.id);
+      if (!updated) return res.status(404).json({ message: "Invoice not found" });
+      res.status(201).json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get(api.fees.profiles.list.path, async (req, res) => {
+    const user = await requireRole(req, res, ["admin"]);
+    if (!user) return;
+    res.json(await storage.getBillingProfiles());
+  });
+
+  app.post(api.fees.profiles.upsert.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const input = api.fees.profiles.upsert.input.parse(req.body);
+      const student = await storage.getUser(input.studentId);
+      if (!student || student.role !== "student") return res.status(400).json({ message: "Invalid student id", field: "studentId" });
+      res.json(await storage.upsertBillingProfile(input));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.fees.generateMonthly.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const input = api.fees.generateMonthly.input.parse(req.body);
+      res.json(await storage.generateMonthlyFees(input));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get(api.fees.report.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const filters = api.fees.report.input.parse(req.query);
+      res.json(await storage.getFinanceReport(filters));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   app.get(api.dashboard.adminStats.path, async (req, res) => {
@@ -684,13 +748,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (Number.isNaN(studentId)) return res.status(400).json({ message: "Invalid student id", field: "id" });
     const student = await storage.getUser(studentId);
     if (!student || student.role !== "student") return res.status(404).json({ message: "Student not found" });
-    const attendance = await storage.getAttendanceByStudent(studentId);
-    const fees = await storage.getFeesByStudent(studentId);
-    const attendedCount = attendance.filter((record) => attendedStatuses.has(record.status)).length;
-    res.json({
-      attendanceRate: attendance.length ? Math.round((attendedCount / attendance.length) * 100) : 0,
-      unpaidFees: fees.filter((record) => record.status === "Unpaid").reduce((sum, record) => sum + record.amount, 0),
-    });
+    res.json(await storage.getStudentDashboardStats(studentId));
   });
 
   app.get(api.dashboard.teacherStats.path, async (req, res) => {

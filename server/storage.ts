@@ -1,13 +1,15 @@
-import { and, count, desc, eq, sql, sum } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql, sum } from "drizzle-orm";
 import {
   academics,
   attendance,
+  feePayments,
   fees,
   results,
   schoolSettings,
   schoolSettingsAuditLogs,
   schoolSettingsVersions,
   students,
+  studentBillingProfiles,
   teachers,
   timetable,
   type Academic,
@@ -15,10 +17,10 @@ import {
   type Attendance,
   type AttendanceWithStudent,
   type Fee,
+  type FeePaymentWithMeta,
   type FeeWithStudent,
   type InsertAcademic,
   type InsertAttendance,
-  type InsertFee,
   type InsertResult,
   type InsertTimetable,
   type InsertUser,
@@ -27,11 +29,27 @@ import {
   type SchoolSettings,
   type SchoolSettingsAuditLog,
   type SchoolSettingsVersion,
+  type StudentBillingProfile,
+  type StudentBillingProfileWithStudent,
   type Timetable,
   type TimetableWithDetails,
   type User,
   users,
 } from "@shared/schema";
+import {
+  buildDocumentNumber,
+  buildDueDateForBillingMonth,
+  formatBillingPeriod,
+  normalizeFeeLineItems,
+  summarizeFeeLedger,
+  toIsoDate,
+  type BillingProfileInput,
+  type CreateFeeInput,
+  type FeeStatus,
+  type GenerateMonthlyFeesInput,
+  type RecordFeePaymentInput,
+  type UpdateFeeInput,
+} from "@shared/finance";
 import type { AdminSchoolSettingsResponse, PublicSchoolSettings, SchoolSettingsAuditAction, SchoolSettingsData } from "@shared/settings";
 import { schoolSettingsDataSchema } from "@shared/settings";
 import { db } from "./db";
@@ -59,6 +77,12 @@ type RuntimeSettingsState = {
   auditLogs: SchoolSettingsAuditLog[];
   nextVersionId: number;
   nextAuditId: number;
+};
+
+type FinanceReportFilters = {
+  month?: string;
+  studentId?: number;
+  status?: FeeStatus;
 };
 
 const createRuntimeSettingsState = (): RuntimeSettingsState => {
@@ -133,9 +157,45 @@ export interface IStorage {
 
   getFees(): Promise<FeeWithStudent[]>;
   getFeesByStudent(studentId: number): Promise<FeeWithStudent[]>;
-  createFee(record: InsertFee): Promise<Fee>;
-  updateFee(id: number, updates: Partial<InsertFee>): Promise<Fee | undefined>;
+  getFee(id: number): Promise<FeeWithStudent | undefined>;
+  createFee(record: CreateFeeInput): Promise<FeeWithStudent>;
+  updateFee(id: number, updates: UpdateFeeInput): Promise<FeeWithStudent | undefined>;
   deleteFee(id: number): Promise<boolean>;
+  recordFeePayment(id: number, payment: RecordFeePaymentInput, createdBy?: number): Promise<FeeWithStudent | undefined>;
+  getBillingProfiles(): Promise<StudentBillingProfileWithStudent[]>;
+  upsertBillingProfile(input: BillingProfileInput): Promise<StudentBillingProfileWithStudent>;
+  generateMonthlyFees(input: GenerateMonthlyFeesInput): Promise<{
+    billingMonth: string;
+    generatedCount: number;
+    skippedDuplicates: number;
+    skippedMissingProfiles: number;
+    invoices: FeeWithStudent[];
+    skippedStudents: { studentId: number; studentName: string; reason: string }[];
+  }>;
+  getFinanceReport(filters?: FinanceReportFilters): Promise<{
+    summary: {
+      totalInvoices: number;
+      totalBilled: number;
+      totalPaid: number;
+      totalOutstanding: number;
+      paidInvoices: number;
+      partiallyPaidInvoices: number;
+      unpaidInvoices: number;
+      overdueInvoices: number;
+      paymentsCount: number;
+    };
+    monthlyRevenue: { month: string; billed: number; paid: number }[];
+    statusBreakdown: { status: FeeStatus; count: number; amount: number }[];
+    outstandingStudents: {
+      studentId: number;
+      studentName: string;
+      outstandingBalance: number;
+      overdueBalance: number;
+      invoiceCount: number;
+    }[];
+    invoices: FeeWithStudent[];
+    payments: FeePaymentWithMeta[];
+  }>;
 
   getTotalStudents(): Promise<number>;
   getTotalTeachers(): Promise<number>;
@@ -154,6 +214,7 @@ export interface IStorage {
     activeClasses: number;
     outstandingFees: number;
     pendingPayments: number;
+    overdueInvoices: number;
     attendanceMarkedToday: number;
     monthlyRevenue: { month: string; revenue: number }[];
     recentActivity: {
@@ -163,6 +224,12 @@ export interface IStorage {
       description: string;
       dateLabel: string;
     }[];
+  }>;
+  getStudentDashboardStats(studentId: number): Promise<{
+    attendanceRate: number;
+    unpaidFees: number;
+    openInvoices: number;
+    overdueInvoices: number;
   }>;
 }
 
@@ -816,32 +883,428 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
+  private async attachFeeRecords(records: Fee[]): Promise<FeeWithStudent[]> {
+    if (records.length === 0) return [];
+
+    const [userMap, paymentRows] = await Promise.all([
+      this.getUsersMap(),
+      db.select().from(feePayments).where(inArray(feePayments.feeId, records.map((record) => record.id))),
+    ]);
+
+    const paymentsByFeeId = new Map<number, FeePaymentWithMeta[]>();
+    for (const payment of paymentRows) {
+      const existing = paymentsByFeeId.get(payment.feeId) ?? [];
+      existing.push({ ...payment, createdByUser: payment.createdBy ? userMap.get(payment.createdBy) : undefined });
+      paymentsByFeeId.set(payment.feeId, existing);
+    }
+
+    return records
+      .map((record) => ({
+        ...record,
+        ...summarizeFeeLedger(record.amount, record.paidAmount, record.dueDate),
+        lineItems: Array.isArray(record.lineItems) && record.lineItems.length > 0
+          ? record.lineItems
+          : normalizeFeeLineItems(record.amount, record.description),
+        student: userMap.get(record.studentId),
+        payments: (paymentsByFeeId.get(record.id) ?? []).sort((left, right) => `${right.paymentDate}-${right.id}`.localeCompare(`${left.paymentDate}-${left.id}`)),
+        paymentCount: (paymentsByFeeId.get(record.id) ?? []).length,
+      }))
+      .sort((left, right) => `${right.billingMonth}-${right.id}`.localeCompare(`${left.billingMonth}-${left.id}`));
+  }
+
+  private async attachBillingProfiles(records: StudentBillingProfile[]): Promise<StudentBillingProfileWithStudent[]> {
+    if (records.length === 0) return [];
+    const userMap = await this.getUsersMap();
+    return records
+      .map((record) => ({ ...record, student: userMap.get(record.studentId) }))
+      .sort((left, right) => (left.student?.name ?? "").localeCompare(right.student?.name ?? ""));
+  }
+
+  private async createFeeRecord(executor: any, record: CreateFeeInput, invoicePrefix: string): Promise<Fee> {
+    const timestamp = new Date().toISOString();
+    const billingPeriod = record.billingPeriod?.trim() || formatBillingPeriod(record.billingMonth);
+    const generatedMonth = record.generatedMonth ?? (record.source === "monthly" ? record.billingMonth : null);
+    const lineItems = normalizeFeeLineItems(record.amount, record.description, record.lineItems);
+    const ledger = summarizeFeeLedger(record.amount, 0, record.dueDate);
+
+    if (generatedMonth) {
+      const [existingGenerated] = await executor
+        .select()
+        .from(fees)
+        .where(and(eq(fees.studentId, record.studentId), eq(fees.generatedMonth, generatedMonth)))
+        .limit(1);
+      if (existingGenerated) throw new Error(`Monthly invoice already exists for ${generatedMonth}`);
+    }
+
+    const [created] = await executor
+      .insert(fees)
+      .values({
+        studentId: record.studentId,
+        amount: record.amount,
+        paidAmount: ledger.paidAmount,
+        remainingBalance: ledger.remainingBalance,
+        dueDate: record.dueDate,
+        status: ledger.status,
+        invoiceNumber: null,
+        billingMonth: record.billingMonth,
+        billingPeriod,
+        description: record.description,
+        feeType: record.feeType,
+        source: record.source ?? "manual",
+        generatedMonth,
+        lineItems,
+        notes: record.notes ?? null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .returning();
+
+    const invoiceNumber = buildDocumentNumber(invoicePrefix, created.id, new Date(timestamp));
+    const [updated] = await executor
+      .update(fees)
+      .set({ invoiceNumber })
+      .where(eq(fees.id, created.id))
+      .returning();
+
+    return updated ?? { ...created, invoiceNumber };
+  }
+
   async getFees(): Promise<FeeWithStudent[]> {
-    const [records, userMap] = await Promise.all([db.select().from(fees), this.getUsersMap()]);
-    return records.map((record) => ({ ...record, student: userMap.get(record.studentId) }));
+    return this.attachFeeRecords(await db.select().from(fees));
   }
 
   async getFeesByStudent(studentId: number): Promise<FeeWithStudent[]> {
-    const [records, userMap] = await Promise.all([
-      db.select().from(fees).where(eq(fees.studentId, studentId)),
-      this.getUsersMap(),
-    ]);
-    return records.map((record) => ({ ...record, student: userMap.get(record.studentId) }));
+    return this.attachFeeRecords(await db.select().from(fees).where(eq(fees.studentId, studentId)));
   }
 
-  async createFee(record: InsertFee): Promise<Fee> {
-    const [newRecord] = await db.insert(fees).values(record).returning();
-    return newRecord;
+  async getFee(id: number): Promise<FeeWithStudent | undefined> {
+    const [record] = await db.select().from(fees).where(eq(fees.id, id));
+    if (!record) return undefined;
+    const [hydrated] = await this.attachFeeRecords([record]);
+    return hydrated;
   }
 
-  async updateFee(id: number, updates: Partial<InsertFee>): Promise<Fee | undefined> {
-    const [updated] = await db.update(fees).set(updates).where(eq(fees.id, id)).returning();
-    return updated;
+  async createFee(record: CreateFeeInput): Promise<FeeWithStudent> {
+    const student = await this.getUser(record.studentId);
+    if (!student || student.role !== "student") throw new Error("Student not found");
+
+    const publicSettings = await this.getPublicSchoolSettings();
+    const created = await db.transaction((tx) =>
+      this.createFeeRecord(tx, record, publicSettings.financialSettings.invoicePrefix || "INV"),
+    );
+
+    return (await this.getFee(created.id)) as FeeWithStudent;
+  }
+
+  async updateFee(id: number, updates: UpdateFeeInput): Promise<FeeWithStudent | undefined> {
+    const [existing] = await db.select().from(fees).where(eq(fees.id, id));
+    if (!existing) return undefined;
+
+    const studentId = updates.studentId ?? existing.studentId;
+    const student = await this.getUser(studentId);
+    if (!student || student.role !== "student") throw new Error("Student not found");
+
+    const amount = updates.amount ?? existing.amount;
+    if (amount < existing.paidAmount) throw new Error("Invoice total cannot be less than the amount already paid");
+
+    const description = updates.description ?? existing.description;
+    const billingMonth = updates.billingMonth ?? existing.billingMonth;
+    const dueDate = updates.dueDate ?? existing.dueDate;
+    const billingPeriod = updates.billingPeriod?.trim()
+      || (updates.billingMonth && !updates.billingPeriod ? formatBillingPeriod(billingMonth) : existing.billingPeriod);
+    const lineItems = normalizeFeeLineItems(
+      amount,
+      description,
+      updates.lineItems ?? (amount === existing.amount ? existing.lineItems : undefined),
+    );
+    const generatedMonth = updates.generatedMonth ?? existing.generatedMonth;
+    const ledger = summarizeFeeLedger(amount, existing.paidAmount, dueDate);
+
+    const updated = await db.transaction(async (tx) => {
+      if (generatedMonth) {
+        const duplicates = await tx
+          .select()
+          .from(fees)
+          .where(and(eq(fees.studentId, studentId), eq(fees.generatedMonth, generatedMonth)))
+          .limit(5);
+        if (duplicates.some((duplicate) => duplicate.id !== id)) throw new Error(`Monthly invoice already exists for ${generatedMonth}`);
+      }
+
+      const [saved] = await tx
+        .update(fees)
+        .set({
+          studentId,
+          amount,
+          paidAmount: ledger.paidAmount,
+          remainingBalance: ledger.remainingBalance,
+          dueDate,
+          status: ledger.status,
+          billingMonth,
+          billingPeriod,
+          description,
+          feeType: updates.feeType ?? existing.feeType,
+          source: updates.source ?? existing.source,
+          generatedMonth,
+          lineItems,
+          notes: updates.notes === undefined ? existing.notes : updates.notes ?? null,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(fees.id, id))
+        .returning();
+      return saved;
+    });
+
+    if (!updated) return undefined;
+    return this.getFee(id);
   }
 
   async deleteFee(id: number): Promise<boolean> {
     const [deleted] = await db.delete(fees).where(eq(fees.id, id)).returning({ id: fees.id });
     return Boolean(deleted);
+  }
+
+  async recordFeePayment(id: number, payment: RecordFeePaymentInput, createdBy?: number): Promise<FeeWithStudent | undefined> {
+    const publicSettings = await this.getPublicSchoolSettings();
+    const receiptPrefix = publicSettings.financialSettings.receiptPrefix || "RCT";
+
+    const saved = await db.transaction(async (tx) => {
+      const [feeRecord] = await tx.select().from(fees).where(eq(fees.id, id)).limit(1);
+      if (!feeRecord) return undefined;
+      if (payment.amount > feeRecord.remainingBalance) throw new Error("Payment amount cannot exceed the remaining balance");
+
+      const timestamp = new Date().toISOString();
+      const [createdPayment] = await tx
+        .insert(feePayments)
+        .values({
+          feeId: feeRecord.id,
+          studentId: feeRecord.studentId,
+          amount: payment.amount,
+          paymentDate: payment.paymentDate,
+          method: payment.method,
+          receiptNumber: null,
+          reference: payment.reference ?? null,
+          notes: payment.notes ?? null,
+          createdAt: timestamp,
+          createdBy: createdBy ?? null,
+        })
+        .returning();
+
+      const paymentDate = new Date(payment.paymentDate);
+      const receiptNumber = buildDocumentNumber(
+        receiptPrefix,
+        createdPayment.id,
+        Number.isNaN(paymentDate.getTime()) ? new Date(timestamp) : paymentDate,
+      );
+      await tx.update(feePayments).set({ receiptNumber }).where(eq(feePayments.id, createdPayment.id));
+
+      const ledger = summarizeFeeLedger(feeRecord.amount, feeRecord.paidAmount + payment.amount, feeRecord.dueDate);
+      await tx
+        .update(fees)
+        .set({
+          paidAmount: ledger.paidAmount,
+          remainingBalance: ledger.remainingBalance,
+          status: ledger.status,
+          updatedAt: timestamp,
+        })
+        .where(eq(fees.id, feeRecord.id));
+
+      return feeRecord.id;
+    });
+
+    if (!saved) return undefined;
+    return this.getFee(saved);
+  }
+
+  async getBillingProfiles(): Promise<StudentBillingProfileWithStudent[]> {
+    const records = await db.select().from(studentBillingProfiles);
+    return this.attachBillingProfiles(records);
+  }
+
+  async upsertBillingProfile(input: BillingProfileInput): Promise<StudentBillingProfileWithStudent> {
+    const student = await this.getUser(input.studentId);
+    if (!student || student.role !== "student") throw new Error("Student not found");
+
+    const timestamp = new Date().toISOString();
+    const [saved] = await db
+      .insert(studentBillingProfiles)
+      .values({
+        studentId: input.studentId,
+        monthlyAmount: input.monthlyAmount,
+        dueDay: input.dueDay,
+        isActive: input.isActive,
+        notes: input.notes ?? null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .onConflictDoUpdate({
+        target: studentBillingProfiles.studentId,
+        set: {
+          monthlyAmount: input.monthlyAmount,
+          dueDay: input.dueDay,
+          isActive: input.isActive,
+          notes: input.notes ?? null,
+          updatedAt: timestamp,
+        },
+      })
+      .returning();
+
+    const [hydrated] = await this.attachBillingProfiles([saved]);
+    return hydrated;
+  }
+
+  async generateMonthlyFees(input: GenerateMonthlyFeesInput) {
+    const [studentUsers, billingProfiles, publicSettings] = await Promise.all([
+      this.getStudents(),
+      this.getBillingProfiles(),
+      this.getPublicSchoolSettings(),
+    ]);
+
+    const profilesByStudentId = new Map(billingProfiles.map((profile) => [profile.studentId, profile]));
+    const [existingGenerated] = await Promise.all([
+      db.select({ studentId: fees.studentId }).from(fees).where(eq(fees.generatedMonth, input.billingMonth)),
+    ]);
+    const duplicateStudents = new Set(existingGenerated.map((record) => record.studentId));
+    const skippedStudents: { studentId: number; studentName: string; reason: string }[] = [];
+    const createdIds: number[] = [];
+    let skippedDuplicates = 0;
+    let skippedMissingProfiles = 0;
+
+    await db.transaction(async (tx) => {
+      for (const student of studentUsers) {
+        const profile = profilesByStudentId.get(student.id);
+        if (!profile || !profile.isActive) {
+          skippedMissingProfiles += 1;
+          skippedStudents.push({
+            studentId: student.id,
+            studentName: student.name,
+            reason: profile ? "Billing profile is inactive" : "Missing billing profile",
+          });
+          continue;
+        }
+
+        if (duplicateStudents.has(student.id)) {
+          skippedDuplicates += 1;
+          skippedStudents.push({ studentId: student.id, studentName: student.name, reason: "Monthly invoice already generated" });
+          continue;
+        }
+
+        const created = await this.createFeeRecord(
+          tx,
+          {
+            studentId: student.id,
+            amount: profile.monthlyAmount,
+            billingMonth: input.billingMonth,
+            billingPeriod: formatBillingPeriod(input.billingMonth),
+            dueDate: buildDueDateForBillingMonth(input.billingMonth, input.dueDayOverride ?? profile.dueDay),
+            description: `Monthly fee for ${formatBillingPeriod(input.billingMonth)}`,
+            feeType: "Monthly Fee",
+            source: "monthly",
+            generatedMonth: input.billingMonth,
+            lineItems: [{ label: `Monthly tuition for ${formatBillingPeriod(input.billingMonth)}`, amount: profile.monthlyAmount }],
+            notes: profile.notes ?? null,
+          },
+          publicSettings.financialSettings.invoicePrefix || "INV",
+        );
+
+        duplicateStudents.add(student.id);
+        createdIds.push(created.id);
+      }
+    });
+
+    const invoices = createdIds.length
+      ? await this.attachFeeRecords(await db.select().from(fees).where(inArray(fees.id, createdIds)))
+      : [];
+
+    return {
+      billingMonth: input.billingMonth,
+      generatedCount: invoices.length,
+      skippedDuplicates,
+      skippedMissingProfiles,
+      invoices,
+      skippedStudents,
+    };
+  }
+
+  async getFinanceReport(filters: FinanceReportFilters = {}) {
+    const baseInvoices = filters.studentId ? await this.getFeesByStudent(filters.studentId) : await this.getFees();
+    const invoices = baseInvoices.filter((invoice) => {
+      if (filters.month && invoice.billingMonth !== filters.month) return false;
+      if (filters.status && invoice.status !== filters.status) return false;
+      return true;
+    });
+
+    const invoiceIds = new Set(invoices.map((invoice) => invoice.id));
+    const payments = invoices.flatMap((invoice) => invoice.payments ?? []).filter((payment) => invoiceIds.has(payment.feeId));
+    const summary = {
+      totalInvoices: invoices.length,
+      totalBilled: invoices.reduce((sum, invoice) => sum + invoice.amount, 0),
+      totalPaid: invoices.reduce((sum, invoice) => sum + invoice.paidAmount, 0),
+      totalOutstanding: invoices.reduce((sum, invoice) => sum + invoice.remainingBalance, 0),
+      paidInvoices: invoices.filter((invoice) => invoice.status === "Paid").length,
+      partiallyPaidInvoices: invoices.filter((invoice) => invoice.status === "Partially Paid").length,
+      unpaidInvoices: invoices.filter((invoice) => invoice.status === "Unpaid").length,
+      overdueInvoices: invoices.filter((invoice) => invoice.status === "Overdue").length,
+      paymentsCount: payments.length,
+    };
+
+    const monthKeys = filters.month
+      ? [filters.month]
+      : Array.from(
+        new Set([
+          ...invoices.map((invoice) => invoice.billingMonth),
+          ...payments.map((payment) => payment.paymentDate.slice(0, 7)),
+        ]),
+      ).sort();
+    const defaultMonths = monthKeys.length > 0
+      ? monthKeys.slice(-6)
+      : Array.from({ length: 6 }, (_, index) => {
+        const date = new Date();
+        date.setMonth(date.getMonth() - (5 - index), 1);
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      });
+    const monthlyRevenueMap = new Map(defaultMonths.map((month) => [month, { month, billed: 0, paid: 0 }]));
+
+    for (const invoice of invoices) {
+      const bucket = monthlyRevenueMap.get(invoice.billingMonth);
+      if (bucket) bucket.billed += invoice.amount;
+    }
+
+    for (const payment of payments) {
+      const key = payment.paymentDate.slice(0, 7);
+      const bucket = monthlyRevenueMap.get(key);
+      if (bucket) bucket.paid += payment.amount;
+    }
+
+    const statusBreakdown = (["Paid", "Partially Paid", "Unpaid", "Overdue"] as const).map((status) => ({
+      status,
+      count: invoices.filter((invoice) => invoice.status === status).length,
+      amount: invoices.filter((invoice) => invoice.status === status).reduce((sum, invoice) => sum + invoice.amount, 0),
+    }));
+
+    const outstandingByStudent = new Map<number, { studentName: string; outstandingBalance: number; overdueBalance: number; invoiceCount: number }>();
+    for (const invoice of invoices.filter((entry) => entry.remainingBalance > 0)) {
+      const current = outstandingByStudent.get(invoice.studentId) ?? {
+        studentName: invoice.student?.name ?? `Student #${invoice.studentId}`,
+        outstandingBalance: 0,
+        overdueBalance: 0,
+        invoiceCount: 0,
+      };
+      current.outstandingBalance += invoice.remainingBalance;
+      current.overdueBalance += invoice.status === "Overdue" ? invoice.remainingBalance : 0;
+      current.invoiceCount += 1;
+      outstandingByStudent.set(invoice.studentId, current);
+    }
+
+    return {
+      summary,
+      monthlyRevenue: Array.from(monthlyRevenueMap.values()),
+      statusBreakdown,
+      outstandingStudents: Array.from(outstandingByStudent.entries())
+        .map(([studentId, value]) => ({ studentId, ...value }))
+        .sort((left, right) => right.outstandingBalance - left.outstandingBalance),
+      invoices,
+      payments,
+    };
   }
 
   async getTotalStudents(): Promise<number> {
@@ -857,7 +1320,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getFeesCollected(): Promise<number> {
-    const [result] = await db.select({ value: sum(fees.amount) }).from(fees).where(eq(fees.status, "Paid"));
+    const [result] = await db.select({ value: sum(fees.paidAmount) }).from(fees);
     return Number(result.value) || 0;
   }
 
@@ -907,19 +1370,30 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
+  async getStudentDashboardStats(studentId: number) {
+    const [attendanceRecords, studentFees] = await Promise.all([this.getAttendanceByStudent(studentId), this.getFeesByStudent(studentId)]);
+    const attendedCount = attendanceRecords.filter((record) => ["Present", "Late", "Excused"].includes(record.status)).length;
+    return {
+      attendanceRate: attendanceRecords.length ? Math.round((attendedCount / attendanceRecords.length) * 100) : 0,
+      unpaidFees: studentFees.reduce((sum, record) => sum + record.remainingBalance, 0),
+      openInvoices: studentFees.filter((record) => record.remainingBalance > 0).length,
+      overdueInvoices: studentFees.filter((record) => record.status === "Overdue").length,
+    };
+  }
+
   async getAdminDashboardStats() {
-    const [totalStudents, totalTeachers, feesCollected, activeClasses, allFees, allAttendance] = await Promise.all([
+    const [totalStudents, totalTeachers, feesCollected, activeClasses, report, allAttendance, publicSettings] = await Promise.all([
       this.getTotalStudents(),
       this.getTotalTeachers(),
       this.getFeesCollected(),
       this.getActiveClassesCount(),
-      this.getFees(),
+      this.getFinanceReport(),
       this.getAttendance(),
+      this.getPublicSchoolSettings(),
     ]);
 
     const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    const publicSettings = await this.getPublicSchoolSettings();
+    const today = toIsoDate(now);
     const locale = publicSettings.financialSettings.locale || "en-US";
     const currencyCode = publicSettings.financialSettings.currencyCode || "USD";
     const monthFormatter = new Intl.DateTimeFormat(locale, { month: "short", timeZone: publicSettings.financialSettings.timezone || "UTC" });
@@ -930,32 +1404,28 @@ export class DatabaseStorage implements IStorage {
     });
     const currencyFormatter = new Intl.NumberFormat(locale, { style: "currency", currency: currencyCode, maximumFractionDigits: 0 });
 
-    const monthBuckets = Array.from({ length: 6 }, (_, index) => {
-      const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      return { key, month: monthFormatter.format(date), revenue: 0 };
-    });
-
-    const monthlyRevenueMap = new Map(monthBuckets.map((bucket) => [bucket.key, bucket]));
-
-    for (const feeRecord of allFees) {
-      if (feeRecord.status !== "Paid") continue;
-      const feeDate = new Date(feeRecord.dueDate);
-      if (Number.isNaN(feeDate.getTime())) continue;
-      const key = `${feeDate.getFullYear()}-${String(feeDate.getMonth() + 1).padStart(2, "0")}`;
-      const bucket = monthlyRevenueMap.get(key);
-      if (bucket) bucket.revenue += feeRecord.amount;
-    }
-
     const recentActivities = [
-      ...allFees.map((feeRecord) => {
+      ...report.payments.map((payment) => {
+        const paymentDate = new Date(payment.paymentDate);
+        const invoice = report.invoices.find((record) => record.id === payment.feeId);
+        const studentName = invoice?.student?.name ?? `Student #${payment.studentId}`;
+        return {
+          id: `payment-${payment.id}`,
+          type: "fee" as const,
+          title: "Payment recorded",
+          description: `${studentName} paid ${currencyFormatter.format(payment.amount)} toward ${invoice?.invoiceNumber ?? `invoice #${payment.feeId}`}.`,
+          dateLabel: Number.isNaN(paymentDate.getTime()) ? payment.paymentDate : dateFormatter.format(paymentDate),
+          sortValue: Number.isNaN(paymentDate.getTime()) ? 0 : paymentDate.getTime(),
+        };
+      }),
+      ...report.invoices.filter((feeRecord) => feeRecord.remainingBalance > 0).map((feeRecord) => {
         const feeDate = new Date(feeRecord.dueDate);
         const studentName = feeRecord.student?.name ?? `Student #${feeRecord.studentId}`;
         return {
           id: `fee-${feeRecord.id}`,
           type: "fee" as const,
-          title: feeRecord.status === "Paid" ? "Fee payment recorded" : "Outstanding fee assigned",
-          description: `${studentName} has ${feeRecord.status === "Paid" ? "settled" : "an outstanding"} fee of ${currencyFormatter.format(feeRecord.amount)}.`,
+          title: feeRecord.status === "Overdue" ? "Invoice overdue" : "Outstanding invoice",
+          description: `${studentName} owes ${currencyFormatter.format(feeRecord.remainingBalance)} on ${feeRecord.invoiceNumber ?? `invoice #${feeRecord.id}`}.`,
           dateLabel: Number.isNaN(feeDate.getTime()) ? feeRecord.dueDate : dateFormatter.format(feeDate),
           sortValue: Number.isNaN(feeDate.getTime()) ? 0 : feeDate.getTime(),
         };
@@ -982,12 +1452,14 @@ export class DatabaseStorage implements IStorage {
       totalTeachers,
       feesCollected,
       activeClasses,
-      outstandingFees: allFees
-        .filter((feeRecord) => feeRecord.status === "Unpaid")
-        .reduce((total, feeRecord) => total + feeRecord.amount, 0),
-      pendingPayments: allFees.filter((feeRecord) => feeRecord.status === "Unpaid").length,
+      outstandingFees: report.summary.totalOutstanding,
+      pendingPayments: report.invoices.filter((feeRecord) => feeRecord.remainingBalance > 0).length,
+      overdueInvoices: report.summary.overdueInvoices,
       attendanceMarkedToday: allAttendance.filter((record) => record.date === today).length,
-      monthlyRevenue: monthBuckets.map(({ month, revenue }) => ({ month, revenue })),
+      monthlyRevenue: report.monthlyRevenue.map((bucket) => ({
+        month: monthFormatter.format(new Date(`${bucket.month}-01T00:00:00`)),
+        revenue: bucket.paid,
+      })),
       recentActivity: recentActivities,
     };
   }

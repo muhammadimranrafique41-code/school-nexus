@@ -133,6 +133,7 @@ export function buildPublicSchoolSettings(data: SchoolSettingsData): PublicSchoo
       timezone: data.financialSettings.timezone,
       dateFormat: data.financialSettings.dateFormat,
       invoicePrefix: data.financialSettings.invoicePrefix,
+      receiptPrefix: data.financialSettings.receiptPrefix,
     },
     branding: data.branding,
     systemPreferences: {

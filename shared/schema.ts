@@ -1,6 +1,8 @@
-import { pgTable, text, serial, integer, jsonb } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { pgTable, text, serial, integer, jsonb, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import type { FeeLineItem, FeeStatus, PaymentMethod } from "./finance";
 import type { SchoolSettingsAuditAction, SchoolSettingsData } from "./settings";
 
 export const attendanceStatuses = ["Present", "Absent", "Late", "Excused"] as const;
@@ -96,8 +98,60 @@ export const fees = pgTable("fees", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   amount: integer("amount").notNull(),
+  paidAmount: integer("paid_amount").notNull().default(0),
+  remainingBalance: integer("remaining_balance").notNull().default(0),
   dueDate: text("due_date").notNull(),
-  status: text("status").notNull(), // 'Paid', 'Unpaid'
+  status: text("status").$type<FeeStatus>().notNull().default("Unpaid"),
+  invoiceNumber: text("invoice_number"),
+  billingMonth: text("billing_month").notNull(),
+  billingPeriod: text("billing_period").notNull(),
+  description: text("description").notNull(),
+  feeType: text("fee_type").notNull().default("Monthly Fee"),
+  source: text("source").notNull().default("manual"),
+  generatedMonth: text("generated_month"),
+  lineItems: jsonb("line_items").$type<FeeLineItem[]>().notNull().default(sql`'[]'::jsonb`),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => ({
+  invoiceNumberIdx: uniqueIndex("fees_invoice_number_idx").on(table.invoiceNumber),
+  monthlyGenerationIdx: uniqueIndex("fees_student_generated_month_idx").on(table.studentId, table.generatedMonth),
+}));
+
+export const feePayments = pgTable(
+  "fee_payments",
+  {
+    id: serial("id").primaryKey(),
+    feeId: integer("fee_id")
+      .notNull()
+      .references(() => fees.id, { onDelete: "cascade" }),
+    studentId: integer("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    amount: integer("amount").notNull(),
+    paymentDate: text("payment_date").notNull(),
+    method: text("method").$type<PaymentMethod>().notNull(),
+    receiptNumber: text("receipt_number"),
+    reference: text("reference"),
+    notes: text("notes"),
+    createdAt: text("created_at").notNull(),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => ({
+    receiptNumberIdx: uniqueIndex("fee_payments_receipt_number_idx").on(table.receiptNumber),
+  }),
+);
+
+export const studentBillingProfiles = pgTable("student_billing_profiles", {
+  studentId: integer("student_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  monthlyAmount: integer("monthly_amount").notNull(),
+  dueDay: integer("due_day").notNull().default(5),
+  isActive: boolean("is_active").notNull().default(true),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
 });
 
 export const schoolSettings = pgTable("school_settings", {
@@ -144,6 +198,8 @@ export const insertAttendanceSchema = createInsertSchema(attendance).omit({ id: 
 export const insertResultSchema = createInsertSchema(results).omit({ id: true });
 export const insertTimetableSchema = createInsertSchema(timetable).omit({ id: true });
 export const insertFeeSchema = createInsertSchema(fees).omit({ id: true });
+export const insertFeePaymentSchema = createInsertSchema(feePayments).omit({ id: true });
+export const insertStudentBillingProfileSchema = createInsertSchema(studentBillingProfiles);
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -161,13 +217,19 @@ export type Timetable = typeof timetable.$inferSelect;
 export type InsertTimetable = z.infer<typeof insertTimetableSchema>;
 export type Fee = typeof fees.$inferSelect;
 export type InsertFee = z.infer<typeof insertFeeSchema>;
+export type FeePayment = typeof feePayments.$inferSelect;
+export type InsertFeePayment = z.infer<typeof insertFeePaymentSchema>;
+export type StudentBillingProfile = typeof studentBillingProfiles.$inferSelect;
+export type InsertStudentBillingProfile = z.infer<typeof insertStudentBillingProfileSchema>;
 export type SchoolSettings = typeof schoolSettings.$inferSelect;
 export type SchoolSettingsVersion = typeof schoolSettingsVersions.$inferSelect;
 export type SchoolSettingsAuditLog = typeof schoolSettingsAuditLogs.$inferSelect;
 
 export type AttendanceWithStudent = Attendance & { student?: User; teacher?: User };
 export type ResultWithStudent = Result & { student?: User };
-export type FeeWithStudent = Fee & { student?: User };
+export type FeePaymentWithMeta = FeePayment & { createdByUser?: User };
+export type FeeWithStudent = Fee & { student?: User; payments?: FeePaymentWithMeta[] };
+export type StudentBillingProfileWithStudent = StudentBillingProfile & { student?: User };
 export type AcademicWithTeacher = Academic & { teacher?: User };
 export type TimetableWithDetails = Timetable & {
   academic?: Academic;

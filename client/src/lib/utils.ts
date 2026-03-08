@@ -29,6 +29,7 @@ const fallbackPublicSchoolSettings: PublicSchoolSettings = {
     timezone: defaultSchoolSettingsData.financialSettings.timezone,
     dateFormat: defaultSchoolSettingsData.financialSettings.dateFormat,
     invoicePrefix: defaultSchoolSettingsData.financialSettings.invoicePrefix,
+    receiptPrefix: defaultSchoolSettingsData.financialSettings.receiptPrefix,
   },
   branding: defaultSchoolSettingsData.branding,
   systemPreferences: {
@@ -181,9 +182,9 @@ export function escapeHtml(value: string | number | null | undefined) {
 export function openPrintWindow(
   title: string,
   bodyHtml: string,
-  options?: { documentType?: "general" | "invoice" | "reportCard" | "certificate"; subtitle?: string },
+  options?: { documentType?: "general" | "invoice" | "receipt" | "reportCard" | "certificate"; subtitle?: string },
 ) {
-  if (typeof window === "undefined") return
+  if (typeof window === "undefined") return false
 
   const settings = getCachedPublicSchoolSettings()
   const schoolName = settings.schoolInformation.schoolName
@@ -193,21 +194,27 @@ export function openPrintWindow(
   const documentHeader =
     options?.documentType === "invoice"
       ? settings.documentTemplates.invoiceHeader
-      : options?.documentType === "reportCard"
-        ? settings.documentTemplates.reportCardHeader
-        : options?.documentType === "certificate"
-          ? settings.documentTemplates.certificateHeader
-          : title
+      : options?.documentType === "receipt"
+        ? "Official payment receipt"
+        : options?.documentType === "reportCard"
+          ? settings.documentTemplates.reportCardHeader
+          : options?.documentType === "certificate"
+            ? settings.documentTemplates.certificateHeader
+            : title
   const watermarkHtml = settings.systemPreferences.enableDocumentWatermark
     ? `<div class="watermark">${escapeHtml(settings.schoolInformation.shortName || schoolName)}</div>`
     : ""
 
-  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1100,height=800")
-  if (!printWindow) return
+  const printWindow = window.open("", "_blank", "width=1100,height=800")
+  if (!printWindow) return false
 
-  printWindow.document.write(`<!DOCTYPE html>
+  try {
+    printWindow.document.open()
+    printWindow.document.write(`<!DOCTYPE html>
   <html>
     <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>${escapeHtml(title)}</title>
       <style>
         body { font-family: Arial, sans-serif; margin: 32px; color: #0f172a; }
@@ -225,6 +232,30 @@ export function openPrintWindow(
         .watermark { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 72px; font-weight: 800; color: rgba(148, 163, 184, 0.08); transform: rotate(-24deg); pointer-events: none; user-select: none; }
         @media print { body { margin: 18px; } }
       </style>
+      <script>
+        (() => {
+          let didPrint = false;
+
+          const triggerPrint = () => {
+            if (didPrint) return;
+            didPrint = true;
+            window.setTimeout(() => {
+              window.focus();
+              window.print();
+            }, 180);
+          };
+
+          if (document.readyState === "complete") {
+            triggerPrint();
+          } else {
+            window.addEventListener("load", triggerPrint, { once: true });
+          }
+
+          window.addEventListener("afterprint", () => {
+            window.setTimeout(() => window.close(), 120);
+          });
+        })();
+      <\/script>
     </head>
     <body>
       ${watermarkHtml}
@@ -239,9 +270,11 @@ export function openPrintWindow(
       <div class="section muted">${escapeHtml(settings.documentTemplates.footerNote)}</div>
     </body>
   </html>`)
-  printWindow.document.close()
-  printWindow.focus()
-  printWindow.onload = () => {
-    printWindow.print()
+    printWindow.document.close()
+    printWindow.focus()
+    return true
+  } catch {
+    printWindow.close()
+    return false
   }
 }

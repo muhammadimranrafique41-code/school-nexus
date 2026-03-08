@@ -51,7 +51,7 @@ export default function AdminDashboard() {
     { title: "Total Students", value: stats?.totalStudents ?? 0, helper: `${stats?.activeClasses ?? 0} active classes`, icon: GraduationCap, color: "from-blue-600 to-indigo-600", bg: "bg-blue-50" },
     { title: "Total Teachers", value: stats?.totalTeachers ?? 0, helper: "Faculty directory synced", icon: Users, color: "from-emerald-600 to-teal-600", bg: "bg-emerald-50" },
     { title: "Fees Collected", value: formatCurrency(stats?.feesCollected ?? 0), helper: `${stats?.pendingPayments ?? 0} pending payments`, icon: Banknote, color: "from-violet-600 to-purple-600", bg: "bg-violet-50" },
-    { title: "Outstanding Fees", value: formatCurrency(stats?.outstandingFees ?? 0), helper: `${stats?.attendanceMarkedToday ?? 0} attendance records today`, icon: TrendingUp, color: "from-rose-600 to-orange-600", bg: "bg-rose-50" },
+    { title: "Outstanding Fees", value: formatCurrency(stats?.outstandingFees ?? 0), helper: `${stats?.overdueInvoices ?? 0} overdue invoice(s)`, icon: TrendingUp, color: "from-rose-600 to-orange-600", bg: "bg-rose-50" },
   ];
 
   return (
@@ -98,8 +98,8 @@ export default function AdminDashboard() {
               {[
                 { label: "Active classes", value: stats?.activeClasses ?? 0 },
                 { label: "Pending payments", value: stats?.pendingPayments ?? 0 },
+                { label: "Overdue invoices", value: stats?.overdueInvoices ?? 0 },
                 { label: "Attendance today", value: stats?.attendanceMarkedToday ?? 0 },
-                { label: "Recent updates", value: stats?.recentActivity?.length ?? 0 },
               ].map((item) => (
                 <div key={item.label} className="rounded-[1.25rem] border border-slate-200/70 bg-slate-50/80 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
@@ -155,7 +155,7 @@ export default function AdminDashboard() {
           <Card className="border-none bg-gradient-to-br from-violet-600 to-purple-700 text-white shadow-[0_24px_60px_-30px_rgba(139,92,246,0.7)]">
             <CardContent className="p-6 space-y-3">
               <h3 className="text-xl font-bold">Finance Follow-up</h3>
-              <p className="text-violet-100/80 text-sm">Track pending balances and payment updates in one workflow.</p>
+              <p className="text-violet-100/80 text-sm">Track pending balances, overdue invoices, and payment updates in one workflow.</p>
               <Button asChild variant="secondary" className="bg-white text-violet-600 hover:bg-violet-50 border-none font-bold shadow-sm">
                 <Link href="/admin/finance">Review Fee Workflow</Link>
               </Button>

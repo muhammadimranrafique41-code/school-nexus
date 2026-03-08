@@ -12,8 +12,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getFeeStatusClassName } from "@/lib/finance";
 import { Award, Banknote, BookOpen, CalendarDays, FileText, GraduationCap, Percent, XCircle, ArrowRight } from "lucide-react";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
 export default function StudentDashboard() {
   const { data: user } = useUser();
@@ -32,13 +33,18 @@ export default function StudentDashboard() {
     () => [...attendance].sort((a, b) => +new Date(b.date) - +new Date(a.date)).slice(0, 5),
     [attendance],
   );
-  const unpaidFees = useMemo(
-    () => [...(fees ?? [])].filter((item) => item.studentId === user?.id && item.status === "Unpaid").sort((a, b) => +new Date(a.dueDate) - +new Date(b.dueDate)),
+  const openInvoices = useMemo(
+    () => [...(fees ?? [])].filter((item) => item.studentId === user?.id && item.remainingBalance > 0).sort((a, b) => +new Date(a.dueDate) - +new Date(b.dueDate)),
     [fees, user?.id],
   );
 
-  const outstandingBalance = unpaidFees.reduce((sum, fee) => sum + fee.amount, 0);
-  const nextDueFee = unpaidFees[0];
+  const overdueInvoices = useMemo(
+    () => openInvoices.filter((item) => item.status === "Overdue"),
+    [openInvoices],
+  );
+
+  const outstandingBalance = openInvoices.reduce((sum, fee) => sum + fee.remainingBalance, 0);
+  const nextDueFee = openInvoices[0];
   const timetableItems = timetable?.items ?? [];
   const quickAccessCards = [
     {
@@ -137,7 +143,7 @@ export default function StudentDashboard() {
                 { label: "Attendance streak", value: attendanceSummary?.currentStreak ?? 0 },
                 { label: "Upcoming classes", value: timetableItems.length },
                 { label: "Published exams", value: resultsOverview?.overview.totalExams ?? 0 },
-                { label: "Open invoices", value: unpaidFees.length },
+                { label: "Open invoices", value: stats?.openInvoices ?? openInvoices.length },
               ].map((item) => (
                 <div key={item.label} className="rounded-[1.25rem] border border-slate-200/70 bg-slate-50/80 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
@@ -151,8 +157,8 @@ export default function StudentDashboard() {
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
           {[
             { label: "Attendance rate", value: `${attendanceSummary?.attendanceRate ?? stats?.attendanceRate ?? 0}%`, icon: Percent, hint: "Current term average", accent: "from-violet-500/15 to-fuchsia-500/15", iconClass: "text-violet-600" },
-            { label: "Outstanding balance", value: formatCurrency(outstandingBalance || stats?.unpaidFees || 0), icon: Banknote, hint: nextDueFee ? `Next due ${formatDate(nextDueFee.dueDate, "MMM dd")}` : "No unpaid invoices", accent: "from-amber-500/15 to-orange-500/15", iconClass: "text-amber-600" },
-            { label: "Unpaid invoices", value: unpaidFees.length, icon: FileText, hint: unpaidFees.length ? "Payments still pending" : "All invoices cleared", accent: "from-rose-500/15 to-pink-500/15", iconClass: "text-rose-600" },
+            { label: "Outstanding balance", value: formatCurrency(outstandingBalance || stats?.unpaidFees || 0), icon: Banknote, hint: nextDueFee ? `Next due ${formatDate(nextDueFee.dueDate, "MMM dd")}` : "No open invoices", accent: "from-amber-500/15 to-orange-500/15", iconClass: "text-amber-600" },
+            { label: "Open invoices", value: stats?.openInvoices ?? openInvoices.length, icon: FileText, hint: openInvoices.length ? `${stats?.overdueInvoices ?? overdueInvoices.length} overdue invoice(s)` : "All invoices cleared", accent: "from-rose-500/15 to-pink-500/15", iconClass: "text-rose-600" },
             { label: "Latest grade", value: myRecentResults[0]?.grade || "N/A", icon: Award, hint: myRecentResults[0]?.subject || "No recent results", accent: "from-emerald-500/15 to-teal-500/15", iconClass: "text-emerald-600" },
           ].map((item) => (
             <Card key={item.label} className="bg-white/80 transition-all duration-300 hover:-translate-y-1">
@@ -253,7 +259,7 @@ export default function StudentDashboard() {
               <CardTitle className="flex items-center gap-2">
                 <Banknote className="h-5 w-5 text-amber-600" /> Fee Invoice Summary
               </CardTitle>
-              <CardDescription>Real unpaid invoices linked to your account.</CardDescription>
+              <CardDescription>Real open invoices linked to your account.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="rounded-[1.25rem] border border-slate-200/70 bg-slate-50/80 p-5">
@@ -269,18 +275,21 @@ export default function StudentDashboard() {
               </div>
 
               <div className="space-y-3">
-                {unpaidFees.length === 0 ? (
+                {openInvoices.length === 0 ? (
                   <div className="rounded-[1.25rem] border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500">
-                    You have no unpaid invoices right now.
+                    You have no open invoices right now.
                   </div>
                 ) : (
-                  unpaidFees.slice(0, 4).map((fee) => (
+                  openInvoices.slice(0, 4).map((fee) => (
                     <div key={fee.id} className="flex items-center justify-between gap-3 rounded-[1.25rem] border border-slate-200/70 bg-slate-50/75 p-4">
                       <div>
-                        <p className="font-semibold text-slate-900">Invoice #{fee.id}</p>
-                        <p className="text-sm text-slate-500">Due {formatDate(fee.dueDate, "MMM dd, yyyy")}</p>
+                        <p className="font-semibold text-slate-900">{fee.invoiceNumber ?? `INV-${fee.id}`}</p>
+                        <p className="text-sm text-slate-500">{fee.billingPeriod} • Due {formatDate(fee.dueDate, "MMM dd, yyyy")}</p>
                       </div>
-                      <span className="font-semibold text-slate-900">{formatCurrency(fee.amount)}</span>
+                      <div className="text-right">
+                        <Badge variant="outline" className={cn("mb-2 border", getFeeStatusClassName(fee.status))}>{fee.status}</Badge>
+                        <p className="font-semibold text-slate-900">{formatCurrency(fee.remainingBalance)}</p>
+                      </div>
                     </div>
                   ))
                 )}
