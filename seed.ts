@@ -1,49 +1,49 @@
 import { db } from "./server/db";
+import { defaultSeedAdminEmail, defaultSeedUserEmails, getMissingDefaultUsers } from "./server/default-users";
 import { academics, schoolSettings, schoolSettingsAuditLogs, schoolSettingsVersions, students, teachers, users } from "./shared/schema";
 import { defaultSchoolSettingsData } from "./shared/settings";
-import { count, eq } from "drizzle-orm";
+import { count, eq, inArray } from "drizzle-orm";
 
-async function seed() {
-  const [{ value }] = await db.select({ value: count() }).from(users);
-  let adminUserId: number | null = null;
+async function ensureDefaultUsers() {
+  const existingDefaultUsers = await db.select().from(users).where(inArray(users.email, defaultSeedUserEmails));
+  const missingUsers = getMissingDefaultUsers(existingDefaultUsers.map((user) => user.email));
 
-  if (value === 0) {
-    const insertedUsers = await db.insert(users).values([
-      // Admin
-      { name: "John Admin", email: "admin@school.edu", password: "password123", role: "admin" },
+  const insertedUsers = missingUsers.length > 0
+    ? await db.insert(users).values(missingUsers).returning()
+    : [];
 
-      // Teachers
-      { name: "Dr. Sarah Mitchell", email: "s.mitchell@school.edu", password: "password123", role: "teacher", subject: "Mathematics" },
-      { name: "Prof. Michael Chen", email: "m.chen@school.edu", password: "password123", role: "teacher", subject: "Physics" },
-      { name: "Emily Rodriquez", email: "e.rodriguez@school.edu", password: "password123", role: "teacher", subject: "Literature" },
-      { name: "David Thompson", email: "d.thompson@school.edu", password: "password123", role: "teacher", subject: "History" },
+  const ensuredUsers = [...existingDefaultUsers, ...insertedUsers];
+  const teacherUsers = ensuredUsers.filter((user) => user.role === "teacher");
+  const studentUsers = ensuredUsers.filter((user) => user.role === "student");
 
-      // Students
-      { name: "Alex Rivera", email: "a.rivera@student.edu", password: "password123", role: "student", className: "Grade 10-A" },
-      { name: "Chloe Bennett", email: "c.bennett@student.edu", password: "password123", role: "student", className: "Grade 10-A" },
-      { name: "Marcus Wright", email: "m.wright@student.edu", password: "password123", role: "student", className: "Grade 11-B" },
-      { name: "Sophia Garcia", email: "s.garcia@student.edu", password: "password123", role: "student", className: "Grade 12-C" },
-      { name: "Jordan Lee", email: "j.lee@student.edu", password: "password123", role: "student", className: "Grade 9-D" },
-    ]).returning();
-
-    adminUserId = insertedUsers.find((user) => user.role === "admin")?.id ?? null;
-
-    const teacherUsers = insertedUsers.filter((user) => user.role === "teacher");
-    const studentUsers = insertedUsers.filter((user) => user.role === "student");
-
+  if (teacherUsers.length > 0) {
     await db.insert(teachers).values(
       teacherUsers.map((user) => ({
         userId: user.id,
         subject: user.subject ?? "General",
       })),
-    );
+    ).onConflictDoNothing({ target: teachers.userId });
+  }
 
+  if (studentUsers.length > 0) {
     await db.insert(students).values(
       studentUsers.map((user) => ({
         userId: user.id,
         className: user.className ?? "Unassigned",
       })),
-    );
+    ).onConflictDoNothing({ target: students.userId });
+  }
+
+  return { ensuredUsers, insertedUsers, teacherUsers };
+}
+
+async function seed() {
+  const [{ value }] = await db.select({ value: count() }).from(users);
+  let adminUserId: number | null = null;
+  const { ensuredUsers, insertedUsers, teacherUsers } = await ensureDefaultUsers();
+
+  if (value === 0) {
+    adminUserId = insertedUsers.find((user) => user.email === defaultSeedAdminEmail)?.id ?? null;
 
     await db.insert(academics).values([
       {
@@ -68,10 +68,16 @@ async function seed() {
         teacherUserId: teacherUsers.find((user) => user.subject === "Literature")?.id,
       },
     ]);
-    console.log("Database seeded with professional default users.");
+    console.log(`Database seeded with ${insertedUsers.length} professional default users.`);
   } else {
-    console.log("Database already has users, skipping seed.");
-    const [adminUser] = await db.select().from(users).where(eq(users.role, "admin")).limit(1);
+    if (insertedUsers.length > 0) {
+      console.log(`Inserted ${insertedUsers.length} missing default users into existing database.`);
+    } else {
+      console.log("Default users already exist, skipping user seed.");
+    }
+
+    const adminUser = ensuredUsers.find((user) => user.email === defaultSeedAdminEmail)
+      ?? (await db.select().from(users).where(eq(users.role, "admin")).limit(1))[0];
     adminUserId = adminUser?.id ?? null;
   }
 
