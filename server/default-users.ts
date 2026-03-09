@@ -1,4 +1,4 @@
-import type { InsertUser } from "@shared/schema";
+import type { InsertUser } from "../shared/schema.js";
 
 export const defaultSeedUsers: InsertUser[] = [
   { name: "John Admin", email: "admin@school.edu", password: "password123", role: "admin" },

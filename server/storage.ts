@@ -35,7 +35,7 @@ import {
   type TimetableWithDetails,
   type User,
   users,
-} from "@shared/schema";
+} from "../shared/schema.js";
 import {
   buildDocumentNumber,
   buildDueDateForBillingMonth,
@@ -49,9 +49,9 @@ import {
   type GenerateMonthlyFeesInput,
   type RecordFeePaymentInput,
   type UpdateFeeInput,
-} from "@shared/finance";
-import type { AdminSchoolSettingsResponse, PublicSchoolSettings, SchoolSettingsAuditAction, SchoolSettingsData } from "@shared/settings";
-import { schoolSettingsDataSchema } from "@shared/settings";
+} from "../shared/finance.js";
+import type { AdminSchoolSettingsResponse, PublicSchoolSettings, SchoolSettingsAuditAction, SchoolSettingsData } from "../shared/settings.js";
+import { schoolSettingsDataSchema } from "../shared/settings.js";
 import { db } from "./db.js";
 import {
   buildPublicSchoolSettings,

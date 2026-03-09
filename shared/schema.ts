@@ -2,8 +2,8 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, serial, integer, jsonb, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import type { FeeLineItem, FeeStatus, PaymentMethod } from "./finance";
-import type { SchoolSettingsAuditAction, SchoolSettingsData } from "./settings";
+import type { FeeLineItem, FeeStatus, PaymentMethod } from "./finance.js";
+import type { SchoolSettingsAuditAction, SchoolSettingsData } from "./settings.js";
 
 export const attendanceStatuses = ["Present", "Absent", "Late", "Excused"] as const;
 export const attendanceSessions = ["Full Day", "Morning", "Afternoon"] as const;

@@ -3,7 +3,7 @@ import pg from "pg";
 import * as dotenv from "dotenv";
 
 dotenv.config();
-import * as schema from "@shared/schema";
+import * as schema from "../shared/schema.js";
 
 const { Pool } = pg;
 

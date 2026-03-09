@@ -9,7 +9,7 @@ import {
   type SchoolSettingsCategoryKey,
   type SchoolSettingsCompletionItem,
   type SchoolSettingsData,
-} from "@shared/settings";
+} from "../shared/settings.js";
 
 const secretFieldPaths = [
   "notificationSettings.smtpPassword",

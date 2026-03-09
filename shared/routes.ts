@@ -7,7 +7,7 @@ import {
   attendanceSessionSchema,
   attendanceStatusSchema,
   timetableDaySchema,
-} from "./schema";
+} from "./schema.js";
 import {
   billingMonthSchema,
   billingProfileInputSchema,
@@ -19,14 +19,14 @@ import {
   paymentMethodSchema,
   recordFeePaymentInputSchema,
   updateFeeInputSchema,
-} from "./finance";
+} from "./finance.js";
 import {
   adminSchoolSettingsResponseSchema,
   exportSchoolSettingsResponseSchema,
   publicSchoolSettingsSchema,
   restoreSchoolSettingsInputSchema,
   updateSchoolSettingsInputSchema,
-} from "./settings";
+} from "./settings.js";
 
 const userSchema = z.object({
   id: z.number(),

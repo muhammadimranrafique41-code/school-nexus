@@ -1,8 +1,8 @@
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";
 import { z } from "zod";
-import { api } from "@shared/routes";
-import { attendanceSessionSchema, attendanceStatusSchema, timetableDays, type ResultWithStudent, type User } from "@shared/schema";
+import { api } from "../shared/routes.js";
+import { attendanceSessionSchema, attendanceStatusSchema, timetableDays, type ResultWithStudent, type User } from "../shared/schema.js";
 import { createSessionMiddleware } from "./session.js";
 import { storage } from "./storage.js";
 
