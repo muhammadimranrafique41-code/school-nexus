@@ -3,8 +3,8 @@ import type { Server } from "http";
 import { z } from "zod";
 import { api } from "@shared/routes";
 import { attendanceSessionSchema, attendanceStatusSchema, timetableDays, type ResultWithStudent, type User } from "@shared/schema";
-import { createSessionMiddleware } from "./session";
-import { storage } from "./storage";
+import { createSessionMiddleware } from "./session.js";
+import { storage } from "./storage.js";
 
 declare module "express-session" {
   interface SessionData {

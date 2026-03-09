@@ -1,11 +1,11 @@
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
-import { pool } from "./db";
+import { pool } from "./db.js";
 import {
   buildSessionCookieConfig,
   shouldUseSecureSessionCookies,
   resolveSessionSecret,
-} from "./session-config";
+} from "./session-config.js";
 
 const PgSessionStore = connectPgSimple(session);
 

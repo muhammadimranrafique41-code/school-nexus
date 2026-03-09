@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { app, initializeApp } from "../server/app";
+import { app, initializeApp } from "../server/app.js";
 
 const ready = initializeApp();
 

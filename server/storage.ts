@@ -52,7 +52,7 @@ import {
 } from "@shared/finance";
 import type { AdminSchoolSettingsResponse, PublicSchoolSettings, SchoolSettingsAuditAction, SchoolSettingsData } from "@shared/settings";
 import { schoolSettingsDataSchema } from "@shared/settings";
-import { db } from "./db";
+import { db } from "./db.js";
 import {
   buildPublicSchoolSettings,
   buildSchoolSettingsCompletion,
@@ -60,7 +60,7 @@ import {
   diffSchoolSettings,
   encryptSchoolSettingsData,
   getSafeSchoolSettingsDefaults,
-} from "./settings-service";
+} from "./settings-service.js";
 
 const generatedDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] as const;
 const generatedSlots = [
