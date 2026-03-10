@@ -8,6 +8,12 @@ export type FinanceReportFilters = z.input<typeof api.fees.report.input>;
 export type BillingProfileRecord = z.infer<typeof api.fees.profiles.list.responses[200]>[number];
 export type FinanceReportRecord = z.infer<typeof api.fees.report.responses[200]>;
 export type MonthlyGenerationResult = z.infer<typeof api.fees.generateMonthly.responses[200]>;
+export type FeeRecord = z.infer<typeof api.fees.list.responses[200]>[number];
+export type FeePaymentRecord = z.infer<typeof api.fees.payments.list.responses[200]>[number];
+export type FeeBalanceSummaryRecord = z.infer<typeof api.fees.balances.summary.responses[200]>;
+export type StudentBalanceSummaryRecord = z.infer<typeof api.fees.balances.student.responses[200]>;
+export type OverdueBalanceRecord = z.infer<typeof api.fees.balances.overdue.responses[200]>[number];
+export type PaymentReceiptRecord = z.infer<typeof api.fees.payments.receipt.responses[200]>;
 
 function buildFinanceReportUrl(filters?: FinanceReportFilters) {
   const parsed = api.fees.report.input.parse(filters ?? {});
@@ -21,8 +27,25 @@ function buildFinanceReportUrl(filters?: FinanceReportFilters) {
   return query ? `${api.fees.report.path}?${query}` : api.fees.report.path;
 }
 
+function buildFeePaymentsUrl(filters?: z.input<typeof api.fees.payments.list.input>) {
+  const parsed = api.fees.payments.list.input.parse(filters ?? {});
+  const params = new URLSearchParams();
+
+  if (parsed.month) params.set("month", parsed.month);
+  if (parsed.studentId) params.set("studentId", String(parsed.studentId));
+  if (parsed.method) params.set("method", parsed.method);
+
+  const query = params.toString();
+  return query ? `${api.fees.payments.list.path}?${query}` : api.fees.payments.list.path;
+}
+
 function invalidateFeeQueries(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({ queryKey: [api.fees.list.path] });
+  queryClient.invalidateQueries({ queryKey: [api.fees.detail.path] });
+  queryClient.invalidateQueries({ queryKey: [api.fees.payments.list.path] });
+  queryClient.invalidateQueries({ queryKey: [api.fees.balances.summary.path] });
+  queryClient.invalidateQueries({ queryKey: [api.fees.balances.overdue.path] });
+  queryClient.invalidateQueries({ queryKey: [api.fees.balances.student.path] });
   queryClient.invalidateQueries({ queryKey: [api.fees.profiles.list.path] });
   queryClient.invalidateQueries({ queryKey: [api.fees.report.path] });
   queryClient.invalidateQueries({ queryKey: [api.dashboard.adminStats.path] });
@@ -49,6 +72,80 @@ export function useFees() {
       return api.fees.list.responses[200].parse(await res.json());
     },
     enabled: !!user,
+  });
+}
+
+export function useFee(id?: number) {
+  return useQuery({
+    queryKey: [api.fees.detail.path, id],
+    queryFn: async () => {
+      const res = await fetch(buildUrl(api.fees.detail.path, { id: id as number }), { credentials: "include" });
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch invoice"));
+      return api.fees.detail.responses[200].parse(await res.json());
+    },
+    enabled: typeof id === "number" && Number.isFinite(id),
+  });
+}
+
+export function useFeePayments(filters?: z.input<typeof api.fees.payments.list.input>) {
+  const parsedFilters = api.fees.payments.list.input.parse(filters ?? {});
+
+  return useQuery({
+    queryKey: [api.fees.payments.list.path, parsedFilters],
+    queryFn: async () => {
+      const res = await fetch(buildFeePaymentsUrl(parsedFilters), { credentials: "include" });
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch payments"));
+      return api.fees.payments.list.responses[200].parse(await res.json());
+    },
+  });
+}
+
+export function usePaymentReceipt(paymentId?: number) {
+  return useQuery({
+    queryKey: [api.fees.payments.receipt.path, paymentId],
+    queryFn: async () => {
+      const res = await fetch(buildUrl(api.fees.payments.receipt.path, { paymentId: paymentId as number }), { credentials: "include" });
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch receipt"));
+      return api.fees.payments.receipt.responses[200].parse(await res.json());
+    },
+    enabled: typeof paymentId === "number" && Number.isFinite(paymentId),
+  });
+}
+
+export function useFeeBalanceSummary() {
+  return useQuery({
+    queryKey: [api.fees.balances.summary.path],
+    queryFn: async () => {
+      const res = await fetch(api.fees.balances.summary.path, { credentials: "include" });
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch balance summary"));
+      return api.fees.balances.summary.responses[200].parse(await res.json());
+    },
+  });
+}
+
+export function useOverdueBalances() {
+  return useQuery({
+    queryKey: [api.fees.balances.overdue.path],
+    queryFn: async () => {
+      const res = await fetch(api.fees.balances.overdue.path, { credentials: "include" });
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch overdue balances"));
+      return api.fees.balances.overdue.responses[200].parse(await res.json());
+    },
+  });
+}
+
+export function useStudentBalance(studentId?: number) {
+  const { data: user } = useUser();
+  const resolvedStudentId = studentId ?? (user?.role === "student" ? user.id : undefined);
+
+  return useQuery({
+    queryKey: [api.fees.balances.student.path, resolvedStudentId],
+    queryFn: async () => {
+      const res = await fetch(buildUrl(api.fees.balances.student.path, { studentId: resolvedStudentId as number }), { credentials: "include" });
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch student balance"));
+      return api.fees.balances.student.responses[200].parse(await res.json());
+    },
+    enabled: typeof resolvedStudentId === "number" && Number.isFinite(resolvedStudentId),
   });
 }
 

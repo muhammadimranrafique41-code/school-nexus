@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>School Nexus Test Coverage</title>
+    <style>
+      body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin: 2rem; background: #0f172a; color: #e2e8f0; }
+      h1 { font-family: ui-sans-serif, system-ui, sans-serif; }
+      pre { white-space: pre-wrap; background: #111827; padding: 1rem; border-radius: 12px; border: 1px solid #334155; }
+    </style>
+  </head>
+  <body>
+    <h1>School Nexus Coverage Report</h1>
+    <pre>TAP version 13
+# Subtest: offline queue stores validated scans and can remove invalid persisted payloads
+ok 1 - offline queue stores validated scans and can remove invalid persisted payloads
+  ---
+  duration_ms: 31.7491
+  type: &#39;test&#39;
+  ...
+# Subtest: offline queue items can be marked with errors and removed after replay
+ok 2 - offline queue items can be marked with errors and removed after replay
+  ---
+  duration_ms: 3.3377
+  type: &#39;test&#39;
+  ...
+# Subtest: recent scan dedupe only suppresses identical token and direction inside the 2 second window
+ok 3 - recent scan dedupe only suppresses identical token and direction inside the 2 second window
+  ---
+  duration_ms: 1.371
+  type: &#39;test&#39;
+  ...
+# Subtest: getMissingDefaultUsers returns every default user when none exist
+ok 4 - getMissingDefaultUsers returns every default user when none exist
+  ---
+  duration_ms: 3.3568
+  type: &#39;test&#39;
+  ...
+# Subtest: getMissingDefaultUsers filters out existing default emails
+ok 5 - getMissingDefaultUsers filters out existing default emails
+  ---
+  duration_ms: 0.7238
+  type: &#39;test&#39;
+  ...
+# Subtest: getMissingDefaultUsers matches emails case-insensitively
+ok 6 - getMissingDefaultUsers matches emails case-insensitively
+  ---
+  duration_ms: 36.2719
+  type: &#39;test&#39;
+  ...
+# Subtest: buildFinanceReportSnapshot computes finance summaries and breakdowns
+ok 7 - buildFinanceReportSnapshot computes finance summaries and breakdowns
+  ---
+  duration_ms: 69.1163
+  type: &#39;test&#39;
+  ...
+# Subtest: student balance summaries and overdue worklists highlight reminders
+ok 8 - student balance summaries and overdue worklists highlight reminders
+  ---
+  duration_ms: 4.7021
+  type: &#39;test&#39;
+  ...
+# (node:11848) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: QR roster requires an authenticated admin session
+ok 9 - QR roster requires an authenticated admin session
+  ---
+  duration_ms: 153.0445
+  type: &#39;test&#39;
+  ...
+# Subtest: admin can load the QR roster summary
+ok 10 - admin can load the QR roster summary
+  ---
+  duration_ms: 56.9855
+  type: &#39;test&#39;
+  ...
+# Subtest: admin can issue, regenerate, and deactivate a QR profile
+ok 11 - admin can issue, regenerate, and deactivate a QR profile
+  ---
+  duration_ms: 96.4757
+  type: &#39;test&#39;
+  ...
+# Subtest: issue rejects invalid ids and non-eligible target roles
+ok 12 - issue rejects invalid ids and non-eligible target roles
+  ---
+  duration_ms: 16.7856
+  type: &#39;test&#39;
+  ...
+# Subtest: status update returns 404 when the profile does not exist
+ok 13 - status update returns 404 when the profile does not exist
+  ---
+  duration_ms: 11.6609
+  type: &#39;test&#39;
+  ...
+# Subtest: student can load their own QR card but admin cannot
+ok 14 - student can load their own QR card but admin cannot
+  ---
+  duration_ms: 23.5759
+  type: &#39;test&#39;
+  ...
+# Subtest: my card returns 404 when an eligible user has no issued profile
+ok 15 - my card returns 404 when an eligible user has no issued profile
+  ---
+  duration_ms: 13.372
+  type: &#39;test&#39;
+  ...
+# Subtest: teacher history includes their own records, their scans, and assigned class roster
+ok 16 - teacher history includes their own records, their scans, and assigned class roster
+  ---
+  duration_ms: 15.9883
+  type: &#39;test&#39;
+  ...
+# Subtest: history validation rejects malformed query values
+ok 17 - history validation rejects malformed query values
+  ---
+  duration_ms: 14.675
+  type: &#39;test&#39;
+  ...
+# Subtest: scan rejects malformed tokens before storage lookup
+ok 18 - scan rejects malformed tokens before storage lookup
+  ---
+  duration_ms: 15.1623
+  type: &#39;test&#39;
+  ...
+# Subtest: scan returns 404 for a valid but unknown token
+ok 19 - scan returns 404 for a valid but unknown token
+  ---
+  duration_ms: 14.3849
+  type: &#39;test&#39;
+  ...
+# Subtest: scan records one event and deduplicates repeated direction scans
+ok 20 - scan records one event and deduplicates repeated direction scans
+  ---
+  duration_ms: 29.8519
+  type: &#39;test&#39;
+  ...
+# Subtest: generateQrToken creates a valid School Nexus QR token
+ok 21 - generateQrToken creates a valid School Nexus QR token
+  ---
+  duration_ms: 29.3481
+  type: &#39;test&#39;
+  ...
+# Subtest: encryptQrToken round-trips the original token
+ok 22 - encryptQrToken round-trips the original token
+  ---
+  duration_ms: 61.1453
+  type: &#39;test&#39;
+  ...
+# Subtest: hashQrToken is deterministic
+ok 23 - hashQrToken is deterministic
+  ---
+  duration_ms: 1.6231
+  type: &#39;test&#39;
+  ...
+# Subtest: decryptQrToken rejects malformed payloads
+ok 24 - decryptQrToken rejects malformed payloads
+  ---
+  duration_ms: 3.3214
+  type: &#39;test&#39;
+  ...
+# Subtest: isValidQrTokenFormat rejects malformed tokens
+ok 25 - isValidQrTokenFormat rejects malformed tokens
+  ---
+  duration_ms: 1.2549
+  type: &#39;test&#39;
+  ...
+# Subtest: getAttendanceDate returns an ISO calendar date
+ok 26 - getAttendanceDate returns an ISO calendar date
+  ---
+  duration_ms: 4.2274
+  type: &#39;test&#39;
+  ...
+# Subtest: resolveSessionSecret prefers SESSION_SECRET when provided
+ok 27 - resolveSessionSecret prefers SESSION_SECRET when provided
+  ---
+  duration_ms: 17.9711
+  type: &#39;test&#39;
+  ...
+# Subtest: resolveSessionSecret falls back to the local development secret outside production
+ok 28 - resolveSessionSecret falls back to the local development secret outside production
+  ---
+  duration_ms: 1.1735
+  type: &#39;test&#39;
+  ...
+# Subtest: resolveSessionSecret requires SESSION_SECRET on Vercel
+ok 29 - resolveSessionSecret requires SESSION_SECRET on Vercel
+  ---
+  duration_ms: 5.1776
+  type: &#39;test&#39;
+  ...
+# Subtest: resolveSessionSecret preserves local production without an injected secret
+ok 30 - resolveSessionSecret preserves local production without an injected secret
+  ---
+  duration_ms: 1.2424
+  type: &#39;test&#39;
+  ...
+# Subtest: buildSessionCookieConfig enables secure cookies only in production
+ok 31 - buildSessionCookieConfig enables secure cookies only in production
+  ---
+  duration_ms: 1.2843
+  type: &#39;test&#39;
+  ...
+# Subtest: isProductionEnvironment only returns true for production
+ok 32 - isProductionEnvironment only returns true for production
+  ---
+  duration_ms: 6.4129
+  type: &#39;test&#39;
+  ...
+# Subtest: isVercelEnvironment detects Vercel runtimes
+ok 33 - isVercelEnvironment detects Vercel runtimes
+  ---
+  duration_ms: 2.1325
+  type: &#39;test&#39;
+  ...
+# Subtest: shouldUseSecureSessionCookies only enables secure cookies on Vercel production
+ok 34 - shouldUseSecureSessionCookies only enables secure cookies on Vercel production
+  ---
+  duration_ms: 1.5997
+  type: &#39;test&#39;
+  ...
+# Subtest: vercel rewrites preserve API routes before the SPA fallback
+ok 35 - vercel rewrites preserve API routes before the SPA fallback
+  ---
+  duration_ms: 7.6301
+  type: &#39;test&#39;
+  ...
+# Subtest: SPA fallback pattern does not match API routes
+ok 36 - SPA fallback pattern does not match API routes
+  ---
+  duration_ms: 2.4603
+  type: &#39;test&#39;
+  ...
+# Subtest: ../api/index.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+ok 37 - ../api/index.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+  ---
+  duration_ms: 18.1587
+  type: &#39;test&#39;
+  ...
+# Subtest: ../api/index.ts does not rely on @shared aliases in the serverless runtime chain
+ok 38 - ../api/index.ts does not rely on @shared aliases in the serverless runtime chain
+  ---
+  duration_ms: 2.6969
+  type: &#39;test&#39;
+  ...
+# Subtest: ../shared/routes.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+ok 39 - ../shared/routes.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+  ---
+  duration_ms: 4.0353
+  type: &#39;test&#39;
+  ...
+# Subtest: ../shared/routes.ts does not rely on @shared aliases in the serverless runtime chain
+ok 40 - ../shared/routes.ts does not rely on @shared aliases in the serverless runtime chain
+  ---
+  duration_ms: 2.0576
+  type: &#39;test&#39;
+  ...
+# Subtest: ../shared/schema.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+ok 41 - ../shared/schema.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+  ---
+  duration_ms: 4.2505
+  type: &#39;test&#39;
+  ...
+# Subtest: ../shared/schema.ts does not rely on @shared aliases in the serverless runtime chain
+ok 42 - ../shared/schema.ts does not rely on @shared aliases in the serverless runtime chain
+  ---
+  duration_ms: 1.4677
+  type: &#39;test&#39;
+  ...
+# Subtest: ./app.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+ok 43 - ./app.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+  ---
+  duration_ms: 1.3603
+  type: &#39;test&#39;
+  ...
+# Subtest: ./app.ts does not rely on @shared aliases in the serverless runtime chain
+ok 44 - ./app.ts does not rely on @shared aliases in the serverless runtime chain
+  ---
+  duration_ms: 1.5478
+  type: &#39;test&#39;
+  ...
+# Subtest: ./db.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+ok 45 - ./db.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+  ---
+  duration_ms: 4.2193
+  type: &#39;test&#39;
+  ...
+# Subtest: ./db.ts does not rely on @shared aliases in the serverless runtime chain
+ok 46 - ./db.ts does not rely on @shared aliases in the serverless runtime chain
+  ---
+  duration_ms: 1.4515
+  type: &#39;test&#39;
+  ...
+# Subtest: ./default-users.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+ok 47 - ./default-users.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+  ---
+  duration_ms: 1.338
+  type: &#39;test&#39;
+  ...
+# Subtest: ./default-users.ts does not rely on @shared aliases in the serverless runtime chain
+ok 48 - ./default-users.ts does not rely on @shared aliases in the serverless runtime chain
+  ---
+  duration_ms: 1.4437
+  type: &#39;test&#39;
+  ...
+# Subtest: ./routes.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+ok 49 - ./routes.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+  ---
+  duration_ms: 1.7555
+  type: &#39;test&#39;
+  ...
+# Subtest: ./routes.ts does not rely on @shared aliases in the serverless runtime chain
+ok 50 - ./routes.ts does not rely on @shared aliases in the serverless runtime chain
+  ---
+  duration_ms: 1.5662
+  type: &#39;test&#39;
+  ...
+# Subtest: ./session.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+ok 51 - ./session.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+  ---
+  duration_ms: 1.3152
+  type: &#39;test&#39;
+  ...
+# Subtest: ./session.ts does not rely on @shared aliases in the serverless runtime chain
+ok 52 - ./session.ts does not rely on @shared aliases in the serverless runtime chain
+  ---
+  duration_ms: 1.3225
+  type: &#39;test&#39;
+  ...
+# Subtest: ./settings-service.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+ok 53 - ./settings-service.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+  ---
+  duration_ms: 4.8929
+  type: &#39;test&#39;
+  ...
+# Subtest: ./settings-service.ts does not rely on @shared aliases in the serverless runtime chain
+ok 54 - ./settings-service.ts does not rely on @shared aliases in the serverless runtime chain
+  ---
+  duration_ms: 1.1872
+  type: &#39;test&#39;
+  ...
+# Subtest: ./storage.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+ok 55 - ./storage.ts uses explicit .js extensions for relative imports in the Vercel runtime chain
+  ---
+  duration_ms: 1.2666
+  type: &#39;test&#39;
+  ...
+# Subtest: ./storage.ts does not rely on @shared aliases in the serverless runtime chain
+ok 56 - ./storage.ts does not rely on @shared aliases in the serverless runtime chain
+  ---
+  duration_ms: 1.2204
+  type: &#39;test&#39;
+  ...
+1..56
+# tests 56
+# suites 0
+# pass 56
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 18913.1461
+# start of coverage report
+# ----------------------------------------------------------------------------------------------------------------------
+# file                        | line % | branch % | funcs % | uncovered lines
+# ----------------------------------------------------------------------------------------------------------------------
+# client                      |        |          |         | 
+#  src                        |        |          |         | 
+#   lib                       |        |          |         | 
+#    qr-attendance-offline.ts |  99.08 |    78.57 |  100.00 | 90
+# server                      |        |          |         | 
+#  qr-attendance-routes.ts    |  88.24 |    64.41 |  100.00 | 44-46 64-65 73-75 82-84 90 98-102 111-113 125-127 149-151
+#  qr-service.ts              | 100.00 |   100.00 |  100.00 | 
+# ----------------------------------------------------------------------------------------------------------------------
+# all files                   |  92.97 |    72.73 |  100.00 | 
+# ----------------------------------------------------------------------------------------------------------------------
+# end of coverage report
+(node:4944) ExperimentalWarning: glob is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+</pre>
+  </body>
+</html>

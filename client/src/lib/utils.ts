@@ -124,8 +124,8 @@ export async function getResponseErrorMessage(res: Response, fallback: string) {
   if (!text) return fallback
 
   try {
-    const parsed = JSON.parse(text) as { message?: string }
-    return parsed.message || fallback
+    const parsed = JSON.parse(text) as { message?: string; error?: string }
+    return parsed.message || parsed.error || fallback
   } catch {
     return text
   }
@@ -139,8 +139,8 @@ export function getErrorMessage(error: unknown, fallback = "Something went wrong
   const jsonStart = error.message.indexOf("{")
   if (jsonStart >= 0) {
     try {
-      const parsed = JSON.parse(error.message.slice(jsonStart)) as { message?: string }
-      return parsed.message || error.message
+      const parsed = JSON.parse(error.message.slice(jsonStart)) as { message?: string; error?: string }
+      return parsed.message || parsed.error || error.message
     } catch {
       return error.message || fallback
     }

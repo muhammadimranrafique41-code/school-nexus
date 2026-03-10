@@ -3,6 +3,7 @@ import type { Server } from "http";
 import { z } from "zod";
 import { api } from "../shared/routes.js";
 import { attendanceSessionSchema, attendanceStatusSchema, timetableDays, type ResultWithStudent, type User } from "../shared/schema.js";
+import { registerQrAttendanceRoutes } from "./qr-attendance-routes.js";
 import { createSessionMiddleware } from "./session.js";
 import { storage } from "./storage.js";
 
@@ -39,6 +40,11 @@ const buildExamId = (record: Pick<ResultWithStudent, "examTitle" | "examType" | 
 
 const buildExamLabel = (record: Pick<ResultWithStudent, "examTitle" | "examType" | "term" | "examDate">) =>
   record.examTitle || record.examType || record.term || record.examDate || "Assessment";
+
+const sendApiSuccess = <T>(res: Response, data: T, message?: string, statusCode = 200) =>
+  res.status(statusCode).json({ success: true, data, message });
+
+const sendApiError = (res: Response, statusCode: number, error: string) => res.status(statusCode).json({ success: false, error });
 
 function buildStudentResultsPayload(records: ResultWithStudent[]) {
   const sortedRecords = [...records].sort((left, right) => {
@@ -639,6 +645,55 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.getFees());
   });
 
+  app.get(api.fees.payments.list.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin", "student"]);
+      if (!user) return;
+      const filters = api.fees.payments.list.input.parse(req.query);
+      if (user.role === "student" && filters.studentId && filters.studentId !== user.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      res.json(await storage.getFeePayments({ ...filters, studentId: user.role === "student" ? user.id : filters.studentId }));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get(api.fees.payments.receipt.path, async (req, res) => {
+    const user = await requireRole(req, res, ["admin", "student"]);
+    if (!user) return;
+    const receipt = await storage.getPaymentReceipt(parseNumberValue(req.params.paymentId));
+    if (!receipt) return res.status(404).json({ message: "Payment receipt not found" });
+    if (user.role === "student" && receipt.invoice.studentId !== user.id) return res.status(403).json({ message: "Forbidden" });
+    res.json(receipt);
+  });
+
+  app.get(api.fees.balances.summary.path, async (req, res) => {
+    const user = await requireRole(req, res, ["admin"]);
+    if (!user) return;
+    res.json(await storage.getFeeBalanceSummary());
+  });
+
+  app.get(api.fees.balances.overdue.path, async (req, res) => {
+    const user = await requireRole(req, res, ["admin"]);
+    if (!user) return;
+    res.json(await storage.getOverdueBalances());
+  });
+
+  app.get(api.fees.balances.student.path, async (req, res) => {
+    const user = await requireRole(req, res, ["admin", "student"]);
+    if (!user) return;
+    const requestedId = parseNumberValue(req.params.studentId);
+    if (Number.isNaN(requestedId)) return res.status(400).json({ message: "Invalid student id", field: "studentId" });
+    if (user.role === "student" && requestedId !== user.id) return res.status(403).json({ message: "Forbidden" });
+    const studentId = user.role === "student" ? user.id : requestedId;
+    const student = await storage.getUser(studentId);
+    if (!student || student.role !== "student") return res.status(404).json({ message: "Student not found" });
+    res.json(await storage.getStudentBalance(studentId));
+  });
+
   app.post(api.fees.create.path, async (req, res) => {
     try {
       const user = await requireRole(req, res, ["admin"]);
@@ -740,6 +795,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (err instanceof Error) return res.status(400).json({ message: err.message });
       res.status(500).json({ message: "Internal server error" });
     }
+  });
+
+  app.get(api.fees.detail.path, async (req, res) => {
+    const user = await requireRole(req, res, ["admin", "student"]);
+    if (!user) return;
+    const invoice = await storage.getFee(parseNumberValue(req.params.id));
+    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
+    if (user.role === "student" && invoice.studentId !== user.id) return res.status(403).json({ message: "Forbidden" });
+    res.json(invoice);
+  });
+
+  registerQrAttendanceRoutes(app, {
+    storage,
+    requireRole,
+    sendApiSuccess,
+    sendApiError,
+    parseNumberValue,
+    getTeacherClassNames,
   });
 
   app.get(api.dashboard.adminStats.path, async (req, res) => {

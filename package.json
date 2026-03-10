@@ -8,6 +8,8 @@
     "build": "tsx script/build.ts",
     "start": "cross-env NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "test": "tsx script/run-tests.ts",
+    "test:coverage": "tsx script/test-coverage.ts",
     "db:push": "drizzle-kit push",
     "seed": "tsx seed.ts"
   },

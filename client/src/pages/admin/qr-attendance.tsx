@@ -1,0 +1,207 @@
+import { useMemo, useState } from "react";
+import { Layout } from "@/components/layout";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  useIssueQrProfile,
+  useQrProfiles,
+  useRegenerateQrProfile,
+  useUpdateQrProfileStatus,
+} from "@/hooks/use-qr-attendance";
+import { useToast } from "@/hooks/use-toast";
+import { buildQrImageUrl, copyToClipboard } from "@/lib/qr";
+import { formatDate, getErrorMessage } from "@/lib/utils";
+import { api } from "@shared/routes";
+import { Copy, Loader2, QrCode, RefreshCw } from "lucide-react";
+import { z } from "zod";
+
+type IssuedCard = { userName: string; publicId: string; token: string } | null;
+type QrProfilesPayload = NonNullable<z.infer<(typeof api.qrAttendance.profiles.list.responses)[200]>["data"]>;
+type QrRosterItem = QrProfilesPayload["roster"][number];
+
+export default function AdminQrAttendance() {
+  const { toast } = useToast();
+  const [search, setSearch] = useState("");
+  const [issuedCard, setIssuedCard] = useState<IssuedCard>(null);
+
+  const { data, isLoading } = useQrProfiles();
+  const issueProfile = useIssueQrProfile();
+  const regenerateProfile = useRegenerateQrProfile();
+  const updateStatus = useUpdateQrProfileStatus();
+
+  const roster = data?.roster ?? [];
+  const summary = data?.summary;
+
+  const filteredRoster = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return roster;
+    return roster.filter((item: QrRosterItem) => {
+      const details = `${item.user.name} ${item.user.email} ${item.user.role} ${item.user.className ?? ""} ${item.user.subject ?? ""}`.toLowerCase();
+      return details.includes(query);
+    });
+  }, [roster, search]);
+
+  const handleIssue = async (userId: number) => {
+    try {
+      const result = await issueProfile.mutateAsync(userId);
+      setIssuedCard({ userName: result.data.profile.user?.name ?? `User #${userId}`, publicId: result.data.profile.publicId, token: result.data.token });
+      toast({ title: "QR card issued", description: result.message || "QR credentials are ready for distribution." });
+    } catch (error) {
+      toast({ title: "Unable to issue QR card", description: getErrorMessage(error), variant: "destructive" });
+    }
+  };
+
+  const handleRegenerate = async (userId: number) => {
+    try {
+      const result = await regenerateProfile.mutateAsync(userId);
+      setIssuedCard({ userName: result.data.profile.user?.name ?? `User #${userId}`, publicId: result.data.profile.publicId, token: result.data.token });
+      toast({ title: "QR card regenerated", description: result.message || "The previous QR token has been rotated." });
+    } catch (error) {
+      toast({ title: "Unable to regenerate QR card", description: getErrorMessage(error), variant: "destructive" });
+    }
+  };
+
+  const handleStatusChange = async (userId: number, isActive: boolean) => {
+    try {
+      const result = await updateStatus.mutateAsync({ userId, isActive });
+      toast({ title: "QR status updated", description: result.message || `${result.data.profile.user?.name ?? "User"} is now ${isActive ? "active" : "inactive"}.` });
+    } catch (error) {
+      toast({ title: "Unable to update status", description: getErrorMessage(error), variant: "destructive" });
+    }
+  };
+
+  const handleCopy = async () => {
+    if (!issuedCard) return;
+    try {
+      await copyToClipboard(issuedCard.token);
+      toast({ title: "QR token copied", description: "The manual fallback token is now on your clipboard." });
+    } catch (error) {
+      toast({ title: "Unable to copy token", description: getErrorMessage(error), variant: "destructive" });
+    }
+  };
+
+  return (
+    <Layout>
+      <div className="space-y-6 pb-8">
+        <div>
+          <h1 className="text-3xl font-display font-bold">QR Attendance Management</h1>
+          <p className="mt-1 text-muted-foreground">Issue, rotate, activate, and review attendance QR identities for students and teachers without disrupting the existing attendance module.</p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+          {[
+            { label: "Eligible users", value: summary?.eligibleUsers ?? 0 },
+            { label: "Issued", value: summary?.issuedProfiles ?? 0 },
+            { label: "Active", value: summary?.activeProfiles ?? 0 },
+            { label: "Scans today", value: summary?.scansToday ?? 0 },
+            { label: "Students", value: summary?.studentProfiles ?? 0 },
+            { label: "Teachers", value: summary?.teacherProfiles ?? 0 },
+          ].map((item) => (
+            <Card key={item.label}><CardContent className="p-5"><p className="text-sm text-muted-foreground">{item.label}</p><p className="mt-2 text-3xl font-display font-bold">{item.value}</p></CardContent></Card>
+          ))}
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Roster</CardTitle>
+            <CardDescription>Cards are eligible only for teachers and students. Search the roster, issue a first-time card, or rotate a token when a credential must be replaced.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name, email, role, class, or subject" />
+            <div className="overflow-x-auto rounded-[1.5rem] border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="pl-6">User</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Details</TableHead>
+                    <TableHead>Card</TableHead>
+                    <TableHead>Today</TableHead>
+                    <TableHead>Active</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow><TableCell colSpan={7} className="py-12 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin text-violet-600" /></TableCell></TableRow>
+                  ) : filteredRoster.length === 0 ? (
+                    <TableRow><TableCell colSpan={7} className="py-12 text-center text-muted-foreground">No eligible users matched your search.</TableCell></TableRow>
+                  ) : (
+                    filteredRoster.map((item: QrRosterItem) => (
+                      <TableRow key={item.user.id}>
+                        <TableCell className="pl-6">
+                          <div>
+                            <p className="font-semibold text-slate-900">{item.user.name}</p>
+                            <p className="text-sm text-slate-500">{item.user.email}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell><Badge variant="outline" className="capitalize">{item.user.role}</Badge></TableCell>
+                        <TableCell className="text-slate-500">{item.user.role === "student" ? item.user.className || "—" : item.user.subject || "—"}</TableCell>
+                        <TableCell>
+                          {item.profile ? (
+                            <div className="text-sm">
+                              <p className="font-medium text-slate-900">{item.profile.publicId}</p>
+                              <p className="text-slate-500">Issued {formatDate(item.profile.issuedAt, "MMM dd, yyyy")}</p>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-slate-400">Not issued</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-2">
+                            {item.todayDirections.length === 0 ? <Badge variant="outline">No scans</Badge> : item.todayDirections.map((direction: QrRosterItem["todayDirections"][number]) => <Badge key={direction} variant="secondary">{direction}</Badge>)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Switch
+                            checked={item.profile?.isActive ?? false}
+                            disabled={!item.profile || updateStatus.isPending}
+                            onCheckedChange={(checked) => void handleStatusChange(item.user.id, checked)}
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => void handleIssue(item.user.id)} disabled={issueProfile.isPending || regenerateProfile.isPending}>
+                              <QrCode className="mr-1.5 h-3.5 w-3.5" /> {item.profile ? "View" : "Issue"}
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => void handleRegenerate(item.user.id)} disabled={!item.profile || issueProfile.isPending || regenerateProfile.isPending}>
+                              <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Rotate
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Dialog open={!!issuedCard} onOpenChange={(open) => !open && setIssuedCard(null)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Issued QR credential</DialogTitle>
+            </DialogHeader>
+            {issuedCard ? (
+              <div className="space-y-4 text-center">
+                <img src={buildQrImageUrl(issuedCard.token)} alt="Issued QR credential" className="mx-auto aspect-square w-full max-w-[280px] rounded-2xl border bg-white p-3" />
+                <div>
+                  <p className="font-semibold text-slate-900">{issuedCard.userName}</p>
+                  <p className="text-sm text-slate-500">Public ID: {issuedCard.publicId}</p>
+                </div>
+                <p className="break-all rounded-2xl border bg-slate-50 px-4 py-3 font-mono text-xs text-slate-700">{issuedCard.token}</p>
+                <Button variant="outline" onClick={handleCopy}><Copy className="mr-2 h-4 w-4" /> Copy token</Button>
+              </div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+      </div>
+    </Layout>
+  );
+}

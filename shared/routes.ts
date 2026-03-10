@@ -6,6 +6,9 @@ import {
   insertUserSchema,
   attendanceSessionSchema,
   attendanceStatusSchema,
+  qrAttendanceDirectionSchema,
+  qrAttendanceMarkStatusSchema,
+  qrAttendanceMethodSchema,
   timetableDaySchema,
 } from "./schema.js";
 import {
@@ -36,6 +39,14 @@ const userSchema = z.object({
   subject: z.string().nullable().optional(),
   className: z.string().nullable().optional(),
 });
+
+const apiEnvelope = <T extends z.ZodTypeAny>(dataSchema: T) =>
+  z.object({
+    success: z.boolean(),
+    data: dataSchema.optional(),
+    error: z.string().optional(),
+    message: z.string().optional(),
+  });
 
 const academicSchema = z.object({
   id: z.number(),
@@ -136,6 +147,10 @@ const financeReportSchema = z.object({
     unpaidInvoices: z.number(),
     overdueInvoices: z.number(),
     paymentsCount: z.number(),
+    collectionRate: z.number(),
+    overdueBalance: z.number(),
+    studentsWithOutstanding: z.number(),
+    studentsWithOverdue: z.number(),
   }),
   monthlyRevenue: z.array(
     z.object({
@@ -155,13 +170,98 @@ const financeReportSchema = z.object({
     z.object({
       studentId: z.number(),
       studentName: z.string(),
+      className: z.string().nullable().optional(),
       outstandingBalance: z.number(),
       overdueBalance: z.number(),
       invoiceCount: z.number(),
+      oldestDueDate: z.string().optional(),
+      maxDaysOverdue: z.number(),
+    }),
+  ),
+  paymentMethodBreakdown: z.array(
+    z.object({
+      method: paymentMethodSchema,
+      count: z.number(),
+      amount: z.number(),
+    }),
+  ),
+  classBreakdown: z.array(
+    z.object({
+      className: z.string(),
+      studentCount: z.number(),
+      invoiceCount: z.number(),
+      billed: z.number(),
+      paid: z.number(),
+      outstanding: z.number(),
+      overdueBalance: z.number(),
+      collectionRate: z.number(),
     }),
   ),
   invoices: z.array(feeSchema),
   payments: z.array(feePaymentSchema),
+});
+
+const feePaymentListFiltersSchema = z.object({
+  month: billingMonthSchema.optional(),
+  studentId: z.coerce.number().int().positive().optional(),
+  method: paymentMethodSchema.optional(),
+});
+
+const feeBalanceSummarySchema = z.object({
+  totalBilled: z.number(),
+  totalPaid: z.number(),
+  totalOutstanding: z.number(),
+  totalOverdue: z.number(),
+  studentsWithOutstanding: z.number(),
+  studentsWithOverdue: z.number(),
+  openInvoices: z.number(),
+  overdueInvoices: z.number(),
+  dueSoonInvoices: z.number(),
+});
+
+const studentBalanceSummarySchema = z.object({
+  studentId: z.number(),
+  studentName: z.string(),
+  className: z.string().nullable().optional(),
+  totalBilled: z.number(),
+  totalPaid: z.number(),
+  outstandingBalance: z.number(),
+  overdueBalance: z.number(),
+  openInvoices: z.number(),
+  overdueInvoices: z.number(),
+  dueSoonInvoices: z.number(),
+  nextDueDate: z.string().optional(),
+  nextDueInvoiceId: z.number().optional(),
+  maxDaysOverdue: z.number(),
+  paymentReminders: z.array(
+    z.object({
+      invoiceId: z.number(),
+      invoiceNumber: z.string().nullable().optional(),
+      billingPeriod: z.string(),
+      dueDate: z.string(),
+      remainingBalance: z.number(),
+      daysUntilDue: z.number(),
+      status: feeStatusSchema,
+    }),
+  ),
+});
+
+const overdueBalanceItemSchema = z.object({
+  invoiceId: z.number(),
+  invoiceNumber: z.string().nullable().optional(),
+  studentId: z.number(),
+  studentName: z.string(),
+  className: z.string().nullable().optional(),
+  billingPeriod: z.string(),
+  dueDate: z.string(),
+  remainingBalance: z.number(),
+  daysOverdue: z.number(),
+  status: feeStatusSchema,
+});
+
+const paymentReceiptSchema = z.object({
+  invoice: feeSchema,
+  payment: feePaymentSchema,
 });
 
 const timetableItemSchema = z.object({
@@ -185,6 +285,51 @@ const teacherClassSchema = z.object({
   className: z.string(),
   studentCount: z.number(),
   subjects: z.array(z.string()),
+});
+
+const qrProfileSchema = z.object({
+  userId: z.number(),
+  publicId: z.string(),
+  isActive: z.boolean(),
+  issuedAt: z.string(),
+  regeneratedAt: z.string(),
+  lastUsedAt: z.string().nullable().optional(),
+  lastUsedBy: z.number().nullable().optional(),
+  generatedBy: z.number().nullable().optional(),
+  user: userSchema.optional(),
+  generatedByUser: userSchema.optional(),
+  lastUsedByUser: userSchema.optional(),
+});
+
+const qrAttendanceEventSchema = z.object({
+  id: z.number(),
+  userId: z.number(),
+  scannedBy: z.number(),
+  attendanceDate: z.string(),
+  scannedAt: z.string(),
+  roleSnapshot: z.string(),
+  direction: qrAttendanceDirectionSchema,
+  status: qrAttendanceMarkStatusSchema.nullable().optional(),
+  scanMethod: qrAttendanceMethodSchema,
+  terminalLabel: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  user: userSchema.optional(),
+  scannedByUser: userSchema.optional(),
+});
+
+const qrRosterItemSchema = z.object({
+  user: userSchema,
+  profile: qrProfileSchema.nullable(),
+  todayDirections: z.array(qrAttendanceDirectionSchema),
+});
+
+const qrSummarySchema = z.object({
+  eligibleUsers: z.number(),
+  issuedProfiles: z.number(),
+  activeProfiles: z.number(),
+  scansToday: z.number(),
+  studentProfiles: z.number(),
+  teacherProfiles: z.number(),
 });
 
 const attendanceSummarySchema = z.object({
@@ -358,6 +503,11 @@ export const api = {
       method: "GET",
       responses: { 200: z.array(feeSchema) },
     },
+    detail: {
+      path: "/api/fees/:id",
+      method: "GET",
+      responses: { 200: feeSchema },
+    },
     create: {
       path: "/api/fees",
       method: "POST",
@@ -376,11 +526,39 @@ export const api = {
       responses: { 200: z.object({ success: z.boolean().optional(), message: z.string().optional() }) },
     },
     payments: {
+      list: {
+        path: "/api/fees/payments",
+        method: "GET",
+        input: feePaymentListFiltersSchema,
+        responses: { 200: z.array(feePaymentSchema) },
+      },
       record: {
         path: "/api/fees/:id/payments",
         method: "POST",
         input: recordFeePaymentInputSchema,
         responses: { 201: feeSchema },
+      },
+      receipt: {
+        path: "/api/fees/payments/:paymentId/receipt",
+        method: "GET",
+        responses: { 200: paymentReceiptSchema },
+      },
+    },
+    balances: {
+      summary: {
+        path: "/api/fees/balances/summary",
+        method: "GET",
+        responses: { 200: feeBalanceSummarySchema },
+      },
+      overdue: {
+        path: "/api/fees/balances/overdue",
+        method: "GET",
+        responses: { 200: z.array(overdueBalanceItemSchema) },
+      },
+      student: {
+        path: "/api/fees/balances/students/:studentId",
+        method: "GET",
+        responses: { 200: studentBalanceSummarySchema },
       },
     },
     profiles: {
@@ -426,6 +604,102 @@ export const api = {
         status: feeStatusSchema.optional(),
       }),
       responses: { 200: financeReportSchema },
+    },
+  },
+  qrAttendance: {
+    profiles: {
+      list: {
+        path: "/api/qr-attendance/profiles",
+        method: "GET",
+        responses: {
+          200: apiEnvelope(
+            z.object({
+              roster: z.array(qrRosterItemSchema),
+              summary: qrSummarySchema,
+            }),
+          ),
+        },
+      },
+      issue: {
+        path: "/api/qr-attendance/profiles/:userId/issue",
+        method: "POST",
+        input: z.object({}).optional(),
+        responses: {
+          200: apiEnvelope(
+            z.object({
+              profile: qrProfileSchema,
+              token: z.string(),
+            }),
+          ),
+        },
+      },
+      regenerate: {
+        path: "/api/qr-attendance/profiles/:userId/regenerate",
+        method: "POST",
+        input: z.object({}).optional(),
+        responses: {
+          200: apiEnvelope(
+            z.object({
+              profile: qrProfileSchema,
+              token: z.string(),
+            }),
+          ),
+        },
+      },
+      updateStatus: {
+        path: "/api/qr-attendance/profiles/:userId/status",
+        method: "PATCH",
+        input: z.object({ isActive: z.boolean() }),
+        responses: {
+          200: apiEnvelope(z.object({ profile: qrProfileSchema })),
+        },
+      },
+    },
+    history: {
+      path: "/api/qr-attendance/history",
+      method: "GET",
+      input: z.object({
+        userId: z.coerce.number().int().positive().optional(),
+        role: z.enum(["student", "teacher"]).optional(),
+        attendanceDate: z.string().optional(),
+      }),
+      responses: {
+        200: apiEnvelope(z.object({ events: z.array(qrAttendanceEventSchema) })),
+      },
+    },
+    myCard: {
+      path: "/api/qr-attendance/me",
+      method: "GET",
+      responses: {
+        200: apiEnvelope(
+          z.object({
+            profile: qrProfileSchema,
+            token: z.string(),
+            recentEvents: z.array(qrAttendanceEventSchema),
+          }),
+        ),
+      },
+    },
+    scan: {
+      path: "/api/qr-attendance/scan",
+      method: "POST",
+      input: z.object({
+        token: z.string().min(1),
+        direction: qrAttendanceDirectionSchema.default("Check In"),
+        status: qrAttendanceMarkStatusSchema.optional(),
+        scanMethod: qrAttendanceMethodSchema.default("manual"),
+        terminalLabel: z.string().max(80).optional().nullable(),
+        notes: z.string().max(250).optional().nullable(),
+      }),
+      responses: {
+        200: apiEnvelope(
+          z.object({
+            event: qrAttendanceEventSchema,
+            duplicate: z.boolean(),
+            attendanceRecord: attendanceRecordSchema.optional(),
+          }),
+        ),
+      },
     },
   },
   dashboard: {

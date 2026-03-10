@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Layout } from "@/components/layout";
-import { useFees } from "@/hooks/use-fees";
+import { useFees, useStudentBalance } from "@/hooks/use-fees";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,8 +9,15 @@ import { buildInvoicePrintHtml, buildPaymentReceiptPrintHtml, getFeeStatusClassN
 import { cn, downloadCsv, formatCurrency, formatDate, openPrintWindow } from "@/lib/utils";
 import { Banknote, CalendarDays, Download, FileDown, Loader2, ReceiptText } from "lucide-react";
 
+function getReminderMessage(daysUntilDue: number) {
+  if (daysUntilDue < 0) return `${Math.abs(daysUntilDue)} day(s) overdue`;
+  if (daysUntilDue === 0) return "Due today";
+  return `Due in ${daysUntilDue} day(s)`;
+}
+
 export default function StudentFees() {
   const { data: fees, isLoading } = useFees();
+  const { data: studentBalance } = useStudentBalance();
 
   const invoices = useMemo(
     () => [...(fees ?? [])].sort((a, b) => +new Date(b.dueDate) - +new Date(a.dueDate)),
@@ -53,6 +60,7 @@ export default function StudentFees() {
   );
 
   const nextDueInvoice = openInvoices[0];
+  const paymentReminders = studentBalance?.paymentReminders ?? [];
 
   const exportInvoices = () => {
     downloadCsv(
@@ -98,29 +106,35 @@ export default function StudentFees() {
           </div>
         </div>
 
-        <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-5">
           {[
             {
               label: "Outstanding balance",
-              value: formatCurrency(outstandingBalance),
-              hint: nextDueInvoice ? `Next due ${formatDate(nextDueInvoice.dueDate, "MMM dd, yyyy")}` : "No balance pending",
+              value: formatCurrency(studentBalance?.outstandingBalance ?? outstandingBalance),
+              hint: studentBalance?.nextDueDate ? `Next due ${formatDate(studentBalance.nextDueDate, "MMM dd, yyyy")}` : nextDueInvoice ? `Next due ${formatDate(nextDueInvoice.dueDate, "MMM dd, yyyy")}` : "No balance pending",
               icon: Banknote,
             },
             {
               label: "Open invoices",
-              value: openInvoices.length,
+              value: studentBalance?.openInvoices ?? openInvoices.length,
               hint: openInvoices.length ? "Invoices still awaiting settlement" : "All invoices cleared",
               icon: ReceiptText,
             },
             {
               label: "Overdue invoices",
-              value: overdueInvoices.length,
+              value: studentBalance?.overdueInvoices ?? overdueInvoices.length,
               hint: overdueInvoices.length ? "Follow up on overdue balances" : "No overdue invoices",
               icon: CalendarDays,
             },
             {
+              label: "Due soon",
+              value: studentBalance?.dueSoonInvoices ?? 0,
+              hint: paymentReminders.length ? `${paymentReminders.length} reminder(s) currently active` : "No upcoming deadlines in the next week",
+              icon: CalendarDays,
+            },
+            {
               label: "Total paid",
-              value: formatCurrency(totalPaid),
+              value: formatCurrency(studentBalance?.totalPaid ?? totalPaid),
               hint: `${recentPayments.length} payment record(s) logged`,
               icon: FileDown,
             },
@@ -139,6 +153,85 @@ export default function StudentFees() {
             </Card>
           ))}
         </section>
+
+        <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+          <Card className="bg-white/85">
+            <CardHeader>
+              <CardTitle>Payment reminders</CardTitle>
+              <CardDescription>Upcoming and overdue invoices that currently need your attention.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {paymentReminders.length === 0 ? (
+                <div className="rounded-[1.25rem] border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500">
+                  You have no immediate payment reminders. New reminders will appear here when an invoice is overdue or due within the next 7 days.
+                </div>
+              ) : (
+                paymentReminders.map((reminder) => {
+                  const invoice = invoices.find((item) => item.id === reminder.invoiceId);
+                  return (
+                    <div key={reminder.invoiceId} className="rounded-[1.25rem] border border-slate-200/70 bg-slate-50/80 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-slate-900">{reminder.invoiceNumber ?? `INV-${reminder.invoiceId}`}</p>
+                          <p className="text-sm text-slate-500">{reminder.billingPeriod}</p>
+                        </div>
+                        <Badge variant="outline" className={cn("border", getFeeStatusClassName(reminder.status))}>
+                          {reminder.status}
+                        </Badge>
+                      </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Due date</p>
+                          <p className="mt-1 text-sm font-medium text-slate-900">{formatDate(reminder.dueDate, "MMM dd, yyyy")}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Balance</p>
+                          <p className="mt-1 text-sm font-medium text-slate-900">{formatCurrency(reminder.remainingBalance)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Timeline</p>
+                          <p className="mt-1 text-sm font-medium text-slate-900">{getReminderMessage(reminder.daysUntilDue)}</p>
+                        </div>
+                      </div>
+                      {invoice ? (
+                        <div className="mt-4">
+                          <Button variant="outline" size="sm" onClick={() => printInvoice(invoice)}>
+                            <FileDown className="h-4 w-4" /> Print invoice
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white/85">
+            <CardHeader>
+              <CardTitle>Account balance summary</CardTitle>
+              <CardDescription>Current billing position based on invoices, payments, and receipt history.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {[
+                { label: "Total billed", value: formatCurrency(studentBalance?.totalBilled ?? invoices.reduce((sum, invoice) => sum + invoice.amount, 0)) },
+                { label: "Total paid", value: formatCurrency(studentBalance?.totalPaid ?? totalPaid) },
+                { label: "Outstanding", value: formatCurrency(studentBalance?.outstandingBalance ?? outstandingBalance) },
+                { label: "Overdue balance", value: formatCurrency(studentBalance?.overdueBalance ?? overdueInvoices.reduce((sum, invoice) => sum + invoice.remainingBalance, 0)) },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center justify-between rounded-[1.25rem] border border-slate-200/70 bg-slate-50/80 px-4 py-3">
+                  <p className="text-sm text-slate-600">{item.label}</p>
+                  <p className="text-sm font-semibold text-slate-900">{item.value}</p>
+                </div>
+              ))}
+              <div className="rounded-[1.25rem] border border-slate-200/70 bg-slate-50/80 p-4 text-sm text-slate-600">
+                {studentBalance?.nextDueDate
+                  ? `Your next scheduled payment is due on ${formatDate(studentBalance.nextDueDate, "MMMM dd, yyyy")}.`
+                  : "You do not have any upcoming invoice due dates right now."}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         <Card className="bg-white/85">
           <CardHeader>

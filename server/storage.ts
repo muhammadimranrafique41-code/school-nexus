@@ -4,6 +4,8 @@ import {
   attendance,
   feePayments,
   fees,
+  qrAttendanceEvents,
+  qrProfiles,
   results,
   schoolSettings,
   schoolSettingsAuditLogs,
@@ -21,9 +23,15 @@ import {
   type FeeWithStudent,
   type InsertAcademic,
   type InsertAttendance,
+  type InsertQrAttendanceEvent,
+  type InsertQrProfile,
   type InsertResult,
   type InsertTimetable,
   type InsertUser,
+  type QrAttendanceEvent,
+  type QrAttendanceEventWithUser,
+  type QrProfile,
+  type QrProfileWithUser,
   type Result,
   type ResultWithStudent,
   type SchoolSettings,
@@ -37,6 +45,10 @@ import {
   users,
 } from "../shared/schema.js";
 import {
+  buildFeeBalanceSummary,
+  buildFinanceReportSnapshot,
+  buildOverdueBalanceEntries,
+  buildStudentBalanceSummary,
   buildDocumentNumber,
   buildDueDateForBillingMonth,
   formatBillingPeriod,
@@ -45,14 +57,19 @@ import {
   toIsoDate,
   type BillingProfileInput,
   type CreateFeeInput,
+  type FeeBalanceSummary,
+  type FinanceReportSnapshot,
   type FeeStatus,
   type GenerateMonthlyFeesInput,
+  type OverdueBalanceEntry,
   type RecordFeePaymentInput,
+  type StudentBalanceSummary,
   type UpdateFeeInput,
 } from "../shared/finance.js";
 import type { AdminSchoolSettingsResponse, PublicSchoolSettings, SchoolSettingsAuditAction, SchoolSettingsData } from "../shared/settings.js";
 import { schoolSettingsDataSchema } from "../shared/settings.js";
 import { db } from "./db.js";
+import { decryptQrToken, encryptQrToken, generateQrPublicId, generateQrToken, getAttendanceDate, hashQrToken } from "./qr-service.js";
 import {
   buildPublicSchoolSettings,
   buildSchoolSettingsCompletion,
@@ -111,6 +128,18 @@ const isMissingSettingsTableError = (error: unknown) =>
   "code" in error &&
   ["42P01", "42703"].includes(String((error as { code?: string }).code));
 
+const isMissingQrAttendanceTableError = (error: unknown) =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  String((error as { code?: string }).code) === "42P01";
+
+const isUniqueViolation = (error: unknown) =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  String((error as { code?: string }).code) === "23505";
+
 const toUserSummary = (user?: User) =>
   user
     ? {
@@ -144,6 +173,35 @@ export interface IStorage {
   updateAttendance(id: number, updates: Partial<InsertAttendance>): Promise<AttendanceWithStudent | undefined>;
   getTeacherClasses(teacherId: number): Promise<{ className: string; studentCount: number; subjects: string[] }[]>;
   getStudentsByClass(className: string): Promise<User[]>;
+  getQrProfiles(): Promise<QrProfileWithUser[]>;
+  getQrProfile(userId: number): Promise<QrProfileWithUser | undefined>;
+  issueQrProfile(userId: number, generatedBy?: number): Promise<{ profile: QrProfileWithUser; token: string; created: boolean }>;
+  regenerateQrProfile(userId: number, generatedBy?: number): Promise<{ profile: QrProfileWithUser; token: string }>;
+  setQrProfileActive(userId: number, isActive: boolean): Promise<QrProfileWithUser | undefined>;
+  getQrAttendanceEvents(filters?: {
+    userId?: number;
+    role?: "student" | "teacher";
+    attendanceDate?: string;
+    scannedBy?: number;
+  }): Promise<QrAttendanceEventWithUser[]>;
+  getMyQrCard(userId: number): Promise<{
+    profile: QrProfileWithUser;
+    token: string;
+    recentEvents: QrAttendanceEventWithUser[];
+  } | undefined>;
+  scanQrAttendance(input: {
+    token: string;
+    scannedBy: number;
+    direction: "Check In" | "Check Out";
+    status?: "Present" | "Late";
+    scanMethod: "camera" | "manual";
+    terminalLabel?: string | null;
+    notes?: string | null;
+  }): Promise<{
+    event: QrAttendanceEventWithUser;
+    duplicate: boolean;
+    attendanceRecord?: AttendanceWithStudent;
+  } | undefined>;
 
   getResult(id: number): Promise<Result | undefined>;
   getResults(): Promise<ResultWithStudent[]>;
@@ -158,6 +216,8 @@ export interface IStorage {
   getFees(): Promise<FeeWithStudent[]>;
   getFeesByStudent(studentId: number): Promise<FeeWithStudent[]>;
   getFee(id: number): Promise<FeeWithStudent | undefined>;
+  getFeePayments(filters?: { month?: string; studentId?: number; method?: RecordFeePaymentInput["method"] }): Promise<FeePaymentWithMeta[]>;
+  getPaymentReceipt(paymentId: number): Promise<{ invoice: FeeWithStudent; payment: FeePaymentWithMeta } | undefined>;
   createFee(record: CreateFeeInput): Promise<FeeWithStudent>;
   updateFee(id: number, updates: UpdateFeeInput): Promise<FeeWithStudent | undefined>;
   deleteFee(id: number): Promise<boolean>;
@@ -172,30 +232,10 @@ export interface IStorage {
     invoices: FeeWithStudent[];
     skippedStudents: { studentId: number; studentName: string; reason: string }[];
   }>;
-  getFinanceReport(filters?: FinanceReportFilters): Promise<{
-    summary: {
-      totalInvoices: number;
-      totalBilled: number;
-      totalPaid: number;
-      totalOutstanding: number;
-      paidInvoices: number;
-      partiallyPaidInvoices: number;
-      unpaidInvoices: number;
-      overdueInvoices: number;
-      paymentsCount: number;
-    };
-    monthlyRevenue: { month: string; billed: number; paid: number }[];
-    statusBreakdown: { status: FeeStatus; count: number; amount: number }[];
-    outstandingStudents: {
-      studentId: number;
-      studentName: string;
-      outstandingBalance: number;
-      overdueBalance: number;
-      invoiceCount: number;
-    }[];
-    invoices: FeeWithStudent[];
-    payments: FeePaymentWithMeta[];
-  }>;
+  getFinanceReport(filters?: FinanceReportFilters): Promise<FinanceReportSnapshot>;
+  getFeeBalanceSummary(): Promise<FeeBalanceSummary>;
+  getStudentBalance(studentId: number): Promise<StudentBalanceSummary>;
+  getOverdueBalances(): Promise<OverdueBalanceEntry[]>;
 
   getTotalStudents(): Promise<number>;
   getTotalTeachers(): Promise<number>;
@@ -457,6 +497,27 @@ export class DatabaseStorage implements IStorage {
         teacher: userMap.get(record.teacherId),
       }))
       .sort((left, right) => `${right.date}-${right.session}`.localeCompare(`${left.date}-${left.session}`));
+  }
+
+  private attachQrProfileUsers(records: QrProfile[], userMap: Map<number, User>): QrProfileWithUser[] {
+    return records
+      .map((record) => ({
+        ...record,
+        user: userMap.get(record.userId),
+        generatedByUser: record.generatedBy ? userMap.get(record.generatedBy) : undefined,
+        lastUsedByUser: record.lastUsedBy ? userMap.get(record.lastUsedBy) : undefined,
+      }))
+      .sort((left, right) => left.user?.name.localeCompare(right.user?.name ?? "") ?? 0);
+  }
+
+  private attachQrAttendanceUsers(records: QrAttendanceEvent[], userMap: Map<number, User>): QrAttendanceEventWithUser[] {
+    return records
+      .map((record) => ({
+        ...record,
+        user: userMap.get(record.userId),
+        scannedByUser: userMap.get(record.scannedBy),
+      }))
+      .sort((left, right) => `${right.scannedAt}-${right.id}`.localeCompare(`${left.scannedAt}-${left.id}`));
   }
 
   private attachResultStudents(records: Result[], userMap: Map<number, User>): ResultWithStudent[] {
@@ -801,6 +862,243 @@ export class DatabaseStorage implements IStorage {
     return students.filter((student) => student.className === className).sort((left, right) => left.name.localeCompare(right.name));
   }
 
+  async getQrProfiles(): Promise<QrProfileWithUser[]> {
+    try {
+      const [records, userMap] = await Promise.all([db.select().from(qrProfiles), this.getUsersMap()]);
+      return this.attachQrProfileUsers(records, userMap);
+    } catch (error) {
+      if (!isMissingQrAttendanceTableError(error)) throw error;
+      return [];
+    }
+  }
+
+  async getQrProfile(userId: number): Promise<QrProfileWithUser | undefined> {
+    const [record] = await db.select().from(qrProfiles).where(eq(qrProfiles.userId, userId));
+    if (!record) return undefined;
+    const userMap = await this.getUsersMap();
+    return this.attachQrProfileUsers([record], userMap)[0];
+  }
+
+  async issueQrProfile(userId: number, generatedBy?: number): Promise<{ profile: QrProfileWithUser; token: string; created: boolean }> {
+    const [existing] = await db.select().from(qrProfiles).where(eq(qrProfiles.userId, userId));
+
+    if (existing) {
+      const userMap = await this.getUsersMap();
+      return {
+        profile: this.attachQrProfileUsers([existing], userMap)[0],
+        token: decryptQrToken(existing.tokenCiphertext),
+        created: false,
+      };
+    }
+
+    const publicId = generateQrPublicId();
+    const token = generateQrToken(publicId);
+    const timestamp = new Date().toISOString();
+    const payload: InsertQrProfile = {
+      userId,
+      publicId,
+      tokenCiphertext: encryptQrToken(token),
+      tokenHash: hashQrToken(token),
+      isActive: true,
+      issuedAt: timestamp,
+      regeneratedAt: timestamp,
+      lastUsedAt: null,
+      lastUsedBy: null,
+      generatedBy: generatedBy ?? null,
+    };
+
+    const [created] = await db.insert(qrProfiles).values(payload).returning();
+    const userMap = await this.getUsersMap();
+
+    return {
+      profile: this.attachQrProfileUsers([created], userMap)[0],
+      token,
+      created: true,
+    };
+  }
+
+  async regenerateQrProfile(userId: number, generatedBy?: number): Promise<{ profile: QrProfileWithUser; token: string }> {
+    const [existing] = await db.select().from(qrProfiles).where(eq(qrProfiles.userId, userId));
+
+    if (!existing) {
+      const issued = await this.issueQrProfile(userId, generatedBy);
+      return { profile: issued.profile, token: issued.token };
+    }
+
+    const token = generateQrToken(existing.publicId);
+    const timestamp = new Date().toISOString();
+
+    const [updated] = await db
+      .update(qrProfiles)
+      .set({
+        tokenCiphertext: encryptQrToken(token),
+        tokenHash: hashQrToken(token),
+        regeneratedAt: timestamp,
+        generatedBy: generatedBy ?? existing.generatedBy,
+        isActive: true,
+      })
+      .where(eq(qrProfiles.userId, userId))
+      .returning();
+
+    const userMap = await this.getUsersMap();
+    return { profile: this.attachQrProfileUsers([updated], userMap)[0], token };
+  }
+
+  async setQrProfileActive(userId: number, isActive: boolean): Promise<QrProfileWithUser | undefined> {
+    const [updated] = await db.update(qrProfiles).set({ isActive }).where(eq(qrProfiles.userId, userId)).returning();
+    if (!updated) return undefined;
+    const userMap = await this.getUsersMap();
+    return this.attachQrProfileUsers([updated], userMap)[0];
+  }
+
+  async getQrAttendanceEvents(filters?: {
+    userId?: number;
+    role?: "student" | "teacher";
+    attendanceDate?: string;
+    scannedBy?: number;
+  }): Promise<QrAttendanceEventWithUser[]> {
+    try {
+      const [records, userMap] = await Promise.all([db.select().from(qrAttendanceEvents), this.getUsersMap()]);
+
+      return this.attachQrAttendanceUsers(records, userMap).filter((record) => {
+        if (filters?.userId && record.userId !== filters.userId) return false;
+        if (filters?.attendanceDate && record.attendanceDate !== filters.attendanceDate) return false;
+        if (filters?.scannedBy && record.scannedBy !== filters.scannedBy) return false;
+        if (filters?.role && record.user?.role !== filters.role) return false;
+        return true;
+      });
+    } catch (error) {
+      if (!isMissingQrAttendanceTableError(error)) throw error;
+      return [];
+    }
+  }
+
+  async getMyQrCard(userId: number): Promise<{
+    profile: QrProfileWithUser;
+    token: string;
+    recentEvents: QrAttendanceEventWithUser[];
+  } | undefined> {
+    const user = await this.getUser(userId);
+
+    if (!user || !["student", "teacher"].includes(user.role)) {
+      return undefined;
+    }
+
+    const issued = await this.issueQrProfile(userId, userId);
+    const recentEvents = (await this.getQrAttendanceEvents({ userId })).slice(0, 10);
+
+    return {
+      profile: issued.profile,
+      token: issued.token,
+      recentEvents,
+    };
+  }
+
+  async scanQrAttendance(input: {
+    token: string;
+    scannedBy: number;
+    direction: "Check In" | "Check Out";
+    status?: "Present" | "Late";
+    scanMethod: "camera" | "manual";
+    terminalLabel?: string | null;
+    notes?: string | null;
+  }): Promise<{
+    event: QrAttendanceEventWithUser;
+    duplicate: boolean;
+    attendanceRecord?: AttendanceWithStudent;
+  } | undefined> {
+    const tokenHash = hashQrToken(input.token);
+    const [profile] = await db.select().from(qrProfiles).where(eq(qrProfiles.tokenHash, tokenHash));
+
+    if (!profile || !profile.isActive) {
+      return undefined;
+    }
+
+    const user = await this.getUser(profile.userId);
+    if (!user || !["student", "teacher"].includes(user.role)) {
+      return undefined;
+    }
+
+    const attendanceDate = getAttendanceDate();
+    const scannedAt = new Date().toISOString();
+
+    const [existingEvent] = await db
+      .select()
+      .from(qrAttendanceEvents)
+      .where(
+        and(
+          eq(qrAttendanceEvents.userId, profile.userId),
+          eq(qrAttendanceEvents.attendanceDate, attendanceDate),
+          eq(qrAttendanceEvents.direction, input.direction),
+        ),
+      );
+
+    let savedEvent = existingEvent;
+    let duplicate = Boolean(existingEvent);
+
+    if (!savedEvent) {
+      const payload: typeof qrAttendanceEvents.$inferInsert = {
+        userId: profile.userId,
+        scannedBy: input.scannedBy,
+        attendanceDate,
+        scannedAt,
+        roleSnapshot: user.role,
+        direction: input.direction,
+        status: input.direction === "Check In" ? input.status ?? "Present" : null,
+        scanMethod: input.scanMethod,
+        terminalLabel: input.terminalLabel ?? null,
+        notes: input.notes ?? null,
+      };
+
+      try {
+        [savedEvent] = await db.insert(qrAttendanceEvents).values(payload).returning();
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+
+        duplicate = true;
+        [savedEvent] = await db
+          .select()
+          .from(qrAttendanceEvents)
+          .where(
+            and(
+              eq(qrAttendanceEvents.userId, profile.userId),
+              eq(qrAttendanceEvents.attendanceDate, attendanceDate),
+              eq(qrAttendanceEvents.direction, input.direction),
+            ),
+          );
+
+        if (!savedEvent) throw error;
+      }
+    }
+
+    await db
+      .update(qrProfiles)
+      .set({ lastUsedAt: scannedAt, lastUsedBy: input.scannedBy })
+      .where(eq(qrProfiles.userId, profile.userId));
+
+    let attendanceRecord: AttendanceWithStudent | undefined;
+    if (user.role === "student" && input.direction === "Check In") {
+      const savedAttendance = await this.createAttendance({
+        studentId: user.id,
+        teacherId: input.scannedBy,
+        date: attendanceDate,
+        status: input.status ?? "Present",
+        session: "Full Day",
+        remarks: input.notes ?? `QR ${input.scanMethod} check-in`,
+      });
+      const userMap = await this.getUsersMap();
+      attendanceRecord = this.attachAttendanceUsers([savedAttendance], userMap)[0];
+    }
+
+    const userMap = await this.getUsersMap();
+
+    return {
+      event: this.attachQrAttendanceUsers([savedEvent], userMap)[0],
+      duplicate,
+      attendanceRecord,
+    };
+  }
+
   async getResult(id: number): Promise<Result | undefined> {
     const [record] = await db.select().from(results).where(eq(results.id, id));
     return record;
@@ -982,6 +1280,28 @@ export class DatabaseStorage implements IStorage {
     if (!record) return undefined;
     const [hydrated] = await this.attachFeeRecords([record]);
     return hydrated;
+  }
+
+  async getFeePayments(filters: { month?: string; studentId?: number; method?: RecordFeePaymentInput["method"] } = {}): Promise<FeePaymentWithMeta[]> {
+    const invoices = filters.studentId ? await this.getFeesByStudent(filters.studentId) : await this.getFees();
+    return invoices
+      .flatMap((invoice) => invoice.payments ?? [])
+      .filter((payment) => {
+        if (filters.month && payment.paymentDate.slice(0, 7) !== filters.month) return false;
+        if (filters.method && payment.method !== filters.method) return false;
+        return true;
+      })
+      .sort((left, right) => `${right.paymentDate}-${right.id}`.localeCompare(`${left.paymentDate}-${left.id}`));
+  }
+
+  async getPaymentReceipt(paymentId: number): Promise<{ invoice: FeeWithStudent; payment: FeePaymentWithMeta } | undefined> {
+    const [paymentRecord] = await db.select().from(feePayments).where(eq(feePayments.id, paymentId)).limit(1);
+    if (!paymentRecord) return undefined;
+    const invoice = await this.getFee(paymentRecord.feeId);
+    if (!invoice) return undefined;
+    const payment = invoice.payments?.find((entry) => entry.id === paymentId);
+    if (!payment) return undefined;
+    return { invoice, payment };
   }
 
   async createFee(record: CreateFeeInput): Promise<FeeWithStudent> {
@@ -1233,78 +1553,27 @@ export class DatabaseStorage implements IStorage {
       return true;
     });
 
-    const invoiceIds = new Set(invoices.map((invoice) => invoice.id));
-    const payments = invoices.flatMap((invoice) => invoice.payments ?? []).filter((payment) => invoiceIds.has(payment.feeId));
-    const summary = {
-      totalInvoices: invoices.length,
-      totalBilled: invoices.reduce((sum, invoice) => sum + invoice.amount, 0),
-      totalPaid: invoices.reduce((sum, invoice) => sum + invoice.paidAmount, 0),
-      totalOutstanding: invoices.reduce((sum, invoice) => sum + invoice.remainingBalance, 0),
-      paidInvoices: invoices.filter((invoice) => invoice.status === "Paid").length,
-      partiallyPaidInvoices: invoices.filter((invoice) => invoice.status === "Partially Paid").length,
-      unpaidInvoices: invoices.filter((invoice) => invoice.status === "Unpaid").length,
-      overdueInvoices: invoices.filter((invoice) => invoice.status === "Overdue").length,
-      paymentsCount: payments.length,
-    };
+    return buildFinanceReportSnapshot(invoices);
+  }
 
-    const monthKeys = filters.month
-      ? [filters.month]
-      : Array.from(
-        new Set([
-          ...invoices.map((invoice) => invoice.billingMonth),
-          ...payments.map((payment) => payment.paymentDate.slice(0, 7)),
-        ]),
-      ).sort();
-    const defaultMonths = monthKeys.length > 0
-      ? monthKeys.slice(-6)
-      : Array.from({ length: 6 }, (_, index) => {
-        const date = new Date();
-        date.setMonth(date.getMonth() - (5 - index), 1);
-        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      });
-    const monthlyRevenueMap = new Map(defaultMonths.map((month) => [month, { month, billed: 0, paid: 0 }]));
+  async getFeeBalanceSummary(): Promise<FeeBalanceSummary> {
+    return buildFeeBalanceSummary(await this.getFees());
+  }
 
-    for (const invoice of invoices) {
-      const bucket = monthlyRevenueMap.get(invoice.billingMonth);
-      if (bucket) bucket.billed += invoice.amount;
-    }
-
-    for (const payment of payments) {
-      const key = payment.paymentDate.slice(0, 7);
-      const bucket = monthlyRevenueMap.get(key);
-      if (bucket) bucket.paid += payment.amount;
-    }
-
-    const statusBreakdown = (["Paid", "Partially Paid", "Unpaid", "Overdue"] as const).map((status) => ({
-      status,
-      count: invoices.filter((invoice) => invoice.status === status).length,
-      amount: invoices.filter((invoice) => invoice.status === status).reduce((sum, invoice) => sum + invoice.amount, 0),
-    }));
-
-    const outstandingByStudent = new Map<number, { studentName: string; outstandingBalance: number; overdueBalance: number; invoiceCount: number }>();
-    for (const invoice of invoices.filter((entry) => entry.remainingBalance > 0)) {
-      const current = outstandingByStudent.get(invoice.studentId) ?? {
-        studentName: invoice.student?.name ?? `Student #${invoice.studentId}`,
-        outstandingBalance: 0,
-        overdueBalance: 0,
-        invoiceCount: 0,
-      };
-      current.outstandingBalance += invoice.remainingBalance;
-      current.overdueBalance += invoice.status === "Overdue" ? invoice.remainingBalance : 0;
-      current.invoiceCount += 1;
-      outstandingByStudent.set(invoice.studentId, current);
-    }
-
+  async getStudentBalance(studentId: number): Promise<StudentBalanceSummary> {
+    const invoices = await this.getFeesByStudent(studentId);
+    const summary = buildStudentBalanceSummary(studentId, invoices);
+    if (invoices.length > 0) return summary;
+    const student = await this.getUser(studentId);
     return {
-      summary,
-      monthlyRevenue: Array.from(monthlyRevenueMap.values()),
-      statusBreakdown,
-      outstandingStudents: Array.from(outstandingByStudent.entries())
-        .map(([studentId, value]) => ({ studentId, ...value }))
-        .sort((left, right) => right.outstandingBalance - left.outstandingBalance),
-      invoices,
-      payments,
+      ...summary,
+      studentName: student?.name ?? summary.studentName,
+      className: student?.className ?? summary.className,
     };
+  }
+
+  async getOverdueBalances(): Promise<OverdueBalanceEntry[]> {
+    return buildOverdueBalanceEntries(await this.getFees());
   }
 
   async getTotalStudents(): Promise<number> {

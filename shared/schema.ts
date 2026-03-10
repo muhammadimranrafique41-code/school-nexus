@@ -8,10 +8,16 @@ import type { SchoolSettingsAuditAction, SchoolSettingsData } from "./settings.j
 export const attendanceStatuses = ["Present", "Absent", "Late", "Excused"] as const;
 export const attendanceSessions = ["Full Day", "Morning", "Afternoon"] as const;
 export const timetableDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+export const qrAttendanceDirections = ["Check In", "Check Out"] as const;
+export const qrAttendanceMethods = ["camera", "manual"] as const;
+export const qrAttendanceMarkStatuses = ["Present", "Late"] as const;
 
 export const attendanceStatusSchema = z.enum(attendanceStatuses);
 export const attendanceSessionSchema = z.enum(attendanceSessions);
 export const timetableDaySchema = z.enum(timetableDays);
+export const qrAttendanceDirectionSchema = z.enum(qrAttendanceDirections);
+export const qrAttendanceMethodSchema = z.enum(qrAttendanceMethods);
+export const qrAttendanceMarkStatusSchema = z.enum(qrAttendanceMarkStatuses);
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -61,6 +67,56 @@ export const attendance = pgTable("attendance", {
   session: text("session").notNull().default("Full Day"),
   remarks: text("remarks"),
 });
+
+export const qrProfiles = pgTable(
+  "qr_profiles",
+  {
+    userId: integer("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    publicId: text("public_id").notNull(),
+    tokenCiphertext: text("token_ciphertext").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    issuedAt: text("issued_at").notNull(),
+    regeneratedAt: text("regenerated_at").notNull(),
+    lastUsedAt: text("last_used_at"),
+    lastUsedBy: integer("last_used_by").references(() => users.id, { onDelete: "set null" }),
+    generatedBy: integer("generated_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => ({
+    publicIdIdx: uniqueIndex("qr_profiles_public_id_idx").on(table.publicId),
+    tokenHashIdx: uniqueIndex("qr_profiles_token_hash_idx").on(table.tokenHash),
+  }),
+);
+
+export const qrAttendanceEvents = pgTable(
+  "qr_attendance_events",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    scannedBy: integer("scanned_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    attendanceDate: text("attendance_date").notNull(),
+    scannedAt: text("scanned_at").notNull(),
+    roleSnapshot: text("role_snapshot").notNull(),
+    direction: text("direction").$type<(typeof qrAttendanceDirections)[number]>().notNull(),
+    status: text("status").$type<((typeof qrAttendanceMarkStatuses)[number]) | null>(),
+    scanMethod: text("scan_method").$type<(typeof qrAttendanceMethods)[number]>().notNull(),
+    terminalLabel: text("terminal_label"),
+    notes: text("notes"),
+  },
+  (table) => ({
+    userDayDirectionIdx: uniqueIndex("qr_attendance_events_user_day_direction_idx").on(
+      table.userId,
+      table.attendanceDate,
+      table.direction,
+    ),
+  }),
+);
 
 export const results = pgTable("results", {
   id: serial("id").primaryKey(),
@@ -195,6 +251,8 @@ export const insertStudentSchema = createInsertSchema(students);
 export const insertTeacherSchema = createInsertSchema(teachers);
 export const insertAcademicSchema = createInsertSchema(academics).omit({ id: true });
 export const insertAttendanceSchema = createInsertSchema(attendance).omit({ id: true });
+export const insertQrProfileSchema = createInsertSchema(qrProfiles);
+export const insertQrAttendanceEventSchema = createInsertSchema(qrAttendanceEvents).omit({ id: true });
 export const insertResultSchema = createInsertSchema(results).omit({ id: true });
 export const insertTimetableSchema = createInsertSchema(timetable).omit({ id: true });
 export const insertFeeSchema = createInsertSchema(fees).omit({ id: true });
@@ -211,6 +269,10 @@ export type Academic = typeof academics.$inferSelect;
 export type InsertAcademic = z.infer<typeof insertAcademicSchema>;
 export type Attendance = typeof attendance.$inferSelect;
 export type InsertAttendance = z.infer<typeof insertAttendanceSchema>;
+export type QrProfile = typeof qrProfiles.$inferSelect;
+export type InsertQrProfile = z.infer<typeof insertQrProfileSchema>;
+export type QrAttendanceEvent = typeof qrAttendanceEvents.$inferSelect;
+export type InsertQrAttendanceEvent = z.infer<typeof insertQrAttendanceEventSchema>;
 export type Result = typeof results.$inferSelect;
 export type InsertResult = z.infer<typeof insertResultSchema>;
 export type Timetable = typeof timetable.$inferSelect;
@@ -226,6 +288,15 @@ export type SchoolSettingsVersion = typeof schoolSettingsVersions.$inferSelect;
 export type SchoolSettingsAuditLog = typeof schoolSettingsAuditLogs.$inferSelect;
 
 export type AttendanceWithStudent = Attendance & { student?: User; teacher?: User };
+export type QrProfileWithUser = QrProfile & {
+  user?: User;
+  generatedByUser?: User;
+  lastUsedByUser?: User;
+};
+export type QrAttendanceEventWithUser = QrAttendanceEvent & {
+  user?: User;
+  scannedByUser?: User;
+};
 export type ResultWithStudent = Result & { student?: User };
 export type FeePaymentWithMeta = FeePayment & { createdByUser?: User };
 export type FeeWithStudent = Fee & { student?: User; payments?: FeePaymentWithMeta[] };

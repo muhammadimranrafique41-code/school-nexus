@@ -10,17 +10,20 @@ import AdminDashboard from "./pages/admin/dashboard";
 import AdminUsers from "./pages/admin/users";
 import AdminAcademics from "./pages/admin/academics";
 import AdminFinance from "./pages/admin/finance";
+import AdminQrAttendance from "./pages/admin/qr-attendance";
 import AdminSettings from "./pages/admin/settings";
 import CreateStudent from "./pages/admin/students";
 import CreateTeacher from "./pages/admin/teachers";
 
 import TeacherDashboard from "./pages/teacher/dashboard";
 import TeacherAttendance from "./pages/teacher/attendance";
+import TeacherQrAttendance from "./pages/teacher/qr-attendance";
 import TeacherResults from "./pages/teacher/results";
 
 import StudentDashboard from "./pages/student/dashboard";
 import StudentAttendance from "./pages/student/attendance";
 import StudentGrades from "./pages/student/grades";
+import StudentQrCard from "./pages/student/qr-card";
 import StudentTimetable from "./pages/student/timetable";
 import StudentFees from "./pages/student/fees";
 
@@ -53,6 +56,9 @@ function Router() {
       <Route path="/admin/finance">
         <ProtectedRoute allowedRoles={['admin']}><AdminFinance /></ProtectedRoute>
       </Route>
+      <Route path="/admin/qr-attendance">
+        <ProtectedRoute allowedRoles={['admin']}><AdminQrAttendance /></ProtectedRoute>
+      </Route>
       <Route path="/admin/settings">
         <ProtectedRoute allowedRoles={['admin']}><AdminSettings /></ProtectedRoute>
       </Route>
@@ -64,6 +70,9 @@ function Router() {
       <Route path="/teacher/attendance">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherAttendance /></ProtectedRoute>
       </Route>
+      <Route path="/teacher/qr-attendance">
+        <ProtectedRoute allowedRoles={['teacher']}><TeacherQrAttendance /></ProtectedRoute>
+      </Route>
       <Route path="/teacher/results">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherResults /></ProtectedRoute>
       </Route>
@@ -74,6 +83,9 @@ function Router() {
       {/* Student Routes */}
       <Route path="/student/attendance">
         <ProtectedRoute allowedRoles={['student']}><StudentAttendance /></ProtectedRoute>
+      </Route>
+      <Route path="/student/qr-card">
+        <ProtectedRoute allowedRoles={['student']}><StudentQrCard /></ProtectedRoute>
       </Route>
       <Route path="/student/results">
         <ProtectedRoute allowedRoles={['student']}><StudentGrades /></ProtectedRoute>
