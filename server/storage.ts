@@ -23,7 +23,6 @@ import {
   type FeeWithStudent,
   type InsertAcademic,
   type InsertAttendance,
-  type InsertQrAttendanceEvent,
   type InsertQrProfile,
   type InsertResult,
   type InsertTimetable,
@@ -96,6 +95,29 @@ type RuntimeSettingsState = {
   nextAuditId: number;
 };
 
+type RuntimeQrState = {
+  profiles: Map<number, QrProfile>;
+  events: QrAttendanceEvent[];
+  nextEventId: number;
+};
+
+type QrAttendanceEventFilters = {
+  userId?: number;
+  role?: "student" | "teacher";
+  attendanceDate?: string;
+  scannedBy?: number;
+};
+
+type QrAttendanceScanInput = {
+  token: string;
+  scannedBy: number;
+  direction: "Check In" | "Check Out";
+  status?: "Present" | "Late";
+  scanMethod: "camera" | "manual";
+  terminalLabel?: string | null;
+  notes?: string | null;
+};
+
 type FinanceReportFilters = {
   month?: string;
   studentId?: number;
@@ -120,7 +142,14 @@ const createRuntimeSettingsState = (): RuntimeSettingsState => {
   };
 };
 
+const createRuntimeQrState = (): RuntimeQrState => ({
+  profiles: new Map<number, QrProfile>(),
+  events: [],
+  nextEventId: 1,
+});
+
 const runtimeSettingsState = createRuntimeSettingsState();
+const runtimeQrState = createRuntimeQrState();
 
 const isMissingSettingsTableError = (error: unknown) =>
   typeof error === "object" &&
@@ -297,6 +326,180 @@ export class DatabaseStorage implements IStorage {
   private async getUsersMap() {
     const allUsers = await db.select().from(users);
     return new Map(allUsers.map((user) => [user.id, user]));
+  }
+
+  private filterQrAttendanceEvents(records: QrAttendanceEventWithUser[], filters?: QrAttendanceEventFilters) {
+    return records.filter((record) => {
+      if (filters?.userId && record.userId !== filters.userId) return false;
+      if (filters?.attendanceDate && record.attendanceDate !== filters.attendanceDate) return false;
+      if (filters?.scannedBy && record.scannedBy !== filters.scannedBy) return false;
+      if (filters?.role && record.user?.role !== filters.role) return false;
+      return true;
+    });
+  }
+
+  private seedRuntimeQrProfile(record: QrProfile) {
+    runtimeQrState.profiles.set(record.userId, record);
+  }
+
+  private async getRuntimeQrProfiles() {
+    const userMap = await this.getUsersMap();
+    return this.attachQrProfileUsers(Array.from(runtimeQrState.profiles.values()), userMap);
+  }
+
+  private async getRuntimeQrProfile(userId: number) {
+    const record = runtimeQrState.profiles.get(userId);
+    if (!record) return undefined;
+    const userMap = await this.getUsersMap();
+    return this.attachQrProfileUsers([record], userMap)[0];
+  }
+
+  private async issueRuntimeQrProfile(userId: number, generatedBy?: number): Promise<{ profile: QrProfileWithUser; token: string; created: boolean }> {
+    const existing = runtimeQrState.profiles.get(userId);
+
+    if (existing) {
+      return {
+        profile: (await this.getRuntimeQrProfile(userId)) as QrProfileWithUser,
+        token: decryptQrToken(existing.tokenCiphertext),
+        created: false,
+      };
+    }
+
+    const publicId = generateQrPublicId();
+    const token = generateQrToken(publicId);
+    const timestamp = new Date().toISOString();
+    const created: QrProfile = {
+      userId,
+      publicId,
+      tokenCiphertext: encryptQrToken(token),
+      tokenHash: hashQrToken(token),
+      isActive: true,
+      issuedAt: timestamp,
+      regeneratedAt: timestamp,
+      lastUsedAt: null,
+      lastUsedBy: null,
+      generatedBy: generatedBy ?? null,
+    };
+
+    runtimeQrState.profiles.set(userId, created);
+
+    return {
+      profile: (await this.getRuntimeQrProfile(userId)) as QrProfileWithUser,
+      token,
+      created: true,
+    };
+  }
+
+  private async regenerateRuntimeQrProfile(userId: number, generatedBy?: number): Promise<{ profile: QrProfileWithUser; token: string }> {
+    const existing = runtimeQrState.profiles.get(userId);
+
+    if (!existing) {
+      const issued = await this.issueRuntimeQrProfile(userId, generatedBy);
+      return { profile: issued.profile, token: issued.token };
+    }
+
+    const token = generateQrToken(existing.publicId);
+    const updated: QrProfile = {
+      ...existing,
+      tokenCiphertext: encryptQrToken(token),
+      tokenHash: hashQrToken(token),
+      regeneratedAt: new Date().toISOString(),
+      generatedBy: generatedBy ?? existing.generatedBy,
+      isActive: true,
+    };
+
+    runtimeQrState.profiles.set(userId, updated);
+    return { profile: (await this.getRuntimeQrProfile(userId)) as QrProfileWithUser, token };
+  }
+
+  private async setRuntimeQrProfileActive(userId: number, isActive: boolean) {
+    const existing = runtimeQrState.profiles.get(userId);
+    if (!existing) return undefined;
+
+    runtimeQrState.profiles.set(userId, { ...existing, isActive });
+    return this.getRuntimeQrProfile(userId);
+  }
+
+  private async getRuntimeQrAttendanceEvents(filters?: QrAttendanceEventFilters) {
+    const userMap = await this.getUsersMap();
+    return this.filterQrAttendanceEvents(this.attachQrAttendanceUsers(runtimeQrState.events, userMap), filters);
+  }
+
+  private async scanRuntimeQrAttendance(input: QrAttendanceScanInput): Promise<{
+    event: QrAttendanceEventWithUser;
+    duplicate: boolean;
+    attendanceRecord?: AttendanceWithStudent;
+  } | undefined> {
+    const tokenHash = hashQrToken(input.token);
+    const profile = Array.from(runtimeQrState.profiles.values()).find((record) => record.tokenHash === tokenHash);
+
+    if (!profile || !profile.isActive) {
+      return undefined;
+    }
+
+    const user = await this.getUser(profile.userId);
+    if (!user || !["student", "teacher"].includes(user.role)) {
+      return undefined;
+    }
+
+    const attendanceDate = getAttendanceDate();
+    const scannedAt = new Date().toISOString();
+    const roleSnapshot = user.role === "teacher" ? "teacher" : "student";
+    const direction: QrAttendanceEvent["direction"] = input.direction === "Check In" ? "Check In" : "Check Out";
+    const scanMethod: QrAttendanceEvent["scanMethod"] = input.scanMethod === "camera" ? "camera" : "manual";
+    const existingEvent = runtimeQrState.events.find(
+      (record) =>
+        record.userId === profile.userId
+        && record.attendanceDate === attendanceDate
+        && record.direction === direction,
+    );
+
+    const duplicate = Boolean(existingEvent);
+    const savedEvent: QrAttendanceEvent = existingEvent ?? {
+      id: runtimeQrState.nextEventId++,
+      userId: profile.userId,
+      scannedBy: input.scannedBy,
+      attendanceDate,
+      scannedAt,
+      roleSnapshot,
+      direction,
+      status: direction === "Check In" ? input.status ?? "Present" : null,
+      scanMethod,
+      terminalLabel: input.terminalLabel ?? null,
+      notes: input.notes ?? null,
+    };
+
+    if (!existingEvent) {
+      runtimeQrState.events.push(savedEvent);
+    }
+
+    runtimeQrState.profiles.set(profile.userId, {
+      ...profile,
+      lastUsedAt: scannedAt,
+      lastUsedBy: input.scannedBy,
+    });
+
+    let attendanceRecord: AttendanceWithStudent | undefined;
+    if (user.role === "student" && input.direction === "Check In") {
+      const savedAttendance = await this.createAttendance({
+        studentId: user.id,
+        teacherId: input.scannedBy,
+        date: attendanceDate,
+        status: input.status ?? "Present",
+        session: "Full Day",
+        remarks: input.notes ?? `QR ${input.scanMethod} check-in`,
+      });
+      const userMap = await this.getUsersMap();
+      attendanceRecord = this.attachAttendanceUsers([savedAttendance], userMap)[0];
+    }
+
+    const userMap = await this.getUsersMap();
+
+    return {
+      event: this.attachQrAttendanceUsers([savedEvent], userMap)[0],
+      duplicate,
+      attendanceRecord,
+    };
   }
 
   private async ensureSchoolSettingsRecord(executor: any = db): Promise<SchoolSettings> {
@@ -868,108 +1071,117 @@ export class DatabaseStorage implements IStorage {
       return this.attachQrProfileUsers(records, userMap);
     } catch (error) {
       if (!isMissingQrAttendanceTableError(error)) throw error;
-      return [];
+      return this.getRuntimeQrProfiles();
     }
   }
 
   async getQrProfile(userId: number): Promise<QrProfileWithUser | undefined> {
-    const [record] = await db.select().from(qrProfiles).where(eq(qrProfiles.userId, userId));
-    if (!record) return undefined;
-    const userMap = await this.getUsersMap();
-    return this.attachQrProfileUsers([record], userMap)[0];
+    try {
+      const [record] = await db.select().from(qrProfiles).where(eq(qrProfiles.userId, userId));
+      if (!record) return undefined;
+      const userMap = await this.getUsersMap();
+      return this.attachQrProfileUsers([record], userMap)[0];
+    } catch (error) {
+      if (!isMissingQrAttendanceTableError(error)) throw error;
+      return this.getRuntimeQrProfile(userId);
+    }
   }
 
   async issueQrProfile(userId: number, generatedBy?: number): Promise<{ profile: QrProfileWithUser; token: string; created: boolean }> {
-    const [existing] = await db.select().from(qrProfiles).where(eq(qrProfiles.userId, userId));
+    try {
+      const [existing] = await db.select().from(qrProfiles).where(eq(qrProfiles.userId, userId));
 
-    if (existing) {
-      const userMap = await this.getUsersMap();
-      return {
-        profile: this.attachQrProfileUsers([existing], userMap)[0],
-        token: decryptQrToken(existing.tokenCiphertext),
-        created: false,
+      if (existing) {
+        const userMap = await this.getUsersMap();
+        return {
+          profile: this.attachQrProfileUsers([existing], userMap)[0],
+          token: decryptQrToken(existing.tokenCiphertext),
+          created: false,
+        };
+      }
+
+      const publicId = generateQrPublicId();
+      const token = generateQrToken(publicId);
+      const timestamp = new Date().toISOString();
+      const payload: InsertQrProfile = {
+        userId,
+        publicId,
+        tokenCiphertext: encryptQrToken(token),
+        tokenHash: hashQrToken(token),
+        isActive: true,
+        issuedAt: timestamp,
+        regeneratedAt: timestamp,
+        lastUsedAt: null,
+        lastUsedBy: null,
+        generatedBy: generatedBy ?? null,
       };
+
+      const [created] = await db.insert(qrProfiles).values(payload).returning();
+      const userMap = await this.getUsersMap();
+
+      return {
+        profile: this.attachQrProfileUsers([created], userMap)[0],
+        token,
+        created: true,
+      };
+    } catch (error) {
+      if (!isMissingQrAttendanceTableError(error)) throw error;
+      return this.issueRuntimeQrProfile(userId, generatedBy);
     }
-
-    const publicId = generateQrPublicId();
-    const token = generateQrToken(publicId);
-    const timestamp = new Date().toISOString();
-    const payload: InsertQrProfile = {
-      userId,
-      publicId,
-      tokenCiphertext: encryptQrToken(token),
-      tokenHash: hashQrToken(token),
-      isActive: true,
-      issuedAt: timestamp,
-      regeneratedAt: timestamp,
-      lastUsedAt: null,
-      lastUsedBy: null,
-      generatedBy: generatedBy ?? null,
-    };
-
-    const [created] = await db.insert(qrProfiles).values(payload).returning();
-    const userMap = await this.getUsersMap();
-
-    return {
-      profile: this.attachQrProfileUsers([created], userMap)[0],
-      token,
-      created: true,
-    };
   }
 
   async regenerateQrProfile(userId: number, generatedBy?: number): Promise<{ profile: QrProfileWithUser; token: string }> {
-    const [existing] = await db.select().from(qrProfiles).where(eq(qrProfiles.userId, userId));
+    try {
+      const [existing] = await db.select().from(qrProfiles).where(eq(qrProfiles.userId, userId));
 
-    if (!existing) {
-      const issued = await this.issueQrProfile(userId, generatedBy);
-      return { profile: issued.profile, token: issued.token };
+      if (!existing) {
+        const issued = await this.issueQrProfile(userId, generatedBy);
+        return { profile: issued.profile, token: issued.token };
+      }
+
+      const token = generateQrToken(existing.publicId);
+      const timestamp = new Date().toISOString();
+
+      const [updated] = await db
+        .update(qrProfiles)
+        .set({
+          tokenCiphertext: encryptQrToken(token),
+          tokenHash: hashQrToken(token),
+          regeneratedAt: timestamp,
+          generatedBy: generatedBy ?? existing.generatedBy,
+          isActive: true,
+        })
+        .where(eq(qrProfiles.userId, userId))
+        .returning();
+
+      const userMap = await this.getUsersMap();
+      return { profile: this.attachQrProfileUsers([updated], userMap)[0], token };
+    } catch (error) {
+      if (!isMissingQrAttendanceTableError(error)) throw error;
+      return this.regenerateRuntimeQrProfile(userId, generatedBy);
     }
-
-    const token = generateQrToken(existing.publicId);
-    const timestamp = new Date().toISOString();
-
-    const [updated] = await db
-      .update(qrProfiles)
-      .set({
-        tokenCiphertext: encryptQrToken(token),
-        tokenHash: hashQrToken(token),
-        regeneratedAt: timestamp,
-        generatedBy: generatedBy ?? existing.generatedBy,
-        isActive: true,
-      })
-      .where(eq(qrProfiles.userId, userId))
-      .returning();
-
-    const userMap = await this.getUsersMap();
-    return { profile: this.attachQrProfileUsers([updated], userMap)[0], token };
   }
 
   async setQrProfileActive(userId: number, isActive: boolean): Promise<QrProfileWithUser | undefined> {
-    const [updated] = await db.update(qrProfiles).set({ isActive }).where(eq(qrProfiles.userId, userId)).returning();
-    if (!updated) return undefined;
-    const userMap = await this.getUsersMap();
-    return this.attachQrProfileUsers([updated], userMap)[0];
+    try {
+      const [updated] = await db.update(qrProfiles).set({ isActive }).where(eq(qrProfiles.userId, userId)).returning();
+      if (!updated) return undefined;
+      const userMap = await this.getUsersMap();
+      return this.attachQrProfileUsers([updated], userMap)[0];
+    } catch (error) {
+      if (!isMissingQrAttendanceTableError(error)) throw error;
+      return this.setRuntimeQrProfileActive(userId, isActive);
+    }
   }
 
-  async getQrAttendanceEvents(filters?: {
-    userId?: number;
-    role?: "student" | "teacher";
-    attendanceDate?: string;
-    scannedBy?: number;
-  }): Promise<QrAttendanceEventWithUser[]> {
+  async getQrAttendanceEvents(filters?: QrAttendanceEventFilters): Promise<QrAttendanceEventWithUser[]> {
     try {
       const [records, userMap] = await Promise.all([db.select().from(qrAttendanceEvents), this.getUsersMap()]);
 
-      return this.attachQrAttendanceUsers(records, userMap).filter((record) => {
-        if (filters?.userId && record.userId !== filters.userId) return false;
-        if (filters?.attendanceDate && record.attendanceDate !== filters.attendanceDate) return false;
-        if (filters?.scannedBy && record.scannedBy !== filters.scannedBy) return false;
-        if (filters?.role && record.user?.role !== filters.role) return false;
-        return true;
-      });
+      return this.filterQrAttendanceEvents(this.attachQrAttendanceUsers(records, userMap), filters);
     } catch (error) {
       if (!isMissingQrAttendanceTableError(error)) throw error;
-      return [];
+      return this.getRuntimeQrAttendanceEvents(filters);
     }
   }
 
@@ -994,109 +1206,113 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async scanQrAttendance(input: {
-    token: string;
-    scannedBy: number;
-    direction: "Check In" | "Check Out";
-    status?: "Present" | "Late";
-    scanMethod: "camera" | "manual";
-    terminalLabel?: string | null;
-    notes?: string | null;
-  }): Promise<{
+  async scanQrAttendance(input: QrAttendanceScanInput): Promise<{
     event: QrAttendanceEventWithUser;
     duplicate: boolean;
     attendanceRecord?: AttendanceWithStudent;
   } | undefined> {
-    const tokenHash = hashQrToken(input.token);
-    const [profile] = await db.select().from(qrProfiles).where(eq(qrProfiles.tokenHash, tokenHash));
+    let dbProfile: QrProfile | undefined;
 
-    if (!profile || !profile.isActive) {
-      return undefined;
-    }
+    try {
+      const tokenHash = hashQrToken(input.token);
+      const [profile] = await db.select().from(qrProfiles).where(eq(qrProfiles.tokenHash, tokenHash));
+      dbProfile = profile;
 
-    const user = await this.getUser(profile.userId);
-    if (!user || !["student", "teacher"].includes(user.role)) {
-      return undefined;
-    }
-
-    const attendanceDate = getAttendanceDate();
-    const scannedAt = new Date().toISOString();
-
-    const [existingEvent] = await db
-      .select()
-      .from(qrAttendanceEvents)
-      .where(
-        and(
-          eq(qrAttendanceEvents.userId, profile.userId),
-          eq(qrAttendanceEvents.attendanceDate, attendanceDate),
-          eq(qrAttendanceEvents.direction, input.direction),
-        ),
-      );
-
-    let savedEvent = existingEvent;
-    let duplicate = Boolean(existingEvent);
-
-    if (!savedEvent) {
-      const payload: typeof qrAttendanceEvents.$inferInsert = {
-        userId: profile.userId,
-        scannedBy: input.scannedBy,
-        attendanceDate,
-        scannedAt,
-        roleSnapshot: user.role,
-        direction: input.direction,
-        status: input.direction === "Check In" ? input.status ?? "Present" : null,
-        scanMethod: input.scanMethod,
-        terminalLabel: input.terminalLabel ?? null,
-        notes: input.notes ?? null,
-      };
-
-      try {
-        [savedEvent] = await db.insert(qrAttendanceEvents).values(payload).returning();
-      } catch (error) {
-        if (!isUniqueViolation(error)) throw error;
-
-        duplicate = true;
-        [savedEvent] = await db
-          .select()
-          .from(qrAttendanceEvents)
-          .where(
-            and(
-              eq(qrAttendanceEvents.userId, profile.userId),
-              eq(qrAttendanceEvents.attendanceDate, attendanceDate),
-              eq(qrAttendanceEvents.direction, input.direction),
-            ),
-          );
-
-        if (!savedEvent) throw error;
+      if (!profile || !profile.isActive) {
+        return undefined;
       }
-    }
 
-    await db
-      .update(qrProfiles)
-      .set({ lastUsedAt: scannedAt, lastUsedBy: input.scannedBy })
-      .where(eq(qrProfiles.userId, profile.userId));
+      const user = await this.getUser(profile.userId);
+      if (!user || !["student", "teacher"].includes(user.role)) {
+        return undefined;
+      }
 
-    let attendanceRecord: AttendanceWithStudent | undefined;
-    if (user.role === "student" && input.direction === "Check In") {
-      const savedAttendance = await this.createAttendance({
-        studentId: user.id,
-        teacherId: input.scannedBy,
-        date: attendanceDate,
-        status: input.status ?? "Present",
-        session: "Full Day",
-        remarks: input.notes ?? `QR ${input.scanMethod} check-in`,
-      });
+      const attendanceDate = getAttendanceDate();
+      const scannedAt = new Date().toISOString();
+      const roleSnapshot = user.role === "teacher" ? "teacher" : "student";
+      const direction: QrAttendanceEvent["direction"] = input.direction === "Check In" ? "Check In" : "Check Out";
+      const scanMethod: QrAttendanceEvent["scanMethod"] = input.scanMethod === "camera" ? "camera" : "manual";
+
+      const [existingEvent] = await db
+        .select()
+        .from(qrAttendanceEvents)
+        .where(
+          and(
+            eq(qrAttendanceEvents.userId, profile.userId),
+            eq(qrAttendanceEvents.attendanceDate, attendanceDate),
+            eq(qrAttendanceEvents.direction, direction),
+          ),
+        );
+
+      let savedEvent = existingEvent;
+      let duplicate = Boolean(existingEvent);
+
+      if (!savedEvent) {
+        const payload: typeof qrAttendanceEvents.$inferInsert = {
+          userId: profile.userId,
+          scannedBy: input.scannedBy,
+          attendanceDate,
+          scannedAt,
+          roleSnapshot,
+          direction,
+          status: direction === "Check In" ? input.status ?? "Present" : null,
+          scanMethod,
+          terminalLabel: input.terminalLabel ?? null,
+          notes: input.notes ?? null,
+        };
+
+        try {
+          [savedEvent] = await db.insert(qrAttendanceEvents).values(payload).returning();
+        } catch (error) {
+          if (!isUniqueViolation(error)) throw error;
+
+          duplicate = true;
+          [savedEvent] = await db
+            .select()
+            .from(qrAttendanceEvents)
+            .where(
+              and(
+                eq(qrAttendanceEvents.userId, profile.userId),
+                eq(qrAttendanceEvents.attendanceDate, attendanceDate),
+                eq(qrAttendanceEvents.direction, direction),
+              ),
+            );
+
+          if (!savedEvent) throw error;
+        }
+      }
+
+      await db
+        .update(qrProfiles)
+        .set({ lastUsedAt: scannedAt, lastUsedBy: input.scannedBy })
+        .where(eq(qrProfiles.userId, profile.userId));
+
+      let attendanceRecord: AttendanceWithStudent | undefined;
+      if (user.role === "student" && input.direction === "Check In") {
+        const savedAttendance = await this.createAttendance({
+          studentId: user.id,
+          teacherId: input.scannedBy,
+          date: attendanceDate,
+          status: input.status ?? "Present",
+          session: "Full Day",
+          remarks: input.notes ?? `QR ${input.scanMethod} check-in`,
+        });
+        const userMap = await this.getUsersMap();
+        attendanceRecord = this.attachAttendanceUsers([savedAttendance], userMap)[0];
+      }
+
       const userMap = await this.getUsersMap();
-      attendanceRecord = this.attachAttendanceUsers([savedAttendance], userMap)[0];
+
+      return {
+        event: this.attachQrAttendanceUsers([savedEvent], userMap)[0],
+        duplicate,
+        attendanceRecord,
+      };
+    } catch (error) {
+      if (!isMissingQrAttendanceTableError(error)) throw error;
+      if (dbProfile) this.seedRuntimeQrProfile(dbProfile);
+      return this.scanRuntimeQrAttendance(input);
     }
-
-    const userMap = await this.getUsersMap();
-
-    return {
-      event: this.attachQrAttendanceUsers([savedEvent], userMap)[0],
-      duplicate,
-      attendanceRecord,
-    };
   }
 
   async getResult(id: number): Promise<Result | undefined> {
