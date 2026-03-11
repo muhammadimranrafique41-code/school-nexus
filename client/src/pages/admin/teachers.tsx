@@ -19,8 +19,12 @@ import { Loader2, Plus, Edit2, Trash2 } from "lucide-react";
 const teacherSchema = z.object({
     name: z.string().min(1, "Name is required"),
     email: z.string().email(),
-    password: z.string().min(1, "Password is required"),
+    password: z.string().optional(),
     subject: z.string().min(1, "Subject is required"),
+    designation: z.string().optional(),
+    department: z.string().optional(),
+    employeeId: z.string().optional(),
+    teacherPhotoUrl: z.union([z.string().trim().url("Enter a valid photo URL"), z.literal("")]).optional(),
 });
 
 export default function TeacherManagement() {
@@ -33,18 +37,34 @@ export default function TeacherManagement() {
 
     const form = useForm<z.infer<typeof teacherSchema>>({
         resolver: zodResolver(teacherSchema),
-        defaultValues: { name: "", email: "", password: "", subject: "" }
+        defaultValues: { name: "", email: "", password: "", subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "" }
     });
 
     const teachers = users?.filter(u => u.role === 'teacher') || [];
 
     const onSubmit = (data: z.infer<typeof teacherSchema>) => {
+        if (!editingId && !data.password?.trim()) {
+            form.setError("password", { message: "Password is required" });
+            return;
+        }
+
+        const payload = {
+            ...data,
+            role: "teacher" as const,
+            password: data.password?.trim() || undefined,
+            subject: data.subject.trim(),
+            designation: data.designation?.trim() || undefined,
+            department: data.department?.trim() || undefined,
+            employeeId: data.employeeId?.trim() || undefined,
+            teacherPhotoUrl: data.teacherPhotoUrl?.trim() || undefined,
+        };
+
         if (editingId) {
-            updateUser.mutate({ id: editingId, ...data, role: "teacher" }, {
+            updateUser.mutate({ id: editingId, ...payload }, {
                 onSuccess: () => { setIsOpen(false); setEditingId(null); form.reset(); }
             });
         } else {
-            createUser.mutate({ ...data, role: "teacher" }, {
+            createUser.mutate({ ...payload, password: payload.password! }, {
                 onSuccess: () => { setIsOpen(false); form.reset(); }
             });
         }
@@ -53,7 +73,7 @@ export default function TeacherManagement() {
     const handleEdit = (id: number) => {
         const teacher = teachers.find(t => t.id === id);
         if (teacher) {
-            form.reset({ name: teacher.name, email: teacher.email, password: "", subject: teacher.subject || "" });
+            form.reset({ name: teacher.name, email: teacher.email, password: "", subject: teacher.subject || "", designation: teacher.designation || "", department: teacher.department || "", employeeId: teacher.employeeId || "", teacherPhotoUrl: teacher.teacherPhotoUrl || "" });
             setEditingId(id);
             setIsOpen(true);
         }
@@ -69,7 +89,7 @@ export default function TeacherManagement() {
                     </div>
                     <Dialog open={isOpen} onOpenChange={setIsOpen}>
                         <DialogTrigger asChild>
-                            <Button onClick={() => { setEditingId(null); form.reset(); }}>
+                            <Button onClick={() => { setEditingId(null); form.reset({ name: "", email: "", password: "", subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "" }); }}>
                                 <Plus className="mr-2 h-4 w-4" /> Add Teacher
                             </Button>
                         </DialogTrigger>
@@ -95,7 +115,7 @@ export default function TeacherManagement() {
                                     )} />
                                     <FormField control={form.control} name="password" render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Password</FormLabel>
+                                            <FormLabel>{editingId ? "New Password (optional)" : "Password"}</FormLabel>
                                             <FormControl><Input type="password" {...field} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
@@ -107,6 +127,38 @@ export default function TeacherManagement() {
                                             <FormMessage />
                                         </FormItem>
                                     )} />
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <FormField control={form.control} name="designation" render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Designation</FormLabel>
+                                                <FormControl><Input placeholder="Senior Teacher" {...field} value={field.value ?? ""} /></FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )} />
+                                        <FormField control={form.control} name="department" render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Department</FormLabel>
+                                                <FormControl><Input placeholder="Science Department" {...field} value={field.value ?? ""} /></FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )} />
+                                    </div>
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <FormField control={form.control} name="employeeId" render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Employee ID</FormLabel>
+                                                <FormControl><Input placeholder="SNX-T-001" {...field} value={field.value ?? ""} /></FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )} />
+                                        <FormField control={form.control} name="teacherPhotoUrl" render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Teacher Photo URL</FormLabel>
+                                                <FormControl><Input placeholder="https://example.com/teacher-photo.jpg" {...field} value={field.value ?? ""} /></FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )} />
+                                    </div>
                                     <Button type="submit" className="w-full" disabled={createUser.isPending || updateUser.isPending}>
                                         {createUser.isPending || updateUser.isPending ? <Loader2 className="animate-spin h-4 w-4" /> : "Save"}
                                     </Button>
@@ -122,7 +174,7 @@ export default function TeacherManagement() {
                             <TableRow>
                                 <TableHead>Name</TableHead>
                                 <TableHead>Email</TableHead>
-                                <TableHead>Subject</TableHead>
+                                <TableHead>Role Details</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -136,7 +188,7 @@ export default function TeacherManagement() {
                                     <TableRow key={teacher.id}>
                                         <TableCell className="font-medium">{teacher.name}</TableCell>
                                         <TableCell>{teacher.email}</TableCell>
-                                        <TableCell>{teacher.subject}</TableCell>
+                                        <TableCell>{[teacher.subject, teacher.designation, teacher.department, teacher.employeeId].filter(Boolean).join(" • ") || "—"}</TableCell>
                                         <TableCell className="text-right space-x-2">
                                             <Button size="sm" variant="outline" onClick={() => handleEdit(teacher.id)}>
                                                 <Edit2 className="h-4 w-4" />

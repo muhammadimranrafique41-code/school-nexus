@@ -67,6 +67,7 @@ const teacherSections: SidebarSection[] = [
     label: "Teaching",
     items: [
       { title: "Attendance Marking", url: "/teacher/attendance", icon: CalendarDays, badge: "New", pulse: true },
+      { title: "My QR Card", url: "/teacher/qr-card", icon: QrCode, badge: "QR" },
       { title: "QR Attendance", url: "/teacher/qr-attendance", icon: ScanLine, badge: "QR" },
       { title: "Results", url: "/teacher/results", icon: GraduationCap },
     ],

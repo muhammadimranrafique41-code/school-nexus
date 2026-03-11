@@ -1,5 +1,6 @@
 import { Layout } from "@/components/layout";
-import { StudentIdCardPreview, buildStudentIdCardPrintHtml, getContactLine, type StudentIdCardData } from "@/components/qr-student-id-card";
+import { TeacherIdCardPreview, buildTeacherIdCardPrintHtml, resolveTeacherPortraitUrl, type TeacherIdCardData, useTeacherPortraitUrl } from "@/components/qr-teacher-id-card";
+import { getContactLine } from "@/components/qr-student-id-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -7,7 +8,7 @@ import { useUser } from "@/hooks/use-auth";
 import { useMyQrCard } from "@/hooks/use-qr-attendance";
 import { usePublicSchoolSettings } from "@/hooks/use-settings";
 import { useToast } from "@/hooks/use-toast";
-import { copyToClipboard, buildQrImageUrl } from "@/lib/qr";
+import { buildQrImageUrl, copyToClipboard } from "@/lib/qr";
 import { formatDate, getErrorMessage } from "@/lib/utils";
 import { api } from "@shared/routes";
 import { BadgeCheck, Copy, Loader2, Printer, QrCode, ShieldCheck } from "lucide-react";
@@ -16,37 +17,41 @@ import { z } from "zod";
 type MyQrCardData = NonNullable<z.infer<(typeof api.qrAttendance.myCard.responses)[200]>["data"]>;
 type QrHistoryEvent = MyQrCardData["recentEvents"][number];
 
-export default function StudentQrCard() {
+export default function TeacherQrCard() {
   const { toast } = useToast();
   const { data: user } = useUser();
   const { data: publicSettings } = usePublicSchoolSettings();
   const { data, isLoading } = useMyQrCard();
 
-  const student = data?.profile.user ?? user;
+  const teacher = data?.profile.user ?? user;
   const schoolName = publicSettings?.schoolInformation.schoolName ?? "School Nexus Academy";
   const shortName = publicSettings?.schoolInformation.shortName || schoolName;
-  const motto = publicSettings?.schoolInformation.motto?.trim() || "Empowering every learner.";
+  const motto = publicSettings?.schoolInformation.motto?.trim() || "Professional excellence through trusted learning leadership.";
   const academicYear = publicSettings?.academicConfiguration.currentAcademicYear ?? "Current Academic Year";
   const currentTerm = publicSettings?.academicConfiguration.currentTerm ?? "Current Term";
-  const studentName = student?.name ?? "Student";
-  const studentClass = student?.className?.trim() || "Unassigned";
-  const fatherName = student?.fatherName?.trim() || "Not on file";
+  const teacherName = teacher?.name ?? "Teacher";
+  const designation = teacher?.designation?.trim() || "Faculty Member";
+  const department = teacher?.department?.trim() || teacher?.subject?.trim() || "Academic Affairs";
+  const subject = teacher?.subject?.trim() || "General Studies";
+  const employeeId = teacher?.employeeId?.trim() || (data ? data.profile.publicId.toUpperCase() : "Not assigned");
   const qrImageUrl = data ? buildQrImageUrl(data.token, 320) : "";
-  const portraitUrl = student?.studentPhotoUrl?.trim() || null;
+  const portraitUrl = useTeacherPortraitUrl(teacher?.teacherPhotoUrl ?? null);
   const contactLine = getContactLine(publicSettings);
   const authenticityLine = contactLine
-    ? `Official ${shortName} credential • ${contactLine}`
-    : `Official ${shortName} credential • Valid only when scanned through QR Attendance`;
+    ? `Official ${shortName} staff credential • ${contactLine}`
+    : `Official ${shortName} staff credential • Valid only when scanned through QR Attendance`;
   const recentEvents = data?.recentEvents ?? [];
-  const studentCardData: StudentIdCardData | null = data
+  const teacherCardData: TeacherIdCardData | null = data
     ? {
       schoolName,
       shortName,
       motto,
       logoUrl: publicSettings?.branding.logoUrl || undefined,
-      studentName,
-      className: studentClass,
-      fatherName,
+      teacherName,
+      designation,
+      department,
+      subject,
+      employeeId,
       publicId: data.profile.publicId,
       qrUrl: qrImageUrl,
       portraitUrl,
@@ -67,7 +72,7 @@ export default function StudentQrCard() {
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!data || typeof window === "undefined") return;
 
     const printWindow = window.open("", "_blank", "width=1100,height=1500");
@@ -81,8 +86,12 @@ export default function StudentQrCard() {
     }
 
     try {
+      const printCard = {
+        ...teacherCardData!,
+        portraitUrl: await resolveTeacherPortraitUrl(teacher?.teacherPhotoUrl ?? teacherCardData?.portraitUrl ?? null),
+      };
       printWindow.document.open();
-      printWindow.document.write(buildStudentIdCardPrintHtml(studentCardData!));
+      printWindow.document.write(buildTeacherIdCardPrintHtml(printCard));
       printWindow.document.close();
     } catch (error) {
       printWindow.close();
@@ -94,10 +103,10 @@ export default function StudentQrCard() {
     <Layout>
       <div className="space-y-6 pb-8">
         <div className="print:hidden">
-          <h1 className="text-3xl font-display font-bold">Student ID Card</h1>
+          <h1 className="text-3xl font-display font-bold">Teacher ID Card</h1>
           <p className="mt-1 max-w-3xl text-muted-foreground">
-            Your School Nexus identity card is optimized for both digital presentation and compact printing, while keeping the
-            QR attendance credential ready for fast authorized scanning.
+            Your School Nexus staff credential mirrors the premium student QR card experience with teacher-specific identity details,
+            compact printing, and a scan-ready attendance QR token.
           </p>
         </div>
 
@@ -106,14 +115,14 @@ export default function StudentQrCard() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><QrCode className="h-5 w-5" /> Premium ID preview</CardTitle>
               <CardDescription>
-                A polished student credential using your live QR attendance token, school branding, and current profile details.
+                A polished teacher credential using your live QR attendance token, school branding, and current staff profile details.
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
               {isLoading || !data ? (
-                <div className="flex min-h-[360px] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-600" /></div>
+                <div className="flex min-h-[360px] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-emerald-600" /></div>
               ) : (
-                <StudentIdCardPreview card={studentCardData!} />
+                <TeacherIdCardPreview card={teacherCardData!} />
               )}
             </CardContent>
           </Card>
@@ -123,7 +132,7 @@ export default function StudentQrCard() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><BadgeCheck className="h-5 w-5" /> Card access & print</CardTitle>
                 <CardDescription>
-                  Keep the print layout clean while preserving the manual fallback token outside the visible card design.
+                  Keep the print layout clean while preserving the manual fallback token outside the visible teacher card design.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
@@ -162,8 +171,8 @@ export default function StudentQrCard() {
                   <div className="flex items-start gap-3">
                     <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
                     <p>
-                      Your QR token remains protected server-side, while the visual card keeps a premium print-safe layout with live identity
-                      data when available. Any missing student profile details still fall back gracefully without affecting scan reliability.
+                      Your QR token remains protected server-side, while the visual card keeps a premium print-safe layout with live staff
+                      identity data when available. Missing teacher profile details still fall back gracefully without affecting scan reliability.
                     </p>
                   </div>
                 </div>

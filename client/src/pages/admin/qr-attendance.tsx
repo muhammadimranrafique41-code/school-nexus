@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { TeacherIdCardPreview, buildTeacherIdCardPrintHtml, resolveTeacherPortraitUrl, type TeacherIdCardData, useTeacherPortraitUrl } from "@/components/qr-teacher-id-card";
 import { StudentIdCardPreview, buildStudentIdCardPrintHtml, getContactLine, type StudentIdCardData } from "@/components/qr-student-id-card";
 import { Layout } from "@/components/layout";
 import { Badge } from "@/components/ui/badge";
@@ -44,7 +45,7 @@ export default function AdminQrAttendance() {
     const query = search.trim().toLowerCase();
     if (!query) return roster;
     return roster.filter((item: QrRosterItem) => {
-      const details = `${item.user.name} ${item.user.email} ${item.user.role} ${item.user.className ?? ""} ${item.user.subject ?? ""} ${item.user.fatherName ?? ""}`.toLowerCase();
+      const details = `${item.user.name} ${item.user.email} ${item.user.role} ${item.user.className ?? ""} ${item.user.subject ?? ""} ${item.user.fatherName ?? ""} ${item.user.designation ?? ""} ${item.user.department ?? ""} ${item.user.employeeId ?? ""}`.toLowerCase();
       return details.includes(query);
     });
   }, [roster, search]);
@@ -58,6 +59,7 @@ export default function AdminQrAttendance() {
   const authenticityLine = contactLine
     ? `Official ${shortName} credential • ${contactLine}`
     : `Official ${shortName} credential • Valid only when scanned through QR Attendance`;
+  const issuedTeacherPortraitUrl = useTeacherPortraitUrl(issuedCard?.profile.user?.role === "teacher" ? issuedCard.profile.user.teacherPhotoUrl ?? null : null);
   const issuedStudentCardData: StudentIdCardData | null = issuedCard?.profile.user?.role === "student"
     ? {
       schoolName,
@@ -74,6 +76,28 @@ export default function AdminQrAttendance() {
       academicYear,
       currentTerm,
       authenticityLine,
+    }
+    : null;
+  const issuedTeacherCardData: TeacherIdCardData | null = issuedCard?.profile.user?.role === "teacher"
+    ? {
+      schoolName,
+      shortName,
+      motto,
+      logoUrl: publicSettings?.branding.logoUrl || undefined,
+      teacherName: issuedCard.profile.user.name,
+      designation: issuedCard.profile.user.designation?.trim() || "Faculty Member",
+      department: issuedCard.profile.user.department?.trim() || issuedCard.profile.user.subject?.trim() || "Academic Affairs",
+      subject: issuedCard.profile.user.subject?.trim() || "General Studies",
+      employeeId: issuedCard.profile.user.employeeId?.trim() || issuedCard.profile.publicId.toUpperCase(),
+      publicId: issuedCard.profile.publicId,
+      qrUrl: buildQrImageUrl(issuedCard.token, 320),
+      portraitUrl: issuedTeacherPortraitUrl,
+      isActive: issuedCard.profile.isActive,
+      academicYear,
+      currentTerm,
+      authenticityLine: contactLine
+        ? `Official ${shortName} staff credential • ${contactLine}`
+        : `Official ${shortName} staff credential • Valid only when scanned through QR Attendance`,
     }
     : null;
 
@@ -116,18 +140,32 @@ export default function AdminQrAttendance() {
     }
   };
 
-  const handlePrint = () => {
-    if (!issuedStudentCardData || typeof window === "undefined") return;
+  const handlePrint = async () => {
+    if ((!issuedStudentCardData && !issuedTeacherCardData) || typeof window === "undefined") return;
 
-    const printWindow = window.open("", "_blank", "width=900,height=1200");
+    const printWindow = window.open("", "_blank", "width=1100,height=1500");
     if (!printWindow) {
       toast({ title: "Unable to open print view", description: "Please allow pop-ups for this site and try again.", variant: "destructive" });
       return;
     }
 
     try {
+      const printMarkup = issuedStudentCardData
+        ? buildStudentIdCardPrintHtml(issuedStudentCardData)
+        : issuedTeacherCardData
+          ? buildTeacherIdCardPrintHtml({
+            ...issuedTeacherCardData,
+            portraitUrl: await resolveTeacherPortraitUrl(issuedCard?.profile.user?.teacherPhotoUrl ?? issuedTeacherCardData.portraitUrl ?? null),
+          })
+          : null;
+
+      if (!printMarkup) {
+        printWindow.close();
+        return;
+      }
+
       printWindow.document.open();
-      printWindow.document.write(buildStudentIdCardPrintHtml(issuedStudentCardData));
+      printWindow.document.write(printMarkup);
       printWindow.document.close();
     } catch (error) {
       printWindow.close();
@@ -162,7 +200,7 @@ export default function AdminQrAttendance() {
             <CardDescription>Cards are eligible only for teachers and students. Search the roster, issue a first-time card, or rotate a token when a credential must be replaced.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name, email, role, class, subject, or father name" />
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name, email, role, class, subject, father name, department, designation, or employee ID" />
             <div className="overflow-x-auto rounded-[1.5rem] border">
               <Table>
                 <TableHeader>
@@ -194,7 +232,7 @@ export default function AdminQrAttendance() {
                         <TableCell className="text-slate-500">
                           {item.user.role === "student"
                             ? [item.user.className, item.user.fatherName].filter(Boolean).join(" • ") || "—"
-                            : item.user.subject || "—"}
+                            : [item.user.subject, item.user.designation, item.user.department, item.user.employeeId].filter(Boolean).join(" • ") || "—"}
                         </TableCell>
                         <TableCell>
                           {item.profile ? (
@@ -246,6 +284,8 @@ export default function AdminQrAttendance() {
               <div className="space-y-5">
                 {issuedStudentCardData ? (
                   <StudentIdCardPreview card={issuedStudentCardData} />
+                ) : issuedTeacherCardData ? (
+                  <TeacherIdCardPreview card={issuedTeacherCardData} />
                 ) : (
                   <div className="space-y-4 text-center">
                     <img src={buildQrImageUrl(issuedCard.token)} alt="Issued QR credential" className="mx-auto aspect-square w-full max-w-[280px] rounded-2xl border bg-white p-3" />
@@ -270,7 +310,7 @@ export default function AdminQrAttendance() {
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                  {issuedStudentCardData ? (
+                  {issuedStudentCardData || issuedTeacherCardData ? (
                     <Button variant="outline" onClick={handlePrint}><Printer className="mr-2 h-4 w-4" /> Print ID card</Button>
                   ) : null}
                   <Button variant="outline" onClick={handleCopy}><Copy className="mr-2 h-4 w-4" /> Copy token</Button>

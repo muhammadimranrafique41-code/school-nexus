@@ -1,16 +1,17 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { escapeHtml } from "@/lib/utils";
-import type { PublicSchoolSettings } from "@shared/settings";
+import { useEffect, useMemo, useState } from "react";
 
-export type StudentIdCardData = {
+export type TeacherIdCardData = {
   schoolName: string;
   shortName: string;
   motto: string;
   logoUrl?: string;
-  studentName: string;
-  className: string;
-  fatherName: string;
+  teacherName: string;
+  designation: string;
+  department: string;
+  subject: string;
+  employeeId: string;
   publicId: string;
   qrUrl: string;
   portraitUrl?: string | null;
@@ -20,28 +21,161 @@ export type StudentIdCardData = {
   authenticityLine: string;
 };
 
-export function getInitials(value?: string | null) {
+function getInitials(value?: string | null) {
   return value?.split(" ").filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "SN";
 }
 
-export function getContactLine(settings?: PublicSchoolSettings | null) {
-  return [
-    settings?.schoolInformation.schoolAddress,
-    settings?.schoolInformation.schoolPhone,
-    settings?.schoolInformation.schoolEmail,
-  ].filter((value): value is string => Boolean(value?.trim())).join(" • ");
+function extractFirstUrlCandidate(value: string) {
+  const matches = value.match(/https?:\/\/.+?(?=https?:\/\/|$)/gi) ?? [];
+
+  for (const match of matches) {
+    const candidate = match.trim().replace(/[),.;]+$/, "");
+    try {
+      return new URL(candidate).toString();
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
 }
 
-export function StudentIdCardPreview({ card }: { card: StudentIdCardData }) {
-  const initials = getInitials(card.studentName);
+export function normalizeTeacherPortraitUrl(value?: string | null) {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+
+  const urlCandidates = trimmed.match(/https?:\/\//gi)?.length && (trimmed.match(/https?:\/\//gi)?.length ?? 0) > 1
+    ? [extractFirstUrlCandidate(trimmed)]
+    : [trimmed, extractFirstUrlCandidate(trimmed)];
+
+  for (const candidate of urlCandidates) {
+    if (!candidate) continue;
+
+    try {
+      return new URL(candidate).toString();
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function inferImageMimeType(url: string) {
+  const pathname = new URL(url).pathname.toLowerCase();
+  if (pathname.endsWith(".png")) return "image/png";
+  if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) return "image/jpeg";
+  if (pathname.endsWith(".webp")) return "image/webp";
+  if (pathname.endsWith(".gif")) return "image/gif";
+  if (pathname.endsWith(".svg")) return "image/svg+xml";
+  if (pathname.endsWith(".avif")) return "image/avif";
+  return null;
+}
+
+async function readRemoteImageAsDataUrl(url: string, signal: AbortSignal) {
+  const response = await fetch(url, { signal, credentials: "omit" });
+  if (!response.ok) throw new Error(`Failed to load teacher portrait: ${response.status}`);
+
+  const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+  const imageType = contentType?.startsWith("image/") ? contentType : inferImageMimeType(url);
+  if (!imageType) throw new Error("Unable to infer teacher portrait image type");
+
+  const blob = new Blob([await response.arrayBuffer()], { type: imageType });
+
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Unable to read teacher portrait data"));
+    reader.onerror = () => reject(reader.error ?? new Error("Unable to read teacher portrait data"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+export async function resolveTeacherPortraitUrl(rawUrl?: string | null, signal?: AbortSignal) {
+  const normalizedUrl = normalizeTeacherPortraitUrl(rawUrl);
+  if (!normalizedUrl || typeof window === "undefined") return normalizedUrl;
+  if (normalizedUrl.startsWith("data:") || normalizedUrl.startsWith("blob:")) return normalizedUrl;
+
+  const portraitUrl = new URL(normalizedUrl);
+  if (portraitUrl.origin === window.location.origin) return normalizedUrl;
+
+  try {
+    return await readRemoteImageAsDataUrl(normalizedUrl, signal ?? new AbortController().signal);
+  } catch {
+    return normalizedUrl;
+  }
+}
+
+export function useTeacherPortraitUrl(rawUrl?: string | null) {
+  const normalizedUrl = useMemo(() => normalizeTeacherPortraitUrl(rawUrl), [rawUrl]);
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(normalizedUrl);
+
+  useEffect(() => {
+    setResolvedUrl(normalizedUrl);
+  }, [normalizedUrl]);
+
+  useEffect(() => {
+    if (!normalizedUrl || typeof window === "undefined") return;
+    if (normalizedUrl.startsWith("data:") || normalizedUrl.startsWith("blob:")) return;
+
+    const portraitUrl = new URL(normalizedUrl);
+    if (portraitUrl.origin === window.location.origin) return;
+
+    const controller = new AbortController();
+    let active = true;
+
+    resolveTeacherPortraitUrl(normalizedUrl, controller.signal)
+      .then((dataUrl) => {
+        if (active) setResolvedUrl(dataUrl);
+      })
+      .catch(() => {
+        if (active) setResolvedUrl(normalizedUrl);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [normalizedUrl]);
+
+  return resolvedUrl;
+}
+
+function TeacherPortrait({ src, alt, initials }: { src?: string | null; alt: string; initials: string }) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [src]);
+
+  if (src && !imageFailed) {
+    return (
+      <img
+        src={src}
+        alt={alt}
+        className="h-full min-h-[132px] w-full rounded-[1.1rem] object-cover"
+        referrerPolicy="no-referrer"
+        onError={() => setImageFailed(true)}
+      />
+    );
+  }
 
   return (
-    <div className="rounded-[2rem] border border-slate-200/80 bg-gradient-to-br from-white via-slate-50 to-violet-50/50 p-4 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.45)] sm:p-5">
+    <div className="grid h-full min-h-[132px] w-full place-items-center rounded-[1.1rem] bg-gradient-to-br from-slate-200 to-emerald-100 text-3xl font-bold text-slate-700">
+      {initials}
+    </div>
+  );
+}
+
+export function TeacherIdCardPreview({ card }: { card: TeacherIdCardData }) {
+  const initials = getInitials(card.teacherName);
+
+  return (
+    <div className="rounded-[2rem] border border-slate-200/80 bg-gradient-to-br from-white via-slate-50 to-emerald-50/60 p-4 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.45)] sm:p-5">
       <div className="mx-auto w-full max-w-[390px]">
         <div className="relative aspect-[54/86] overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_25px_70px_-35px_rgba(15,23,42,0.55)]">
-          <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-br from-slate-950 via-slate-900 to-violet-900" />
-          <div className="absolute -right-4 -top-5 h-28 w-28 rounded-full bg-fuchsia-400/25 blur-2xl" />
-          <div className="absolute -left-4 bottom-12 h-24 w-24 rounded-full bg-violet-200/60 blur-2xl" />
+          <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-900" />
+          <div className="absolute -right-4 -top-5 h-28 w-28 rounded-full bg-emerald-400/25 blur-2xl" />
+          <div className="absolute -left-4 bottom-12 h-24 w-24 rounded-full bg-sky-200/60 blur-2xl" />
 
           <div className="relative flex h-full flex-col p-5">
             <div className="rounded-[1.4rem] border border-white/15 bg-white/10 p-4 text-white backdrop-blur-sm">
@@ -59,42 +193,48 @@ export function StudentIdCardPreview({ card }: { card: StudentIdCardData }) {
                     <h2 className="line-clamp-2 text-lg font-bold leading-tight">{card.schoolName}</h2>
                   </div>
                 </div>
-                <div className="rounded-full border border-amber-300/30 bg-amber-300/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-amber-100">
-                  Student ID
+                <div className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-emerald-100">
+                  Teacher ID
                 </div>
               </div>
 
-              <div className="my-3 h-px bg-gradient-to-r from-amber-300/0 via-amber-300/80 to-amber-300/0" />
+              <div className="my-3 h-px bg-gradient-to-r from-emerald-300/0 via-emerald-300/80 to-emerald-300/0" />
               <p className="text-[11px] leading-relaxed text-slate-200/90">{card.motto}</p>
             </div>
 
             <div className="mt-4 grid grid-cols-[112px_1fr] gap-4">
               <div className="rounded-[1.5rem] border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-2.5 shadow-sm">
-                <Avatar className="h-full min-h-[132px] w-full rounded-[1.1rem] border border-slate-200 bg-slate-100">
-                  <AvatarImage src={card.portraitUrl ?? undefined} alt={`${card.studentName} portrait`} className="object-cover" />
-                  <AvatarFallback className="rounded-[1.1rem] bg-gradient-to-br from-slate-200 to-violet-100 text-3xl font-bold text-slate-700">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
+                <TeacherPortrait src={card.portraitUrl} alt={`${card.teacherName} portrait`} initials={initials} />
               </div>
 
               <div className="space-y-3">
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Student name</p>
-                  <p className="mt-1 font-display text-[1.38rem] font-bold leading-tight text-slate-950">{card.studentName}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Teacher name</p>
+                  <p className="mt-1 font-display text-[1.38rem] font-bold leading-tight text-slate-950">{card.teacherName}</p>
                 </div>
 
                 <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-3 py-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Father&apos;s Name</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">{card.fatherName}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Designation</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">{card.designation}</p>
                 </div>
               </div>
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3">
               <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-3 py-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Class</p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">{card.className}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Department</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{card.department}</p>
+              </div>
+              <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-3 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Employee ID</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{card.employeeId}</p>
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-3 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Subject</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{card.subject}</p>
               </div>
               <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50/80 px-3 py-3">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Academic session</p>
@@ -105,27 +245,27 @@ export function StudentIdCardPreview({ card }: { card: StudentIdCardData }) {
             <div className="mt-auto rounded-[1.5rem] border border-slate-200 bg-slate-50/90 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-600">Secure attendance credential</p>
-                  <p className="mt-1 text-xs text-slate-500">{card.currentTerm} • optimized for scan accuracy</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-600">Secure staff attendance credential</p>
+                  <p className="mt-1 text-xs text-slate-500">{card.currentTerm} • institution-aligned verification</p>
                 </div>
                 <Badge variant={card.isActive ? "secondary" : "destructive"}>{card.isActive ? "Active" : "Inactive"}</Badge>
               </div>
 
               <div className="mt-3 flex items-center gap-3">
                 <div className="rounded-[1.25rem] border border-slate-200 bg-white p-3 shadow-sm">
-                  <img src={card.qrUrl} alt={`${card.studentName} QR code`} className="h-28 w-28 rounded-lg" />
+                  <img src={card.qrUrl} alt={`${card.teacherName} QR code`} className="h-28 w-28 rounded-lg" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold text-slate-900">Balanced quiet space is preserved for reliable scanning.</p>
                   <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                    Present the card digitally or in print for authorized identity verification and attendance workflows.
+                    Present the card digitally or in print for authorized staff identity verification and attendance workflows.
                   </p>
                   <div className="mt-3 rounded-xl bg-slate-950 px-3 py-2 font-mono text-[11px] text-slate-100">{card.publicId}</div>
                 </div>
               </div>
             </div>
 
-            <div className="mt-3 rounded-[1rem] border border-amber-200 bg-amber-50/90 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
+            <div className="mt-3 rounded-[1rem] border border-emerald-200 bg-emerald-50/90 px-3 py-2 text-[11px] leading-relaxed text-emerald-900">
               {card.authenticityLine}
             </div>
           </div>
@@ -135,13 +275,14 @@ export function StudentIdCardPreview({ card }: { card: StudentIdCardData }) {
   );
 }
 
-export function buildStudentIdCardPrintHtml(card: StudentIdCardData) {
-  const initials = getInitials(card.studentName);
+export function buildTeacherIdCardPrintHtml(card: TeacherIdCardData) {
+  const initials = getInitials(card.teacherName);
+  const portraitUrl = normalizeTeacherPortraitUrl(card.portraitUrl);
   const logoHtml = card.logoUrl
     ? `<img src="${escapeHtml(card.logoUrl)}" alt="${escapeHtml(card.shortName)} logo" class="logo" />`
     : `<div class="logo logo-fallback">${escapeHtml(getInitials(card.shortName))}</div>`;
-  const portraitHtml = card.portraitUrl
-    ? `<div class="portrait photo"><img src="${escapeHtml(card.portraitUrl)}" alt="${escapeHtml(card.studentName)} portrait" onerror="this.style.display='none';this.nextElementSibling.style.display='grid';" /><div class="portrait-fallback" style="display:none">${escapeHtml(initials)}</div></div>`
+  const portraitHtml = portraitUrl
+    ? `<div class="portrait photo"><img src="${escapeHtml(portraitUrl)}" alt="${escapeHtml(card.teacherName)} portrait" referrerpolicy="no-referrer" onerror="this.style.display='none';this.nextElementSibling.style.display='grid';" /><div class="portrait-fallback" style="display:none">${escapeHtml(initials)}</div></div>`
     : `<div class="portrait"><div class="portrait-fallback">${escapeHtml(initials)}</div></div>`;
 
   return `<!DOCTYPE html>
@@ -149,7 +290,7 @@ export function buildStudentIdCardPrintHtml(card: StudentIdCardData) {
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>${escapeHtml(card.studentName)} • ${escapeHtml(card.shortName)} ID Card</title>
+      <title>${escapeHtml(card.teacherName)} • ${escapeHtml(card.shortName)} Teacher ID Card</title>
       <style>
         @page { margin: 12mm; }
         * { box-sizing: border-box; }
@@ -193,7 +334,7 @@ export function buildStudentIdCardPrintHtml(card: StudentIdCardData) {
           position: absolute;
           inset: 0 0 auto 0;
           height: 72mm;
-          background: linear-gradient(145deg, #020617 0%, #172554 56%, #5b21b6 100%);
+          background: linear-gradient(145deg, #020617 0%, #0f172a 50%, #065f46 100%);
         }
         .glow {
           position: absolute;
@@ -206,14 +347,14 @@ export function buildStudentIdCardPrintHtml(card: StudentIdCardData) {
           height: 46mm;
           right: -8mm;
           top: -8mm;
-          background: #f472b6;
+          background: #34d399;
         }
         .glow-bottom {
           width: 38mm;
           height: 38mm;
           left: -6mm;
           bottom: 12mm;
-          background: #a78bfa;
+          background: #7dd3fc;
         }
         .content {
           position: relative;
@@ -276,19 +417,19 @@ export function buildStudentIdCardPrintHtml(card: StudentIdCardData) {
         .type-chip {
           white-space: nowrap;
           border-radius: 999px;
-          border: 0.25mm solid rgba(251, 191, 36, 0.42);
-          color: #fef3c7;
+          border: 0.25mm solid rgba(110, 231, 183, 0.42);
+          color: #d1fae5;
           padding: 1.4mm 2.8mm;
           font-size: 6.2px;
           font-weight: 800;
           text-transform: uppercase;
           letter-spacing: 0.2em;
-          background: rgba(251, 191, 36, 0.12);
+          background: rgba(16, 185, 129, 0.12);
         }
         .rule {
           height: 0.3mm;
           margin: 3mm 0 2.4mm;
-          background: linear-gradient(90deg, rgba(251, 191, 36, 0), rgba(251, 191, 36, 0.92), rgba(251, 191, 36, 0));
+          background: linear-gradient(90deg, rgba(110, 231, 183, 0), rgba(110, 231, 183, 0.92), rgba(110, 231, 183, 0));
         }
         .motto {
           margin: 0;
@@ -317,7 +458,7 @@ export function buildStudentIdCardPrintHtml(card: StudentIdCardData) {
           overflow: hidden;
           display: grid;
           place-items: center;
-          background: linear-gradient(145deg, #e2e8f0 0%, #ddd6fe 100%);
+          background: linear-gradient(145deg, #e2e8f0 0%, #d1fae5 100%);
           color: #334155;
           font-size: 24px;
           font-weight: 800;
@@ -370,7 +511,7 @@ export function buildStudentIdCardPrintHtml(card: StudentIdCardData) {
         }
         .field-value {
           margin: 1mm 0 0;
-          font-size: 7.3px;
+          font-size: 7.2px;
           line-height: 1.45;
           font-weight: 700;
           color: #0f172a;
@@ -458,11 +599,11 @@ export function buildStudentIdCardPrintHtml(card: StudentIdCardData) {
         .footer {
           padding: 2.8mm 3.2mm;
           border-radius: 4.8mm;
-          border: 0.25mm solid rgba(251, 191, 36, 0.35);
-          background: rgba(255, 251, 235, 0.92);
+          border: 0.25mm solid rgba(110, 231, 183, 0.35);
+          background: rgba(236, 253, 245, 0.92);
           font-size: 6.2px;
           line-height: 1.55;
-          color: #92400e;
+          color: #065f46;
           overflow-wrap: anywhere;
         }
         @media print {
@@ -500,7 +641,7 @@ export function buildStudentIdCardPrintHtml(card: StudentIdCardData) {
                     <p class="school">${escapeHtml(card.schoolName)}</p>
                   </div>
                 </div>
-                <div class="type-chip">Student ID</div>
+                <div class="type-chip">Teacher ID</div>
               </div>
               <div class="rule"></div>
               <p class="motto">${escapeHtml(card.motto)}</p>
@@ -509,19 +650,27 @@ export function buildStudentIdCardPrintHtml(card: StudentIdCardData) {
             <section class="identity">
               <div class="portrait-wrap">${portraitHtml}</div>
               <div class="identity-copy">
-                <p class="name-label">Student Name</p>
-                <p class="name">${escapeHtml(card.studentName)}</p>
+                <p class="name-label">Teacher Name</p>
+                <p class="name">${escapeHtml(card.teacherName)}</p>
                 <div class="field">
-                  <p class="field-label">Father's Name</p>
-                  <p class="field-value">${escapeHtml(card.fatherName)}</p>
+                  <p class="field-label">Designation</p>
+                  <p class="field-value">${escapeHtml(card.designation)}</p>
                 </div>
               </div>
             </section>
 
             <section class="detail-grid">
               <div class="field">
-                <p class="field-label">Class</p>
-                <p class="field-value">${escapeHtml(card.className)}</p>
+                <p class="field-label">Department</p>
+                <p class="field-value">${escapeHtml(card.department)}</p>
+              </div>
+              <div class="field">
+                <p class="field-label">Employee ID</p>
+                <p class="field-value">${escapeHtml(card.employeeId)}</p>
+              </div>
+              <div class="field">
+                <p class="field-label">Subject</p>
+                <p class="field-value">${escapeHtml(card.subject)}</p>
               </div>
               <div class="field">
                 <p class="field-label">Academic Session</p>
@@ -532,18 +681,18 @@ export function buildStudentIdCardPrintHtml(card: StudentIdCardData) {
             <section class="qr-panel">
               <div class="qr-top">
                 <div>
-                  <p class="meta-title">Secure Attendance Credential</p>
-                  <p class="meta-subtitle">Scan to verify active school identity on one clean printable page.</p>
+                  <p class="meta-title">Secure Staff Attendance Credential</p>
+                  <p class="meta-subtitle">Scan to verify trusted institutional identity on one clean printable page.</p>
                 </div>
                 <div class="state-chip">${card.isActive ? "Active" : "Inactive"}</div>
               </div>
               <div class="qr-row">
                 <div class="qr-box">
-                  <img src="${escapeHtml(card.qrUrl)}" alt="${escapeHtml(card.studentName)} QR code" />
+                  <img src="${escapeHtml(card.qrUrl)}" alt="${escapeHtml(card.teacherName)} QR code" />
                 </div>
                 <div class="qr-copy">
                   <p class="copy-title">Balanced quiet space is preserved for dependable scan performance.</p>
-                  <p class="copy-body">Present this credential digitally or in print for authorized attendance and identity verification workflows.</p>
+                  <p class="copy-body">Present this credential digitally or in print for authorized staff attendance and identity verification workflows.</p>
                   <div class="card-id">${escapeHtml(card.publicId)}</div>
                 </div>
               </div>

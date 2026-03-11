@@ -26,6 +26,10 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   role: text("role").notNull(), // 'admin', 'teacher', 'student'
   subject: text("subject"), // For teachers
+  designation: text("designation"), // For teachers
+  department: text("department"), // For teachers
+  employeeId: text("employee_id"), // For teachers
+  teacherPhotoUrl: text("teacher_photo_url"), // For teachers
   className: text("class_name"), // For students
   fatherName: text("father_name"), // For students
   studentPhotoUrl: text("student_photo_url"), // For students
@@ -253,6 +257,12 @@ const optionalUserTextFieldSchema = z.preprocess(
   z.string().max(120).nullable().optional(),
 );
 
+const optionalPhotoUrlSchema = (label: string) => z.preprocess(
+  (value) => typeof value === "string" ? value.trim() || null : value,
+  z.string().url(`${label} must be a valid URL`).max(500).nullable().optional(),
+);
+
+const optionalTeacherPhotoUrlSchema = optionalPhotoUrlSchema("Teacher photo URL");
 const optionalStudentPhotoUrlSchema = z.preprocess(
   (value) => typeof value === "string" ? value.trim() || null : value,
   z.string().url("Student photo URL must be a valid URL").max(500).nullable().optional(),
@@ -266,6 +276,10 @@ export const insertUserSchema = createInsertSchema(users)
     password: z.string().min(1, "Password is required"),
     role: z.enum(["admin", "teacher", "student"]),
     subject: optionalUserTextFieldSchema,
+    designation: optionalUserTextFieldSchema,
+    department: optionalUserTextFieldSchema,
+    employeeId: optionalUserTextFieldSchema,
+    teacherPhotoUrl: optionalTeacherPhotoUrlSchema,
     className: optionalUserTextFieldSchema,
     fatherName: optionalUserTextFieldSchema,
     studentPhotoUrl: optionalStudentPhotoUrlSchema,

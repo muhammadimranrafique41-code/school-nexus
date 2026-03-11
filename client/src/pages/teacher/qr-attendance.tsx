@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Layout } from "@/components/layout";
+import { TeacherIdCardPreview, type TeacherIdCardData, useTeacherPortraitUrl } from "@/components/qr-teacher-id-card";
+import { getContactLine } from "@/components/qr-student-id-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useUser } from "@/hooks/use-auth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   invalidateQrAttendanceQueries,
@@ -19,6 +22,7 @@ import {
   useQrAttendanceHistory,
   useScanQrAttendance,
 } from "@/hooks/use-qr-attendance";
+import { usePublicSchoolSettings } from "@/hooks/use-settings";
 import { useToast } from "@/hooks/use-toast";
 import {
   enqueueOfflineQrAttendanceScan,
@@ -32,6 +36,7 @@ import { buildQrImageUrl, copyToClipboard } from "@/lib/qr";
 import { cn, formatDate, getErrorMessage } from "@/lib/utils";
 import { api } from "@shared/routes";
 import { Camera, Copy, Loader2, QrCode, RefreshCcw, ScanLine, Smartphone, Wifi, WifiOff } from "lucide-react";
+import { Link } from "wouter";
 import { z } from "zod";
 
 type QrHistoryEvent = NonNullable<z.infer<(typeof api.qrAttendance.history.responses)[200]>["data"]>["events"][number];
@@ -65,6 +70,8 @@ function getFeedbackStyles(tone: FeedbackTone) {
 
 export default function TeacherQrAttendance() {
   const { toast } = useToast();
+  const { data: user } = useUser();
+  const { data: publicSettings } = usePublicSchoolSettings();
   const isMobile = useIsMobile();
   const [token, setToken] = useState("");
   const [direction, setDirection] = useState<"Check In" | "Check Out">("Check In");
@@ -94,6 +101,37 @@ export default function TeacherQrAttendance() {
     checkIns: history.filter((event: QrHistoryEvent) => event.direction === "Check In").length,
     checkOuts: history.filter((event: QrHistoryEvent) => event.direction === "Check Out").length,
   }), [history]);
+
+  const teacherProfile = myCard?.profile.user ?? user;
+  const schoolName = publicSettings?.schoolInformation.schoolName ?? "School Nexus Academy";
+  const shortName = publicSettings?.schoolInformation.shortName || schoolName;
+  const motto = publicSettings?.schoolInformation.motto?.trim() || "Professional excellence through trusted learning leadership.";
+  const academicYear = publicSettings?.academicConfiguration.currentAcademicYear ?? "Current Academic Year";
+  const currentTerm = publicSettings?.academicConfiguration.currentTerm ?? "Current Term";
+  const contactLine = getContactLine(publicSettings);
+  const teacherPortraitUrl = useTeacherPortraitUrl(teacherProfile?.teacherPhotoUrl ?? null);
+  const teacherCardData: TeacherIdCardData | null = myCard
+    ? {
+      schoolName,
+      shortName,
+      motto,
+      logoUrl: publicSettings?.branding.logoUrl || undefined,
+      teacherName: teacherProfile?.name ?? "Teacher",
+      designation: teacherProfile?.designation?.trim() || "Faculty Member",
+      department: teacherProfile?.department?.trim() || teacherProfile?.subject?.trim() || "Academic Affairs",
+      subject: teacherProfile?.subject?.trim() || "General Studies",
+      employeeId: teacherProfile?.employeeId?.trim() || myCard.profile.publicId.toUpperCase(),
+      publicId: myCard.profile.publicId,
+      qrUrl: buildQrImageUrl(myCard.token, 320),
+      portraitUrl: teacherPortraitUrl,
+      isActive: myCard.profile.isActive,
+      academicYear,
+      currentTerm,
+      authenticityLine: contactLine
+        ? `Official ${shortName} staff credential • ${contactLine}`
+        : `Official ${shortName} staff credential • Valid only when scanned through QR Attendance`,
+    }
+    : null;
 
   useEffect(() => {
     if (isMobile) setScanMode((current) => (current === "manual" ? "camera" : current));
@@ -398,7 +436,7 @@ export default function TeacherQrAttendance() {
       <div className="space-y-6 pb-8">
         <div>
           <h1 className="text-3xl font-display font-bold">QR Attendance</h1>
-          <p className="mt-1 text-muted-foreground">Record student or teacher attendance with a live camera scanner when supported, keep an offline retry queue, and access your own teacher QR card from the same workspace.</p>
+          <p className="mt-1 text-muted-foreground">Record student or teacher attendance with a live camera scanner when supported, keep an offline retry queue, and access your premium teacher QR card from the same workspace.</p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
@@ -531,14 +569,19 @@ export default function TeacherQrAttendance() {
               {cardLoading || !myCard ? (
                 <div className="flex min-h-[320px] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-600" /></div>
               ) : (
-                <div className="space-y-4 text-center">
-                  <img src={buildQrImageUrl(myCard.token)} alt="Teacher QR card" className="mx-auto aspect-square w-full max-w-[260px] rounded-2xl border bg-white p-3" />
-                  <div className="flex items-center justify-center gap-2">
+                <div className="space-y-4">
+                  <TeacherIdCardPreview card={teacherCardData!} />
+                  <div className="flex flex-wrap items-center justify-center gap-2">
                     <Badge variant={myCard.profile.isActive ? "secondary" : "destructive"}>{myCard.profile.isActive ? "Active" : "Inactive"}</Badge>
                     <Badge variant="outline">{myCard.profile.publicId}</Badge>
                   </div>
                   <p className="break-all rounded-2xl border bg-slate-50 px-4 py-3 font-mono text-xs text-slate-700">{myCard.token}</p>
-                  <Button variant="outline" onClick={handleCopyMyToken}><Copy className="mr-2 h-4 w-4" /> Copy my token</Button>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <Button asChild className="sm:flex-1">
+                      <Link href="/teacher/qr-card">Open full card workspace</Link>
+                    </Button>
+                    <Button variant="outline" className="sm:flex-1" onClick={handleCopyMyToken}><Copy className="mr-2 h-4 w-4" /> Copy my token</Button>
+                  </div>
                 </div>
               )}
             </CardContent>

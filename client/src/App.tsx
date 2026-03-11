@@ -17,6 +17,7 @@ import CreateTeacher from "./pages/admin/teachers";
 
 import TeacherDashboard from "./pages/teacher/dashboard";
 import TeacherAttendance from "./pages/teacher/attendance";
+import TeacherQrCard from "./pages/teacher/qr-card";
 import TeacherQrAttendance from "./pages/teacher/qr-attendance";
 import TeacherResults from "./pages/teacher/results";
 
@@ -69,6 +70,9 @@ function Router() {
       {/* Teacher Routes */}
       <Route path="/teacher/attendance">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherAttendance /></ProtectedRoute>
+      </Route>
+      <Route path="/teacher/qr-card">
+        <ProtectedRoute allowedRoles={['teacher']}><TeacherQrCard /></ProtectedRoute>
       </Route>
       <Route path="/teacher/qr-attendance">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherQrAttendance /></ProtectedRoute>

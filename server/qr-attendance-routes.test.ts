@@ -40,10 +40,10 @@ function createProfile(user: User, generatedBy: number): StoredProfile {
 }
 
 function createState(): MockState {
-  const admin: User = { id: 1, name: "Admin User", email: "admin@school.edu", password: "secret", role: "admin", subject: null, className: null, fatherName: null, studentPhotoUrl: null };
-  const teacher: User = { id: 2, name: "Ava Teacher", email: "teacher@school.edu", password: "secret", role: "teacher", subject: "Mathematics", className: null, fatherName: null, studentPhotoUrl: null };
-  const student: User = { id: 3, name: "Noah Student", email: "student@school.edu", password: "secret", role: "student", subject: null, className: "JSS 1A", fatherName: "Daniel Student", studentPhotoUrl: "https://cdn.school.edu/noah.jpg" };
-  const otherStudent: User = { id: 4, name: "Mia Other", email: "other@student.edu", password: "secret", role: "student", subject: null, className: "JSS 2B", fatherName: "Michael Other", studentPhotoUrl: null };
+  const admin: User = { id: 1, name: "Admin User", email: "admin@school.edu", password: "secret", role: "admin", subject: null, designation: null, department: null, employeeId: null, teacherPhotoUrl: null, className: null, fatherName: null, studentPhotoUrl: null };
+  const teacher: User = { id: 2, name: "Ava Teacher", email: "teacher@school.edu", password: "secret", role: "teacher", subject: "Mathematics", designation: "Senior Teacher", department: "Science Department", employeeId: "SNX-T-100", teacherPhotoUrl: "https://cdn.school.edu/ava-teacher.jpg", className: null, fatherName: null, studentPhotoUrl: null };
+  const student: User = { id: 3, name: "Noah Student", email: "student@school.edu", password: "secret", role: "student", subject: null, designation: null, department: null, employeeId: null, teacherPhotoUrl: null, className: "JSS 1A", fatherName: "Daniel Student", studentPhotoUrl: "https://cdn.school.edu/noah.jpg" };
+  const otherStudent: User = { id: 4, name: "Mia Other", email: "other@student.edu", password: "secret", role: "student", subject: null, designation: null, department: null, employeeId: null, teacherPhotoUrl: null, className: "JSS 2B", fatherName: "Michael Other", studentPhotoUrl: null };
   const studentProfile = createProfile(student, admin.id);
   const events: QrAttendanceEventWithUser[] = [
     { id: 1, userId: student.id, scannedBy: teacher.id, attendanceDate: today, scannedAt: isoNow(), roleSnapshot: student.role, direction: "Check In", status: "Present", scanMethod: "manual", terminalLabel: "Front Gate", notes: null, user: student, scannedByUser: teacher },
@@ -227,6 +227,20 @@ test("student can load their own QR card but admin cannot", async () => {
   const forbidden = await requestJson(api.qrAttendance.myCard.path, { userId: 1 });
   assert.equal(forbidden.status, 403);
   assert.deepEqual(forbidden.json, { message: "Forbidden" });
+});
+
+test("teacher can load their own QR card with teacher identity fields after issuance", async () => {
+  const issued = await requestJson(issuePath(2), { userId: 1, method: api.qrAttendance.profiles.issue.method });
+  assert.equal(issued.status, 200);
+
+  const teacherCard = await requestJson(api.qrAttendance.myCard.path, { userId: 2 });
+  const parsed = api.qrAttendance.myCard.responses[200].parse(teacherCard.json);
+  assert.equal(teacherCard.status, 200);
+  assert.equal(parsed.data?.profile.userId, 2);
+  assert.equal(parsed.data?.profile.user?.designation, "Senior Teacher");
+  assert.equal(parsed.data?.profile.user?.department, "Science Department");
+  assert.equal(parsed.data?.profile.user?.employeeId, "SNX-T-100");
+  assert.equal(parsed.data?.profile.user?.teacherPhotoUrl, "https://cdn.school.edu/ava-teacher.jpg");
 });
 
 test("my card returns 404 when an eligible user has no issued profile", async () => {

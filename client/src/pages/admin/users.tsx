@@ -25,6 +25,10 @@ type ListedUser = {
   email: string;
   role: string;
   subject?: string | null;
+  designation?: string | null;
+  department?: string | null;
+  employeeId?: string | null;
+  teacherPhotoUrl?: string | null;
   className?: string | null;
   fatherName?: string | null;
   studentPhotoUrl?: string | null;
@@ -33,7 +37,7 @@ type ListedUser = {
 const optionalUrlField = z.union([z.string().trim().url("Enter a valid photo URL"), z.literal("")]).optional();
 
 const userSchema = z.object({
-  name: z.string().min(1, "Name is required"), email: z.string().email("Invalid email"), password: z.string().optional(), role: z.enum(["admin", "teacher", "student"]), subject: z.string().optional(), className: z.string().optional(), fatherName: z.string().optional(), studentPhotoUrl: optionalUrlField,
+  name: z.string().min(1, "Name is required"), email: z.string().email("Invalid email"), password: z.string().optional(), role: z.enum(["admin", "teacher", "student"]), subject: z.string().optional(), designation: z.string().optional(), department: z.string().optional(), employeeId: z.string().optional(), teacherPhotoUrl: optionalUrlField, className: z.string().optional(), fatherName: z.string().optional(), studentPhotoUrl: optionalUrlField,
 }).superRefine((data, ctx) => {
   if (data.password && data.password.length < 6) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["password"], message: "Password must be at least 6 characters" });
   if (data.role === "teacher" && !data.subject?.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["subject"], message: "Subject is required for teachers" });
@@ -53,7 +57,7 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
   const [editingUser, setEditingUser] = useState<ListedUser | null>(null);
   const [userToDelete, setUserToDelete] = useState<ListedUser | null>(null);
   const defaultRole = roleFilter ?? "student";
-  const form = useForm<z.infer<typeof userSchema>>({ resolver: zodResolver(userSchema), defaultValues: { name: "", email: "", password: "", role: defaultRole, subject: "", className: "", fatherName: "", studentPhotoUrl: "" } });
+  const form = useForm<z.infer<typeof userSchema>>({ resolver: zodResolver(userSchema), defaultValues: { name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "" } });
   const watchRole = form.watch("role");
   const mutationPending = createUser.isPending || updateUser.isPending;
 
@@ -62,13 +66,13 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
   const filteredUsers = useMemo(() => (users ?? []).filter((user) => {
     const matchesRole = activeRole === "all" ? true : user.role === activeRole;
     const query = searchTerm.toLowerCase();
-    const haystack = `${user.name} ${user.email} ${user.className ?? ""} ${user.subject ?? ""} ${user.fatherName ?? ""}`.toLowerCase();
+    const haystack = `${user.name} ${user.email} ${user.className ?? ""} ${user.subject ?? ""} ${user.fatherName ?? ""} ${user.designation ?? ""} ${user.department ?? ""} ${user.employeeId ?? ""}`.toLowerCase();
     return matchesRole && haystack.includes(query);
   }), [activeRole, searchTerm, users]);
   const paginated = paginateItems(filteredUsers, currentPage, 8);
 
-  const openCreateDialog = () => { setEditingUser(null); form.reset({ name: "", email: "", password: "", role: defaultRole, subject: "", className: "", fatherName: "", studentPhotoUrl: "" }); setIsOpen(true); };
-  const openEditDialog = (user: ListedUser) => { setEditingUser(user); form.reset({ name: user.name, email: user.email, password: "", role: roleFilter ?? (user.role === "admin" || user.role === "teacher" ? user.role : "student"), subject: user.subject ?? "", className: user.className ?? "", fatherName: user.fatherName ?? "", studentPhotoUrl: user.studentPhotoUrl ?? "" }); setIsOpen(true); };
+  const openCreateDialog = () => { setEditingUser(null); form.reset({ name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "" }); setIsOpen(true); };
+  const openEditDialog = (user: ListedUser) => { setEditingUser(user); form.reset({ name: user.name, email: user.email, password: "", role: roleFilter ?? (user.role === "admin" || user.role === "teacher" ? user.role : "student"), subject: user.subject ?? "", designation: user.designation ?? "", department: user.department ?? "", employeeId: user.employeeId ?? "", teacherPhotoUrl: user.teacherPhotoUrl ?? "", className: user.className ?? "", fatherName: user.fatherName ?? "", studentPhotoUrl: user.studentPhotoUrl ?? "" }); setIsOpen(true); };
   const onSubmit = async (values: z.infer<typeof userSchema>) => {
     const role = roleFilter ?? values.role;
     const payload = {
@@ -76,6 +80,10 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
       role,
       password: values.password?.trim() || undefined,
       subject: role === "teacher" ? values.subject?.trim() || undefined : undefined,
+      designation: role === "teacher" ? values.designation?.trim() || undefined : undefined,
+      department: role === "teacher" ? values.department?.trim() || undefined : undefined,
+      employeeId: role === "teacher" ? values.employeeId?.trim() || undefined : undefined,
+      teacherPhotoUrl: role === "teacher" ? values.teacherPhotoUrl?.trim() || undefined : undefined,
       className: role === "student" ? values.className?.trim() || undefined : undefined,
       fatherName: role === "student" ? values.fatherName?.trim() || undefined : undefined,
       studentPhotoUrl: role === "student" ? values.studentPhotoUrl?.trim() || undefined : undefined,
@@ -84,7 +92,7 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
     try {
       if (editingUser) await updateUser.mutateAsync({ id: editingUser.id, ...payload }); else await createUser.mutateAsync({ ...payload, password: payload.password! });
       toast({ title: editingUser ? "User updated" : "User created", description: `${payload.name} has been saved successfully.` });
-      setIsOpen(false); setEditingUser(null); form.reset({ name: "", email: "", password: "", role: defaultRole, subject: "", className: "", fatherName: "", studentPhotoUrl: "" });
+      setIsOpen(false); setEditingUser(null); form.reset({ name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "" });
     } catch (error) { toast({ title: "Unable to save user", description: getErrorMessage(error), variant: "destructive" }); }
   };
   const handleDelete = async () => {
@@ -93,7 +101,7 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
     catch (error) { toast({ title: "Unable to delete user", description: getErrorMessage(error), variant: "destructive" }); }
   };
   const summary = { total: users?.length ?? 0, students: users?.filter((u) => u.role === "student").length ?? 0, teachers: users?.filter((u) => u.role === "teacher").length ?? 0, admins: users?.filter((u) => u.role === "admin").length ?? 0 };
-  const exportUsers = () => downloadCsv(`${roleFilter ?? "users"}-export.csv`, filteredUsers.map((user) => ({ Name: user.name, Email: user.email, Role: user.role, Subject: user.subject ?? "", Class: user.className ?? "", "Father Name": user.fatherName ?? "", "Photo URL": user.studentPhotoUrl ?? "" })));
+  const exportUsers = () => downloadCsv(`${roleFilter ?? "users"}-export.csv`, filteredUsers.map((user) => ({ Name: user.name, Email: user.email, Role: user.role, Subject: user.subject ?? "", Designation: user.designation ?? "", Department: user.department ?? "", "Employee ID": user.employeeId ?? "", Class: user.className ?? "", "Father Name": user.fatherName ?? "", "Teacher Photo URL": user.teacherPhotoUrl ?? "", "Student Photo URL": user.studentPhotoUrl ?? "" })));
 
   return (
     <Layout>
@@ -155,7 +163,19 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
                 <FormField control={form.control} name="email" render={({ field }) => <FormItem><FormLabel>Email</FormLabel><FormControl><Input type="email" placeholder="john@school.edu" {...field} /></FormControl><FormMessage /></FormItem>} />
                 <FormField control={form.control} name="password" render={({ field }) => <FormItem><FormLabel>{editingUser ? "New Password (optional)" : "Temporary Password"}</FormLabel><FormControl><Input type="password" placeholder="••••••••" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
                 <FormField control={form.control} name="role" render={({ field }) => <FormItem><FormLabel>Role</FormLabel><Select onValueChange={field.onChange} value={field.value} disabled={!!roleFilter}><FormControl><SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger></FormControl><SelectContent><SelectItem value="admin">Admin</SelectItem><SelectItem value="teacher">Teacher</SelectItem><SelectItem value="student">Student</SelectItem></SelectContent></Select><FormMessage /></FormItem>} />
-                {watchRole === "teacher" && <FormField control={form.control} name="subject" render={({ field }) => <FormItem><FormLabel>Subject</FormLabel><FormControl><Input placeholder="Mathematics" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />}
+                {watchRole === "teacher" && (
+                  <>
+                    <FormField control={form.control} name="subject" render={({ field }) => <FormItem><FormLabel>Subject</FormLabel><FormControl><Input placeholder="Mathematics" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField control={form.control} name="designation" render={({ field }) => <FormItem><FormLabel>Designation</FormLabel><FormControl><Input placeholder="Senior Teacher" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
+                      <FormField control={form.control} name="department" render={({ field }) => <FormItem><FormLabel>Department</FormLabel><FormControl><Input placeholder="Science Department" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField control={form.control} name="employeeId" render={({ field }) => <FormItem><FormLabel>Employee ID</FormLabel><FormControl><Input placeholder="SNX-T-001" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
+                      <FormField control={form.control} name="teacherPhotoUrl" render={({ field }) => <FormItem><FormLabel>Teacher Photo URL</FormLabel><FormControl><Input placeholder="https://example.com/teacher-photo.jpg" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
+                    </div>
+                  </>
+                )}
                 {watchRole === "student" && (
                   <>
                     <FormField control={form.control} name="className" render={({ field }) => <FormItem><FormLabel>Class</FormLabel><FormControl><Input placeholder="Grade 10-A" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
@@ -177,7 +197,7 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
               <div className="flex flex-1 items-center gap-3 rounded-[1.25rem] border border-slate-200/70 bg-slate-50/80 px-4 py-3">
                 <Search className="h-4 w-4 text-slate-400" />
                 <Input
-                  placeholder="Search users, classes, subjects, or father names..."
+                  placeholder="Search users, classes, subjects, departments, designations, employee IDs, or father names..."
                   className="h-auto max-w-sm border-0 bg-transparent px-0 py-0 shadow-none focus-visible:ring-0"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -231,7 +251,7 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
                             {user.role}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-slate-500">{user.role === "teacher" ? user.subject : [user.className, user.fatherName].filter(Boolean).join(" • ") || "—"}</TableCell>
+                        <TableCell className="text-slate-500">{user.role === "teacher" ? [user.subject, user.designation, user.department, user.employeeId].filter(Boolean).join(" • ") || "—" : [user.className, user.fatherName].filter(Boolean).join(" • ") || "—"}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button variant="outline" size="sm" onClick={() => openEditDialog(user)}>

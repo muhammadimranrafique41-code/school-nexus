@@ -41,12 +41,21 @@ const optionalStudentPhotoUrlSchema = z.preprocess(
   z.string().url("Student photo URL must be a valid URL").max(500).nullable().optional(),
 );
 
+const optionalTeacherPhotoUrlSchema = z.preprocess(
+  (value) => typeof value === "string" ? value.trim() || null : value,
+  z.string().url("Teacher photo URL must be a valid URL").max(500).nullable().optional(),
+);
+
 const userWriteSchema = insertUserSchema.extend({
   name: z.string().trim().min(1, "Name is required").max(120),
   email: z.string().trim().email("Invalid email address"),
   password: z.string().min(1, "Password is required"),
   role: z.enum(["admin", "teacher", "student"]),
   subject: optionalUserTextFieldSchema,
+  designation: optionalUserTextFieldSchema,
+  department: optionalUserTextFieldSchema,
+  employeeId: optionalUserTextFieldSchema,
+  teacherPhotoUrl: optionalTeacherPhotoUrlSchema,
   className: optionalUserTextFieldSchema,
   fatherName: optionalUserTextFieldSchema,
   studentPhotoUrl: optionalStudentPhotoUrlSchema,
@@ -60,6 +69,10 @@ const userSchema = z.object({
   email: z.string(),
   role: z.string(),
   subject: z.string().nullable().optional(),
+  designation: z.string().nullable().optional(),
+  department: z.string().nullable().optional(),
+  employeeId: z.string().nullable().optional(),
+  teacherPhotoUrl: z.string().nullable().optional(),
   className: z.string().nullable().optional(),
   fatherName: z.string().nullable().optional(),
   studentPhotoUrl: z.string().nullable().optional(),

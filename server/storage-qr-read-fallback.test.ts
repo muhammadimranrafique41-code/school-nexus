@@ -3,8 +3,8 @@ import { mock, test } from "node:test";
 import { qrAttendanceEvents, qrProfiles, users, type User } from "../shared/schema.js";
 
 const rosterUsers: User[] = [
-  { id: 1, name: "Admin User", email: "admin@school.edu", password: "secret", role: "admin", subject: null, className: null, fatherName: null, studentPhotoUrl: null },
-  { id: 2, name: "Ava Teacher", email: "teacher@school.edu", password: "secret", role: "teacher", subject: "Mathematics", className: null, fatherName: null, studentPhotoUrl: null },
+  { id: 1, name: "Admin User", email: "admin@school.edu", password: "secret", role: "admin", subject: null, designation: null, department: null, employeeId: null, teacherPhotoUrl: null, className: null, fatherName: null, studentPhotoUrl: null },
+  { id: 2, name: "Ava Teacher", email: "teacher@school.edu", password: "secret", role: "teacher", subject: "Mathematics", designation: "Senior Teacher", department: "Science Department", employeeId: "SNX-T-100", teacherPhotoUrl: "https://cdn.school.edu/ava-teacher.jpg", className: null, fatherName: null, studentPhotoUrl: null },
 ];
 
 const missingRelationError = { code: "42P01" };
