@@ -31,6 +31,29 @@ import {
   updateSchoolSettingsInputSchema,
 } from "./settings.js";
 
+const optionalUserTextFieldSchema = z.preprocess(
+  (value) => typeof value === "string" ? value.trim() || null : value,
+  z.string().max(120).nullable().optional(),
+);
+
+const optionalStudentPhotoUrlSchema = z.preprocess(
+  (value) => typeof value === "string" ? value.trim() || null : value,
+  z.string().url("Student photo URL must be a valid URL").max(500).nullable().optional(),
+);
+
+const userWriteSchema = insertUserSchema.extend({
+  name: z.string().trim().min(1, "Name is required").max(120),
+  email: z.string().trim().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+  role: z.enum(["admin", "teacher", "student"]),
+  subject: optionalUserTextFieldSchema,
+  className: optionalUserTextFieldSchema,
+  fatherName: optionalUserTextFieldSchema,
+  studentPhotoUrl: optionalStudentPhotoUrlSchema,
+});
+
+const userUpdateSchema = userWriteSchema.partial();
+
 const userSchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -38,6 +61,8 @@ const userSchema = z.object({
   role: z.string(),
   subject: z.string().nullable().optional(),
   className: z.string().nullable().optional(),
+  fatherName: z.string().nullable().optional(),
+  studentPhotoUrl: z.string().nullable().optional(),
 });
 
 const apiEnvelope = <T extends z.ZodTypeAny>(dataSchema: T) =>
@@ -383,7 +408,7 @@ export const api = {
     register: {
       path: "/api/auth/register",
       method: "POST",
-      input: insertUserSchema,
+      input: userWriteSchema,
       responses: { 201: userSchema },
     },
     logout: {
@@ -407,13 +432,13 @@ export const api = {
     create: {
       path: "/api/users",
       method: "POST",
-      input: insertUserSchema,
+      input: userWriteSchema,
       responses: { 201: userSchema },
     },
     update: {
       path: "/api/users/:id",
       method: "PUT",
-      input: insertUserSchema.partial(),
+      input: userUpdateSchema,
       responses: { 200: userSchema },
     },
     delete: {

@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { mock, test } from "node:test";
 import { qrAttendanceEvents, qrProfiles, type Attendance, type User } from "../shared/schema.js";
 
-const admin: User = { id: 1, name: "Admin User", email: "admin@school.edu", password: "secret", role: "admin", subject: null, className: null };
-const teacher: User = { id: 2, name: "Ava Teacher", email: "teacher@school.edu", password: "secret", role: "teacher", subject: "Mathematics", className: null };
-const student: User = { id: 3, name: "Noah Student", email: "student@school.edu", password: "secret", role: "student", subject: null, className: "JSS 1A" };
+const admin: User = { id: 1, name: "Admin User", email: "admin@school.edu", password: "secret", role: "admin", subject: null, className: null, fatherName: null, studentPhotoUrl: null };
+const teacher: User = { id: 2, name: "Ava Teacher", email: "teacher@school.edu", password: "secret", role: "teacher", subject: "Mathematics", className: null, fatherName: null, studentPhotoUrl: null };
+const student: User = { id: 3, name: "Noah Student", email: "student@school.edu", password: "secret", role: "student", subject: null, className: "JSS 1A", fatherName: "Daniel Student", studentPhotoUrl: "https://cdn.school.edu/noah.jpg" };
 const users = new Map([admin, teacher, student].map((user) => [user.id, user]));
 const missingRelationError = { code: "42P01" };
 
@@ -69,6 +69,7 @@ test("QR issue/regenerate/scan flows fall back safely when QR tables are missing
   assert.equal(issued.created, true);
   assert.equal(issued.profile.userId, student.id);
   assert.equal(issued.profile.user?.name, student.name);
+  assert.equal(issued.profile.user?.fatherName, student.fatherName);
 
   const roster = await storage.getQrProfiles();
   assert.equal(roster.length, 1);

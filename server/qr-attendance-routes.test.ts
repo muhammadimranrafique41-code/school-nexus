@@ -40,10 +40,10 @@ function createProfile(user: User, generatedBy: number): StoredProfile {
 }
 
 function createState(): MockState {
-  const admin: User = { id: 1, name: "Admin User", email: "admin@school.edu", password: "secret", role: "admin", subject: null, className: null };
-  const teacher: User = { id: 2, name: "Ava Teacher", email: "teacher@school.edu", password: "secret", role: "teacher", subject: "Mathematics", className: null };
-  const student: User = { id: 3, name: "Noah Student", email: "student@school.edu", password: "secret", role: "student", subject: null, className: "JSS 1A" };
-  const otherStudent: User = { id: 4, name: "Mia Other", email: "other@student.edu", password: "secret", role: "student", subject: null, className: "JSS 2B" };
+  const admin: User = { id: 1, name: "Admin User", email: "admin@school.edu", password: "secret", role: "admin", subject: null, className: null, fatherName: null, studentPhotoUrl: null };
+  const teacher: User = { id: 2, name: "Ava Teacher", email: "teacher@school.edu", password: "secret", role: "teacher", subject: "Mathematics", className: null, fatherName: null, studentPhotoUrl: null };
+  const student: User = { id: 3, name: "Noah Student", email: "student@school.edu", password: "secret", role: "student", subject: null, className: "JSS 1A", fatherName: "Daniel Student", studentPhotoUrl: "https://cdn.school.edu/noah.jpg" };
+  const otherStudent: User = { id: 4, name: "Mia Other", email: "other@student.edu", password: "secret", role: "student", subject: null, className: "JSS 2B", fatherName: "Michael Other", studentPhotoUrl: null };
   const studentProfile = createProfile(student, admin.id);
   const events: QrAttendanceEventWithUser[] = [
     { id: 1, userId: student.id, scannedBy: teacher.id, attendanceDate: today, scannedAt: isoNow(), roleSnapshot: student.role, direction: "Check In", status: "Present", scanMethod: "manual", terminalLabel: "Front Gate", notes: null, user: student, scannedByUser: teacher },
@@ -220,6 +220,8 @@ test("student can load their own QR card but admin cannot", async () => {
   const parsed = api.qrAttendance.myCard.responses[200].parse(studentCard.json);
   assert.equal(studentCard.status, 200);
   assert.equal(parsed.data?.profile.userId, 3);
+  assert.equal(parsed.data?.profile.user?.fatherName, "Daniel Student");
+  assert.equal(parsed.data?.profile.user?.studentPhotoUrl, "https://cdn.school.edu/noah.jpg");
   assert.equal(parsed.data?.recentEvents.length, 1);
 
   const forbidden = await requestJson(api.qrAttendance.myCard.path, { userId: 1 });

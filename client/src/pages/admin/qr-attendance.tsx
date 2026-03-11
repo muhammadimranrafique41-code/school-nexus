@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { StudentIdCardPreview, buildStudentIdCardPrintHtml, getContactLine, type StudentIdCardData } from "@/components/qr-student-id-card";
 import { Layout } from "@/components/layout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,22 +14,24 @@ import {
   useRegenerateQrProfile,
   useUpdateQrProfileStatus,
 } from "@/hooks/use-qr-attendance";
+import { usePublicSchoolSettings } from "@/hooks/use-settings";
 import { useToast } from "@/hooks/use-toast";
 import { buildQrImageUrl, copyToClipboard } from "@/lib/qr";
 import { formatDate, getErrorMessage } from "@/lib/utils";
 import { api } from "@shared/routes";
-import { Copy, Loader2, QrCode, RefreshCw } from "lucide-react";
+import { Copy, Loader2, Printer, QrCode, RefreshCw } from "lucide-react";
 import { z } from "zod";
 
-type IssuedCard = { userName: string; publicId: string; token: string } | null;
 type QrProfilesPayload = NonNullable<z.infer<(typeof api.qrAttendance.profiles.list.responses)[200]>["data"]>;
 type QrRosterItem = QrProfilesPayload["roster"][number];
+type QrIssuedCard = NonNullable<z.infer<(typeof api.qrAttendance.profiles.issue.responses)[200]>["data"]>;
 
 export default function AdminQrAttendance() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
-  const [issuedCard, setIssuedCard] = useState<IssuedCard>(null);
+  const [issuedCard, setIssuedCard] = useState<QrIssuedCard | null>(null);
 
+  const { data: publicSettings } = usePublicSchoolSettings();
   const { data, isLoading } = useQrProfiles();
   const issueProfile = useIssueQrProfile();
   const regenerateProfile = useRegenerateQrProfile();
@@ -41,15 +44,43 @@ export default function AdminQrAttendance() {
     const query = search.trim().toLowerCase();
     if (!query) return roster;
     return roster.filter((item: QrRosterItem) => {
-      const details = `${item.user.name} ${item.user.email} ${item.user.role} ${item.user.className ?? ""} ${item.user.subject ?? ""}`.toLowerCase();
+      const details = `${item.user.name} ${item.user.email} ${item.user.role} ${item.user.className ?? ""} ${item.user.subject ?? ""} ${item.user.fatherName ?? ""}`.toLowerCase();
       return details.includes(query);
     });
   }, [roster, search]);
 
+  const schoolName = publicSettings?.schoolInformation.schoolName ?? "School Nexus Academy";
+  const shortName = publicSettings?.schoolInformation.shortName || schoolName;
+  const motto = publicSettings?.schoolInformation.motto?.trim() || "Empowering every learner.";
+  const academicYear = publicSettings?.academicConfiguration.currentAcademicYear ?? "Current Academic Year";
+  const currentTerm = publicSettings?.academicConfiguration.currentTerm ?? "Current Term";
+  const contactLine = getContactLine(publicSettings);
+  const authenticityLine = contactLine
+    ? `Official ${shortName} credential • ${contactLine}`
+    : `Official ${shortName} credential • Valid only when scanned through QR Attendance`;
+  const issuedStudentCardData: StudentIdCardData | null = issuedCard?.profile.user?.role === "student"
+    ? {
+      schoolName,
+      shortName,
+      motto,
+      logoUrl: publicSettings?.branding.logoUrl || undefined,
+      studentName: issuedCard.profile.user.name,
+      className: issuedCard.profile.user.className?.trim() || "Unassigned",
+      fatherName: issuedCard.profile.user.fatherName?.trim() || "Not on file",
+      publicId: issuedCard.profile.publicId,
+      qrUrl: buildQrImageUrl(issuedCard.token, 320),
+      portraitUrl: issuedCard.profile.user.studentPhotoUrl?.trim() || null,
+      isActive: issuedCard.profile.isActive,
+      academicYear,
+      currentTerm,
+      authenticityLine,
+    }
+    : null;
+
   const handleIssue = async (userId: number) => {
     try {
       const result = await issueProfile.mutateAsync(userId);
-      setIssuedCard({ userName: result.data.profile.user?.name ?? `User #${userId}`, publicId: result.data.profile.publicId, token: result.data.token });
+      setIssuedCard(result.data);
       toast({ title: "QR card issued", description: result.message || "QR credentials are ready for distribution." });
     } catch (error) {
       toast({ title: "Unable to issue QR card", description: getErrorMessage(error), variant: "destructive" });
@@ -59,7 +90,7 @@ export default function AdminQrAttendance() {
   const handleRegenerate = async (userId: number) => {
     try {
       const result = await regenerateProfile.mutateAsync(userId);
-      setIssuedCard({ userName: result.data.profile.user?.name ?? `User #${userId}`, publicId: result.data.profile.publicId, token: result.data.token });
+      setIssuedCard(result.data);
       toast({ title: "QR card regenerated", description: result.message || "The previous QR token has been rotated." });
     } catch (error) {
       toast({ title: "Unable to regenerate QR card", description: getErrorMessage(error), variant: "destructive" });
@@ -82,6 +113,25 @@ export default function AdminQrAttendance() {
       toast({ title: "QR token copied", description: "The manual fallback token is now on your clipboard." });
     } catch (error) {
       toast({ title: "Unable to copy token", description: getErrorMessage(error), variant: "destructive" });
+    }
+  };
+
+  const handlePrint = () => {
+    if (!issuedStudentCardData || typeof window === "undefined") return;
+
+    const printWindow = window.open("", "_blank", "width=900,height=1200");
+    if (!printWindow) {
+      toast({ title: "Unable to open print view", description: "Please allow pop-ups for this site and try again.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      printWindow.document.open();
+      printWindow.document.write(buildStudentIdCardPrintHtml(issuedStudentCardData));
+      printWindow.document.close();
+    } catch (error) {
+      printWindow.close();
+      toast({ title: "Unable to print ID card", description: getErrorMessage(error), variant: "destructive" });
     }
   };
 
@@ -112,7 +162,7 @@ export default function AdminQrAttendance() {
             <CardDescription>Cards are eligible only for teachers and students. Search the roster, issue a first-time card, or rotate a token when a credential must be replaced.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name, email, role, class, or subject" />
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name, email, role, class, subject, or father name" />
             <div className="overflow-x-auto rounded-[1.5rem] border">
               <Table>
                 <TableHeader>
@@ -141,7 +191,11 @@ export default function AdminQrAttendance() {
                           </div>
                         </TableCell>
                         <TableCell><Badge variant="outline" className="capitalize">{item.user.role}</Badge></TableCell>
-                        <TableCell className="text-slate-500">{item.user.role === "student" ? item.user.className || "—" : item.user.subject || "—"}</TableCell>
+                        <TableCell className="text-slate-500">
+                          {item.user.role === "student"
+                            ? [item.user.className, item.user.fatherName].filter(Boolean).join(" • ") || "—"
+                            : item.user.subject || "—"}
+                        </TableCell>
                         <TableCell>
                           {item.profile ? (
                             <div className="text-sm">
@@ -184,19 +238,43 @@ export default function AdminQrAttendance() {
         </Card>
 
         <Dialog open={!!issuedCard} onOpenChange={(open) => !open && setIssuedCard(null)}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-3xl">
             <DialogHeader>
               <DialogTitle>Issued QR credential</DialogTitle>
             </DialogHeader>
             {issuedCard ? (
-              <div className="space-y-4 text-center">
-                <img src={buildQrImageUrl(issuedCard.token)} alt="Issued QR credential" className="mx-auto aspect-square w-full max-w-[280px] rounded-2xl border bg-white p-3" />
-                <div>
-                  <p className="font-semibold text-slate-900">{issuedCard.userName}</p>
-                  <p className="text-sm text-slate-500">Public ID: {issuedCard.publicId}</p>
+              <div className="space-y-5">
+                {issuedStudentCardData ? (
+                  <StudentIdCardPreview card={issuedStudentCardData} />
+                ) : (
+                  <div className="space-y-4 text-center">
+                    <img src={buildQrImageUrl(issuedCard.token)} alt="Issued QR credential" className="mx-auto aspect-square w-full max-w-[280px] rounded-2xl border bg-white p-3" />
+                    <div>
+                      <p className="font-semibold text-slate-900">{issuedCard.profile.user?.name ?? `User #${issuedCard.profile.userId}`}</p>
+                      <p className="text-sm text-slate-500">Public ID: {issuedCard.profile.publicId}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-[1.25rem] border bg-slate-50/80 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Manual fallback token</p>
+                    <p className="mt-3 break-all rounded-2xl bg-white px-4 py-3 font-mono text-xs text-slate-700 shadow-sm">{issuedCard.token}</p>
+                  </div>
+                  <div className="rounded-[1.25rem] border bg-white p-4 text-sm text-slate-600">
+                    <p><span className="font-semibold text-slate-900">Public ID:</span> {issuedCard.profile.publicId}</p>
+                    <p className="mt-2"><span className="font-semibold text-slate-900">Status:</span> {issuedCard.profile.isActive ? "Active" : "Inactive"}</p>
+                    <p className="mt-2"><span className="font-semibold text-slate-900">Issued:</span> {formatDate(issuedCard.profile.issuedAt, "MMM dd, yyyy h:mm a")}</p>
+                    <p className="mt-2"><span className="font-semibold text-slate-900">Role:</span> {issuedCard.profile.user?.role ?? "—"}</p>
+                  </div>
                 </div>
-                <p className="break-all rounded-2xl border bg-slate-50 px-4 py-3 font-mono text-xs text-slate-700">{issuedCard.token}</p>
-                <Button variant="outline" onClick={handleCopy}><Copy className="mr-2 h-4 w-4" /> Copy token</Button>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                  {issuedStudentCardData ? (
+                    <Button variant="outline" onClick={handlePrint}><Printer className="mr-2 h-4 w-4" /> Print ID card</Button>
+                  ) : null}
+                  <Button variant="outline" onClick={handleCopy}><Copy className="mr-2 h-4 w-4" /> Copy token</Button>
+                </div>
               </div>
             ) : null}
           </DialogContent>

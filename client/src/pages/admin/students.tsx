@@ -11,16 +11,26 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2, Plus, Edit2, Trash2 } from "lucide-react";
 
+const optionalUrlField = z.union([z.string().trim().url("Enter a valid photo URL"), z.literal("")]).optional();
+
 const studentSchema = z.object({
     name: z.string().min(1, "Name is required"),
     email: z.string().email(),
-    password: z.string().min(1, "Password is required"),
+    password: z.string().optional(),
     className: z.string().min(1, "Class name is required"),
+    fatherName: z.string().optional(),
+    studentPhotoUrl: optionalUrlField,
+}).superRefine((data, ctx) => {
+    if (data.password && data.password.length < 6) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["password"], message: "Password must be at least 6 characters" });
+    }
 });
 
 export default function StudentManagement() {
@@ -28,33 +38,54 @@ export default function StudentManagement() {
     const createUser = useCreateUser();
     const updateUser = useUpdateUserHook();
     const deleteUser = useDeleteUserHook();
+    const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
 
     const form = useForm<z.infer<typeof studentSchema>>({
         resolver: zodResolver(studentSchema),
-        defaultValues: { name: "", email: "", password: "", className: "" }
+        defaultValues: { name: "", email: "", password: "", className: "", fatherName: "", studentPhotoUrl: "" }
     });
 
     const students = users?.filter(u => u.role === 'student') || [];
     const editingStudent = students.find(s => s.id === editingId);
 
-    const onSubmit = (data: z.infer<typeof studentSchema>) => {
-        if (editingId) {
-            updateUser.mutate({ id: editingId, ...data, role: "student" }, {
-                onSuccess: () => { setIsOpen(false); setEditingId(null); form.reset(); }
-            });
-        } else {
-            createUser.mutate({ ...data, role: "student" }, {
-                onSuccess: () => { setIsOpen(false); form.reset(); }
-            });
+    const onSubmit = async (data: z.infer<typeof studentSchema>) => {
+        const payload = {
+            name: data.name,
+            email: data.email,
+            role: "student" as const,
+            password: data.password?.trim() || undefined,
+            className: data.className.trim(),
+            fatherName: data.fatherName?.trim() || undefined,
+            studentPhotoUrl: data.studentPhotoUrl?.trim() || undefined,
+        };
+
+        if (!editingId && !payload.password) {
+            form.setError("password", { message: "Password is required" });
+            return;
+        }
+
+        try {
+            if (editingId) {
+                await updateUser.mutateAsync({ id: editingId, ...payload });
+            } else {
+                await createUser.mutateAsync({ ...payload, password: payload.password! });
+            }
+
+            setIsOpen(false);
+            setEditingId(null);
+            form.reset({ name: "", email: "", password: "", className: "", fatherName: "", studentPhotoUrl: "" });
+            toast({ title: editingId ? "Student updated" : "Student created", description: `${payload.name} has been saved successfully.` });
+        } catch (error) {
+            toast({ title: "Unable to save student", description: getErrorMessage(error), variant: "destructive" });
         }
     };
 
     const handleEdit = (id: number) => {
         const student = students.find(s => s.id === id);
         if (student) {
-            form.reset({ name: student.name, email: student.email, password: "", className: student.className || "" });
+            form.reset({ name: student.name, email: student.email, password: "", className: student.className || "", fatherName: student.fatherName || "", studentPhotoUrl: student.studentPhotoUrl || "" });
             setEditingId(id);
             setIsOpen(true);
         }
@@ -70,7 +101,7 @@ export default function StudentManagement() {
                     </div>
                     <Dialog open={isOpen} onOpenChange={setIsOpen}>
                         <DialogTrigger asChild>
-                            <Button onClick={() => { setEditingId(null); form.reset(); }}>
+                            <Button onClick={() => { setEditingId(null); form.reset({ name: "", email: "", password: "", className: "", fatherName: "", studentPhotoUrl: "" }); }}>
                                 <Plus className="mr-2 h-4 w-4" /> Add Student
                             </Button>
                         </DialogTrigger>
@@ -96,8 +127,8 @@ export default function StudentManagement() {
                                     )} />
                                     <FormField control={form.control} name="password" render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Password</FormLabel>
-                                            <FormControl><Input type="password" {...field} /></FormControl>
+                                            <FormLabel>{editingId ? "New Password (optional)" : "Password"}</FormLabel>
+                                            <FormControl><Input type="password" {...field} value={field.value ?? ""} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )} />
@@ -105,6 +136,20 @@ export default function StudentManagement() {
                                         <FormItem>
                                             <FormLabel>Class Name</FormLabel>
                                             <FormControl><Input {...field} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="fatherName" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Father&apos;s Name</FormLabel>
+                                            <FormControl><Input placeholder="Muhammad Aslam" {...field} value={field.value ?? ""} /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="studentPhotoUrl" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Student Photo URL</FormLabel>
+                                            <FormControl><Input placeholder="https://example.com/student-photo.jpg" {...field} value={field.value ?? ""} /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )} />
@@ -124,20 +169,22 @@ export default function StudentManagement() {
                                 <TableHead>Name</TableHead>
                                 <TableHead>Email</TableHead>
                                 <TableHead>Class</TableHead>
+                                <TableHead>Father</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading ? (
-                                <TableRow><TableCell colSpan={4} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell></TableRow>
+                                <TableRow><TableCell colSpan={5} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell></TableRow>
                             ) : students.length === 0 ? (
-                                <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No students found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No students found.</TableCell></TableRow>
                             ) : (
                                 students.map(student => (
                                     <TableRow key={student.id}>
                                         <TableCell className="font-medium">{student.name}</TableCell>
                                         <TableCell>{student.email}</TableCell>
                                         <TableCell>{student.className}</TableCell>
+                                        <TableCell>{student.fatherName || "—"}</TableCell>
                                         <TableCell className="text-right space-x-2">
                                             <Button size="sm" variant="outline" onClick={() => handleEdit(student.id)}>
                                                 <Edit2 className="h-4 w-4" />

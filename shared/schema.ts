@@ -27,6 +27,8 @@ export const users = pgTable("users", {
   role: text("role").notNull(), // 'admin', 'teacher', 'student'
   subject: text("subject"), // For teachers
   className: text("class_name"), // For students
+  fatherName: text("father_name"), // For students
+  studentPhotoUrl: text("student_photo_url"), // For students
 });
 
 export const students = pgTable("students", {
@@ -246,7 +248,28 @@ export const schoolSettingsAuditLogs = pgTable("school_settings_audit_logs", {
   createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
 });
 
-export const insertUserSchema = createInsertSchema(users).omit({ id: true });
+const optionalUserTextFieldSchema = z.preprocess(
+  (value) => typeof value === "string" ? value.trim() || null : value,
+  z.string().max(120).nullable().optional(),
+);
+
+const optionalStudentPhotoUrlSchema = z.preprocess(
+  (value) => typeof value === "string" ? value.trim() || null : value,
+  z.string().url("Student photo URL must be a valid URL").max(500).nullable().optional(),
+);
+
+export const insertUserSchema = createInsertSchema(users)
+  .omit({ id: true })
+  .extend({
+    name: z.string().trim().min(1, "Name is required").max(120),
+    email: z.string().trim().email("Invalid email address"),
+    password: z.string().min(1, "Password is required"),
+    role: z.enum(["admin", "teacher", "student"]),
+    subject: optionalUserTextFieldSchema,
+    className: optionalUserTextFieldSchema,
+    fatherName: optionalUserTextFieldSchema,
+    studentPhotoUrl: optionalStudentPhotoUrlSchema,
+  });
 export const insertStudentSchema = createInsertSchema(students);
 export const insertTeacherSchema = createInsertSchema(teachers);
 export const insertAcademicSchema = createInsertSchema(academics).omit({ id: true });
