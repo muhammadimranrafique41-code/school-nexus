@@ -1,5 +1,5 @@
 import { Layout } from "@/components/layout";
-import { StudentIdCardPreview, buildStudentIdCardPrintHtml, getContactLine, type StudentIdCardData } from "@/components/qr-student-id-card";
+import { StudentIdCardPreview, buildStudentIdCardPrintHtml, getContactLine, resolveStudentPortraitUrl, type StudentIdCardData, useStudentPortraitUrl } from "@/components/qr-student-id-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -32,7 +32,7 @@ export default function StudentQrCard() {
   const studentClass = student?.className?.trim() || "Unassigned";
   const fatherName = student?.fatherName?.trim() || "Not on file";
   const qrImageUrl = data ? buildQrImageUrl(data.token, 320) : "";
-  const portraitUrl = student?.studentPhotoUrl?.trim() || null;
+  const portraitUrl = useStudentPortraitUrl(student?.studentPhotoUrl ?? null);
   const contactLine = getContactLine(publicSettings);
   const authenticityLine = contactLine
     ? `Official ${shortName} credential • ${contactLine}`
@@ -67,7 +67,7 @@ export default function StudentQrCard() {
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!data || typeof window === "undefined") return;
 
     const printWindow = window.open("", "_blank", "width=1100,height=1500");
@@ -81,8 +81,12 @@ export default function StudentQrCard() {
     }
 
     try {
+      const printCard = {
+        ...studentCardData!,
+        portraitUrl: await resolveStudentPortraitUrl(studentCardData?.portraitUrl ?? student?.studentPhotoUrl ?? null),
+      };
       printWindow.document.open();
-      printWindow.document.write(buildStudentIdCardPrintHtml(studentCardData!));
+      printWindow.document.write(buildStudentIdCardPrintHtml(printCard));
       printWindow.document.close();
     } catch (error) {
       printWindow.close();

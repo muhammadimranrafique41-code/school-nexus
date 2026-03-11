@@ -4,6 +4,31 @@ import { api } from "../shared/routes.js";
 import type { User } from "../shared/schema.js";
 import { isValidQrTokenFormat } from "./qr-service.js";
 
+function inferImageMimeType(url: string) {
+  const pathname = new URL(url).pathname.toLowerCase();
+  if (pathname.endsWith(".png")) return "image/png";
+  if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) return "image/jpeg";
+  if (pathname.endsWith(".webp")) return "image/webp";
+  if (pathname.endsWith(".gif")) return "image/gif";
+  if (pathname.endsWith(".svg")) return "image/svg+xml";
+  if (pathname.endsWith(".avif")) return "image/avif";
+  return null;
+}
+
+function isBlockedPortraitProxyHostname(hostname: string) {
+  const value = hostname.trim().toLowerCase().replace(/^\[(.*)\]$/, "$1");
+  if (!value) return true;
+  if (value === "localhost" || value === "::1") return true;
+  if (/^127\./.test(value)) return true;
+  if (/^10\./.test(value)) return true;
+  if (/^192\.168\./.test(value)) return true;
+  if (/^169\.254\./.test(value)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(value)) return true;
+  if (/^(fc|fd)[0-9a-f]{2}:/i.test(value)) return true;
+  if (/^fe80:/i.test(value)) return true;
+  return false;
+}
+
 type StorageLike = Pick<
   typeof import("./storage.js").storage,
   "getStudents" | "getTeachers" | "getQrProfiles" | "getQrAttendanceEvents" | "getUser" | "issueQrProfile" | "regenerateQrProfile" | "setQrProfileActive" | "getMyQrCard" | "scanQrAttendance"
@@ -151,6 +176,55 @@ export function registerQrAttendanceRoutes(
     } catch (err) {
       if (err instanceof z.ZodError) return sendApiError(res, 400, err.errors[0]?.message ?? "Invalid request");
       return sendApiError(res, 500, "Failed to load QR card");
+    }
+  });
+
+  app.get(api.qrAttendance.portraitProxy.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin", "teacher", "student"]);
+      if (!user) return;
+
+      const input = api.qrAttendance.portraitProxy.input.parse(req.query);
+      const portraitUrl = new URL(input.url);
+
+      if (!["http:", "https:"].includes(portraitUrl.protocol)) {
+        return res.status(400).json({ message: "Portrait proxy only supports http and https URLs" });
+      }
+
+      if (isBlockedPortraitProxyHostname(portraitUrl.hostname)) {
+        return res.status(400).json({ message: "Portrait proxy blocked this hostname" });
+      }
+
+      const response = await fetch(portraitUrl, {
+        headers: {
+          Accept: "image/avif,image/webp,image/svg+xml,image/*;q=0.9,*/*;q=0.5",
+        },
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!response.ok) {
+        return res.status(502).json({ message: "Unable to load portrait image" });
+      }
+
+      const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+      const imageType = contentType?.startsWith("image/") ? contentType : inferImageMimeType(portraitUrl.toString());
+
+      if (!imageType) {
+        return res.status(415).json({ message: "Portrait URL did not return a supported image" });
+      }
+
+      const body = Buffer.from(await response.arrayBuffer());
+      res.setHeader("Content-Type", imageType);
+      res.setHeader("Content-Length", String(body.byteLength));
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.setHeader("Vary", "Cookie");
+      return res.status(200).end(body);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid request" });
+      }
+
+      return res.status(502).json({ message: "Unable to proxy portrait image" });
     }
   });
 

@@ -1,5 +1,5 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { IdCardPortrait, normalizeIdCardPortraitUrl, resolveIdCardPortraitUrl, useIdCardPortraitUrl } from "@/components/qr-id-card-portrait";
 import { escapeHtml } from "@/lib/utils";
 import type { PublicSchoolSettings } from "@shared/settings";
 
@@ -31,6 +31,10 @@ export function getContactLine(settings?: PublicSchoolSettings | null) {
     settings?.schoolInformation.schoolEmail,
   ].filter((value): value is string => Boolean(value?.trim())).join(" • ");
 }
+
+export const normalizeStudentPortraitUrl = normalizeIdCardPortraitUrl;
+export const resolveStudentPortraitUrl = resolveIdCardPortraitUrl;
+export const useStudentPortraitUrl = useIdCardPortraitUrl;
 
 export function StudentIdCardPreview({ card }: { card: StudentIdCardData }) {
   const initials = getInitials(card.studentName);
@@ -70,12 +74,12 @@ export function StudentIdCardPreview({ card }: { card: StudentIdCardData }) {
 
             <div className="mt-4 grid grid-cols-[112px_1fr] gap-4">
               <div className="rounded-[1.5rem] border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-2.5 shadow-sm">
-                <Avatar className="h-full min-h-[132px] w-full rounded-[1.1rem] border border-slate-200 bg-slate-100">
-                  <AvatarImage src={card.portraitUrl ?? undefined} alt={`${card.studentName} portrait`} className="object-cover" />
-                  <AvatarFallback className="rounded-[1.1rem] bg-gradient-to-br from-slate-200 to-violet-100 text-3xl font-bold text-slate-700">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
+                <IdCardPortrait
+                  src={card.portraitUrl}
+                  alt={`${card.studentName} portrait`}
+                  initials={initials}
+                  fallbackClassName="grid h-full min-h-[132px] w-full place-items-center rounded-[1.1rem] bg-gradient-to-br from-slate-200 to-violet-100 text-3xl font-bold text-slate-700"
+                />
               </div>
 
               <div className="space-y-3">
@@ -137,11 +141,12 @@ export function StudentIdCardPreview({ card }: { card: StudentIdCardData }) {
 
 export function buildStudentIdCardPrintHtml(card: StudentIdCardData) {
   const initials = getInitials(card.studentName);
+  const portraitUrl = normalizeStudentPortraitUrl(card.portraitUrl);
   const logoHtml = card.logoUrl
     ? `<img src="${escapeHtml(card.logoUrl)}" alt="${escapeHtml(card.shortName)} logo" class="logo" />`
     : `<div class="logo logo-fallback">${escapeHtml(getInitials(card.shortName))}</div>`;
-  const portraitHtml = card.portraitUrl
-    ? `<div class="portrait photo"><img src="${escapeHtml(card.portraitUrl)}" alt="${escapeHtml(card.studentName)} portrait" onerror="this.style.display='none';this.nextElementSibling.style.display='grid';" /><div class="portrait-fallback" style="display:none">${escapeHtml(initials)}</div></div>`
+  const portraitHtml = portraitUrl
+    ? `<div class="portrait photo"><img src="${escapeHtml(portraitUrl)}" alt="${escapeHtml(card.studentName)} portrait" referrerpolicy="no-referrer" onerror="this.style.display='none';this.nextElementSibling.style.display='grid';" /><div class="portrait-fallback" style="display:none">${escapeHtml(initials)}</div></div>`
     : `<div class="portrait"><div class="portrait-fallback">${escapeHtml(initials)}</div></div>`;
 
   return `<!DOCTYPE html>
@@ -554,15 +559,46 @@ export function buildStudentIdCardPrintHtml(card: StudentIdCardData) {
         </article>
       </main>
       <script>
-        const waitForImages = async () => {
-          const images = Array.from(document.images);
-          await Promise.all(images.map((image) => image.complete ? Promise.resolve() : new Promise((resolve) => {
+        let hasPrinted = false;
+        const waitForImageLoad = (image) => image.complete
+          ? Promise.resolve()
+          : new Promise((resolve) => {
             image.addEventListener('load', resolve, { once: true });
             image.addEventListener('error', resolve, { once: true });
-          })));
-          setTimeout(() => window.print(), 180);
+          });
+
+        const waitForImageDecode = async (image) => {
+          await waitForImageLoad(image);
+
+          if (image.naturalWidth > 0 && typeof image.decode === 'function') {
+            try {
+              await image.decode();
+            } catch {
+              // Ignore decode failures and let the fallback/error path proceed.
+            }
+          }
         };
-        window.addEventListener('load', waitForImages);
+
+        const waitForImages = async () => {
+          const images = Array.from(document.images);
+          await Promise.all(images.map((image) => waitForImageDecode(image)));
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        };
+
+        const printWhenReady = async () => {
+          if (hasPrinted) return;
+          hasPrinted = true;
+          await waitForImages();
+          setTimeout(() => window.print(), 120);
+        };
+
+        if (document.readyState === 'complete') {
+          void printWhenReady();
+        } else {
+          window.addEventListener('load', () => {
+            void printWhenReady();
+          }, { once: true });
+        }
         window.addEventListener('afterprint', () => window.close());
       </script>
     </body>

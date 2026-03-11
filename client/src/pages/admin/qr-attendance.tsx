@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { TeacherIdCardPreview, buildTeacherIdCardPrintHtml, resolveTeacherPortraitUrl, type TeacherIdCardData, useTeacherPortraitUrl } from "@/components/qr-teacher-id-card";
-import { StudentIdCardPreview, buildStudentIdCardPrintHtml, getContactLine, type StudentIdCardData } from "@/components/qr-student-id-card";
+import { StudentIdCardPreview, buildStudentIdCardPrintHtml, getContactLine, resolveStudentPortraitUrl, type StudentIdCardData, useStudentPortraitUrl } from "@/components/qr-student-id-card";
 import { Layout } from "@/components/layout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,6 +59,7 @@ export default function AdminQrAttendance() {
   const authenticityLine = contactLine
     ? `Official ${shortName} credential • ${contactLine}`
     : `Official ${shortName} credential • Valid only when scanned through QR Attendance`;
+  const issuedStudentPortraitUrl = useStudentPortraitUrl(issuedCard?.profile.user?.role === "student" ? issuedCard.profile.user.studentPhotoUrl ?? null : null);
   const issuedTeacherPortraitUrl = useTeacherPortraitUrl(issuedCard?.profile.user?.role === "teacher" ? issuedCard.profile.user.teacherPhotoUrl ?? null : null);
   const issuedStudentCardData: StudentIdCardData | null = issuedCard?.profile.user?.role === "student"
     ? {
@@ -71,7 +72,7 @@ export default function AdminQrAttendance() {
       fatherName: issuedCard.profile.user.fatherName?.trim() || "Not on file",
       publicId: issuedCard.profile.publicId,
       qrUrl: buildQrImageUrl(issuedCard.token, 320),
-      portraitUrl: issuedCard.profile.user.studentPhotoUrl?.trim() || null,
+      portraitUrl: issuedStudentPortraitUrl,
       isActive: issuedCard.profile.isActive,
       academicYear,
       currentTerm,
@@ -151,11 +152,14 @@ export default function AdminQrAttendance() {
 
     try {
       const printMarkup = issuedStudentCardData
-        ? buildStudentIdCardPrintHtml(issuedStudentCardData)
+        ? buildStudentIdCardPrintHtml({
+          ...issuedStudentCardData,
+          portraitUrl: await resolveStudentPortraitUrl(issuedStudentCardData.portraitUrl ?? issuedCard?.profile.user?.studentPhotoUrl ?? null),
+        })
         : issuedTeacherCardData
           ? buildTeacherIdCardPrintHtml({
             ...issuedTeacherCardData,
-            portraitUrl: await resolveTeacherPortraitUrl(issuedCard?.profile.user?.teacherPhotoUrl ?? issuedTeacherCardData.portraitUrl ?? null),
+            portraitUrl: await resolveTeacherPortraitUrl(issuedTeacherCardData.portraitUrl ?? issuedCard?.profile.user?.teacherPhotoUrl ?? null),
           })
           : null;
 

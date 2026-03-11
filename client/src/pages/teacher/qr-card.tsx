@@ -88,7 +88,7 @@ export default function TeacherQrCard() {
     try {
       const printCard = {
         ...teacherCardData!,
-        portraitUrl: await resolveTeacherPortraitUrl(teacher?.teacherPhotoUrl ?? teacherCardData?.portraitUrl ?? null),
+        portraitUrl: await resolveTeacherPortraitUrl(teacherCardData?.portraitUrl ?? teacher?.teacherPhotoUrl ?? null),
       };
       printWindow.document.open();
       printWindow.document.write(buildTeacherIdCardPrintHtml(printCard));

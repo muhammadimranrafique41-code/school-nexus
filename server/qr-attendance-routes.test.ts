@@ -134,6 +134,7 @@ const { registerRoutes } = await import("./routes.js");
 
 let server: Server;
 let baseUrl = "";
+const nativeFetch = globalThis.fetch.bind(globalThis);
 
 before(async () => {
   const app = express();
@@ -154,8 +155,14 @@ async function requestJson(path: string, options: { userId?: number; method?: st
   const headers = new Headers();
   if (options.userId) headers.set("x-test-user-id", String(options.userId));
   if (options.body !== undefined) headers.set("content-type", "application/json");
-  const response = await fetch(`${baseUrl}${path}`, { method: options.method ?? "GET", headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
+  const response = await nativeFetch(`${baseUrl}${path}`, { method: options.method ?? "GET", headers, body: options.body === undefined ? undefined : JSON.stringify(options.body) });
   return { status: response.status, json: await response.json() };
+}
+
+async function request(path: string, options: { userId?: number; method?: string; body?: BodyInit | null } = {}) {
+  const headers = new Headers();
+  if (options.userId) headers.set("x-test-user-id", String(options.userId));
+  return nativeFetch(`${baseUrl}${path}`, { method: options.method ?? "GET", headers, body: options.body });
 }
 
 test("QR roster requires an authenticated admin session", async () => {
@@ -241,6 +248,34 @@ test("teacher can load their own QR card with teacher identity fields after issu
   assert.equal(parsed.data?.profile.user?.department, "Science Department");
   assert.equal(parsed.data?.profile.user?.employeeId, "SNX-T-100");
   assert.equal(parsed.data?.profile.user?.teacherPhotoUrl, "https://cdn.school.edu/ava-teacher.jpg");
+});
+
+test("portrait proxy requires authentication, blocks local hosts, and streams remote images for QR cards", async () => {
+  const remoteUrl = "https://cdn.school.edu/ava-teacher.jpg";
+  const unauthenticated = await request(`${api.qrAttendance.portraitProxy.path}?url=${encodeURIComponent(remoteUrl)}`);
+  assert.equal(unauthenticated.status, 401);
+
+  const blocked = await request(`${api.qrAttendance.portraitProxy.path}?url=${encodeURIComponent("http://127.0.0.1/private.png")}`, { userId: 2 });
+  assert.equal(blocked.status, 400);
+  assert.deepEqual(await blocked.json(), { message: "Portrait proxy blocked this hostname" });
+
+  const fetchMock = mock.method(globalThis, "fetch", async (input) => {
+    assert.equal(String(input), remoteUrl);
+    return new Response(Uint8Array.from([137, 80, 78, 71]), {
+      status: 200,
+      headers: { "content-type": "image/png" },
+    });
+  });
+
+  try {
+    const proxied = await request(`${api.qrAttendance.portraitProxy.path}?url=${encodeURIComponent(remoteUrl)}`, { userId: 2 });
+    assert.equal(proxied.status, 200);
+    assert.equal(proxied.headers.get("content-type"), "image/png");
+    assert.equal(proxied.headers.get("vary"), "Cookie");
+    assert.deepEqual(Array.from(new Uint8Array(await proxied.arrayBuffer())), [137, 80, 78, 71]);
+  } finally {
+    fetchMock.mock.restore();
+  }
 });
 
 test("my card returns 404 when an eligible user has no issued profile", async () => {

@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
+import { IdCardPortrait, normalizeIdCardPortraitUrl, resolveIdCardPortraitUrl, useIdCardPortraitUrl } from "@/components/qr-id-card-portrait";
 import { escapeHtml } from "@/lib/utils";
-import { useEffect, useMemo, useState } from "react";
 
 export type TeacherIdCardData = {
   schoolName: string;
@@ -25,146 +25,9 @@ function getInitials(value?: string | null) {
   return value?.split(" ").filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "SN";
 }
 
-function extractFirstUrlCandidate(value: string) {
-  const matches = value.match(/https?:\/\/.+?(?=https?:\/\/|$)/gi) ?? [];
-
-  for (const match of matches) {
-    const candidate = match.trim().replace(/[),.;]+$/, "");
-    try {
-      return new URL(candidate).toString();
-    } catch {
-      continue;
-    }
-  }
-
-  return null;
-}
-
-export function normalizeTeacherPortraitUrl(value?: string | null) {
-  const trimmed = value?.trim();
-  if (!trimmed) return null;
-
-  const urlCandidates = trimmed.match(/https?:\/\//gi)?.length && (trimmed.match(/https?:\/\//gi)?.length ?? 0) > 1
-    ? [extractFirstUrlCandidate(trimmed)]
-    : [trimmed, extractFirstUrlCandidate(trimmed)];
-
-  for (const candidate of urlCandidates) {
-    if (!candidate) continue;
-
-    try {
-      return new URL(candidate).toString();
-    } catch {
-      continue;
-    }
-  }
-
-  return null;
-}
-
-function inferImageMimeType(url: string) {
-  const pathname = new URL(url).pathname.toLowerCase();
-  if (pathname.endsWith(".png")) return "image/png";
-  if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) return "image/jpeg";
-  if (pathname.endsWith(".webp")) return "image/webp";
-  if (pathname.endsWith(".gif")) return "image/gif";
-  if (pathname.endsWith(".svg")) return "image/svg+xml";
-  if (pathname.endsWith(".avif")) return "image/avif";
-  return null;
-}
-
-async function readRemoteImageAsDataUrl(url: string, signal: AbortSignal) {
-  const response = await fetch(url, { signal, credentials: "omit" });
-  if (!response.ok) throw new Error(`Failed to load teacher portrait: ${response.status}`);
-
-  const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
-  const imageType = contentType?.startsWith("image/") ? contentType : inferImageMimeType(url);
-  if (!imageType) throw new Error("Unable to infer teacher portrait image type");
-
-  const blob = new Blob([await response.arrayBuffer()], { type: imageType });
-
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Unable to read teacher portrait data"));
-    reader.onerror = () => reject(reader.error ?? new Error("Unable to read teacher portrait data"));
-    reader.readAsDataURL(blob);
-  });
-}
-
-export async function resolveTeacherPortraitUrl(rawUrl?: string | null, signal?: AbortSignal) {
-  const normalizedUrl = normalizeTeacherPortraitUrl(rawUrl);
-  if (!normalizedUrl || typeof window === "undefined") return normalizedUrl;
-  if (normalizedUrl.startsWith("data:") || normalizedUrl.startsWith("blob:")) return normalizedUrl;
-
-  const portraitUrl = new URL(normalizedUrl);
-  if (portraitUrl.origin === window.location.origin) return normalizedUrl;
-
-  try {
-    return await readRemoteImageAsDataUrl(normalizedUrl, signal ?? new AbortController().signal);
-  } catch {
-    return normalizedUrl;
-  }
-}
-
-export function useTeacherPortraitUrl(rawUrl?: string | null) {
-  const normalizedUrl = useMemo(() => normalizeTeacherPortraitUrl(rawUrl), [rawUrl]);
-  const [resolvedUrl, setResolvedUrl] = useState<string | null>(normalizedUrl);
-
-  useEffect(() => {
-    setResolvedUrl(normalizedUrl);
-  }, [normalizedUrl]);
-
-  useEffect(() => {
-    if (!normalizedUrl || typeof window === "undefined") return;
-    if (normalizedUrl.startsWith("data:") || normalizedUrl.startsWith("blob:")) return;
-
-    const portraitUrl = new URL(normalizedUrl);
-    if (portraitUrl.origin === window.location.origin) return;
-
-    const controller = new AbortController();
-    let active = true;
-
-    resolveTeacherPortraitUrl(normalizedUrl, controller.signal)
-      .then((dataUrl) => {
-        if (active) setResolvedUrl(dataUrl);
-      })
-      .catch(() => {
-        if (active) setResolvedUrl(normalizedUrl);
-      });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [normalizedUrl]);
-
-  return resolvedUrl;
-}
-
-function TeacherPortrait({ src, alt, initials }: { src?: string | null; alt: string; initials: string }) {
-  const [imageFailed, setImageFailed] = useState(false);
-
-  useEffect(() => {
-    setImageFailed(false);
-  }, [src]);
-
-  if (src && !imageFailed) {
-    return (
-      <img
-        src={src}
-        alt={alt}
-        className="h-full min-h-[132px] w-full rounded-[1.1rem] object-cover"
-        referrerPolicy="no-referrer"
-        onError={() => setImageFailed(true)}
-      />
-    );
-  }
-
-  return (
-    <div className="grid h-full min-h-[132px] w-full place-items-center rounded-[1.1rem] bg-gradient-to-br from-slate-200 to-emerald-100 text-3xl font-bold text-slate-700">
-      {initials}
-    </div>
-  );
-}
+export const normalizeTeacherPortraitUrl = normalizeIdCardPortraitUrl;
+export const resolveTeacherPortraitUrl = resolveIdCardPortraitUrl;
+export const useTeacherPortraitUrl = useIdCardPortraitUrl;
 
 export function TeacherIdCardPreview({ card }: { card: TeacherIdCardData }) {
   const initials = getInitials(card.teacherName);
@@ -204,7 +67,12 @@ export function TeacherIdCardPreview({ card }: { card: TeacherIdCardData }) {
 
             <div className="mt-4 grid grid-cols-[112px_1fr] gap-4">
               <div className="rounded-[1.5rem] border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-2.5 shadow-sm">
-                <TeacherPortrait src={card.portraitUrl} alt={`${card.teacherName} portrait`} initials={initials} />
+                <IdCardPortrait
+                  src={card.portraitUrl}
+                  alt={`${card.teacherName} portrait`}
+                  initials={initials}
+                  fallbackClassName="grid h-full min-h-[132px] w-full place-items-center rounded-[1.1rem] bg-gradient-to-br from-slate-200 to-emerald-100 text-3xl font-bold text-slate-700"
+                />
               </div>
 
               <div className="space-y-3">
@@ -703,15 +571,46 @@ export function buildTeacherIdCardPrintHtml(card: TeacherIdCardData) {
         </article>
       </main>
       <script>
-        const waitForImages = async () => {
-          const images = Array.from(document.images);
-          await Promise.all(images.map((image) => image.complete ? Promise.resolve() : new Promise((resolve) => {
+        let hasPrinted = false;
+        const waitForImageLoad = (image) => image.complete
+          ? Promise.resolve()
+          : new Promise((resolve) => {
             image.addEventListener('load', resolve, { once: true });
             image.addEventListener('error', resolve, { once: true });
-          })));
-          setTimeout(() => window.print(), 180);
+          });
+
+        const waitForImageDecode = async (image) => {
+          await waitForImageLoad(image);
+
+          if (image.naturalWidth > 0 && typeof image.decode === 'function') {
+            try {
+              await image.decode();
+            } catch {
+              // Ignore decode failures and let the fallback/error path proceed.
+            }
+          }
         };
-        window.addEventListener('load', waitForImages);
+
+        const waitForImages = async () => {
+          const images = Array.from(document.images);
+          await Promise.all(images.map((image) => waitForImageDecode(image)));
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        };
+
+        const printWhenReady = async () => {
+          if (hasPrinted) return;
+          hasPrinted = true;
+          await waitForImages();
+          setTimeout(() => window.print(), 120);
+        };
+
+        if (document.readyState === 'complete') {
+          void printWhenReady();
+        } else {
+          window.addEventListener('load', () => {
+            void printWhenReady();
+          }, { once: true });
+        }
         window.addEventListener('afterprint', () => window.close());
       </script>
     </body>

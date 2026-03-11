@@ -718,6 +718,16 @@ export const api = {
         ),
       },
     },
+    portraitProxy: {
+      path: "/api/qr-attendance/portrait-proxy",
+      method: "GET",
+      input: z.object({
+        url: z.string().url(),
+      }),
+      responses: {
+        200: z.any(),
+      },
+    },
     scan: {
       path: "/api/qr-attendance/scan",
       method: "POST",
