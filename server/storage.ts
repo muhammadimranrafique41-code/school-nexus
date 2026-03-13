@@ -2,6 +2,8 @@ import { and, count, desc, eq, inArray, sql, sum } from "drizzle-orm";
 import {
   academics,
   attendance,
+  financeVoucherOperations,
+  financeVouchers,
   feePayments,
   fees,
   qrAttendanceEvents,
@@ -19,8 +21,14 @@ import {
   type Attendance,
   type AttendanceWithStudent,
   type Fee,
+  type FinanceVoucher,
+  type FinanceVoucherOperation,
+  type FinanceVoucherOperationWithMeta,
+  type FinanceVoucherWithMeta,
   type FeePaymentWithMeta,
   type FeeWithStudent,
+  type InsertFinanceVoucher,
+  type InsertFinanceVoucherOperation,
   type InsertAcademic,
   type InsertAttendance,
   type InsertQrProfile,
@@ -45,6 +53,8 @@ import {
 } from "../shared/schema.js";
 import {
   buildFeeBalanceSummary,
+  buildFinanceVoucherFileName,
+  buildFinanceVoucherPreview,
   buildFinanceReportSnapshot,
   buildOverdueBalanceEntries,
   buildStudentBalanceSummary,
@@ -52,11 +62,17 @@ import {
   buildDueDateForBillingMonth,
   formatBillingPeriod,
   normalizeFeeLineItems,
+  normalizeFinanceVoucherSelection,
   summarizeFeeLedger,
   toIsoDate,
   type BillingProfileInput,
   type CreateFeeInput,
   type FeeBalanceSummary,
+  type FinanceVoucherOperationRecord,
+  type FinanceVoucherPreview,
+  type FinanceVoucherPreviewInput,
+  type FinanceVoucherSelectionInput,
+  type FinanceVoucherStartInput,
   type FinanceReportSnapshot,
   type FeeStatus,
   type GenerateMonthlyFeesInput,
@@ -122,6 +138,12 @@ type FinanceReportFilters = {
   month?: string;
   studentId?: number;
   status?: FeeStatus;
+};
+
+type FinanceVoucherSelectionPlan = {
+  selection: FinanceVoucherSelectionInput;
+  invoices: FeeWithStudent[];
+  vouchersByFeeId: Map<number, FinanceVoucherWithMeta>;
 };
 
 const createRuntimeSettingsState = (): RuntimeSettingsState => {
@@ -265,6 +287,13 @@ export interface IStorage {
   getFeeBalanceSummary(): Promise<FeeBalanceSummary>;
   getStudentBalance(studentId: number): Promise<StudentBalanceSummary>;
   getOverdueBalances(): Promise<OverdueBalanceEntry[]>;
+  previewFinanceVoucherSelection(input: FinanceVoucherPreviewInput): Promise<FinanceVoucherPreview>;
+  createFinanceVoucherOperation(input: FinanceVoucherStartInput, requestedBy?: number): Promise<FinanceVoucherOperationRecord>;
+  getFinanceVoucherOperation(id: number): Promise<FinanceVoucherOperationRecord | undefined>;
+  updateFinanceVoucherOperation(id: number, updates: Partial<InsertFinanceVoucherOperation>): Promise<FinanceVoucherOperationRecord | undefined>;
+  listFinanceVoucherOperations(limit?: number): Promise<FinanceVoucherOperationRecord[]>;
+  getFinanceVouchersByFeeIds(feeIds: number[]): Promise<FinanceVoucherWithMeta[]>;
+  saveFinanceVoucher(record: Omit<InsertFinanceVoucher, "generatedAt"> & { generatedAt?: string }): Promise<FinanceVoucherWithMeta>;
 
   getTotalStudents(): Promise<number>;
   getTotalTeachers(): Promise<number>;
@@ -293,6 +322,7 @@ export interface IStorage {
       description: string;
       dateLabel: string;
     }[];
+    recentVoucherOperations: FinanceVoucherOperationRecord[];
   }>;
   getStudentDashboardStats(studentId: number): Promise<{
     attendanceRate: number;
@@ -1434,6 +1464,45 @@ export class DatabaseStorage implements IStorage {
       .sort((left, right) => (left.student?.name ?? "").localeCompare(right.student?.name ?? ""));
   }
 
+  private async attachFinanceVouchers(records: FinanceVoucher[]): Promise<FinanceVoucherWithMeta[]> {
+    if (records.length === 0) return [];
+    const userMap = await this.getUsersMap();
+    return records
+      .map((record) => ({ ...record, generatedByUser: record.generatedBy ? userMap.get(record.generatedBy) : undefined }))
+      .sort((left, right) => `${right.generatedAt}-${right.id}`.localeCompare(`${left.generatedAt}-${left.id}`));
+  }
+
+  private async attachFinanceVoucherOperations(records: FinanceVoucherOperation[]): Promise<FinanceVoucherOperationRecord[]> {
+    if (records.length === 0) return [];
+    const userMap = await this.getUsersMap();
+    return records
+      .map((record) => ({
+        ...record,
+        requestedByName: record.requestedBy ? userMap.get(record.requestedBy)?.name ?? null : null,
+      }))
+      .sort((left, right) => `${right.createdAt}-${right.id}`.localeCompare(`${left.createdAt}-${left.id}`));
+  }
+
+  private async getFinanceVoucherSelectionPlan(input: FinanceVoucherSelectionInput): Promise<FinanceVoucherSelectionPlan> {
+    const selection = normalizeFinanceVoucherSelection(input);
+    const invoices = (await this.getFees())
+      .filter((invoice) => selection.billingMonths.includes(invoice.billingMonth))
+      .filter((invoice) => selection.classNames.length === 0 || selection.classNames.includes(invoice.student?.className ?? ""))
+      .filter((invoice) => selection.studentIds.length === 0 || selection.studentIds.includes(invoice.studentId))
+      .sort((left, right) =>
+        `${left.billingMonth}-${left.student?.className ?? ""}-${left.student?.name ?? ""}-${left.id}`.localeCompare(
+          `${right.billingMonth}-${right.student?.className ?? ""}-${right.student?.name ?? ""}-${right.id}`,
+        ),
+      );
+
+    const voucherRows = await this.getFinanceVouchersByFeeIds(invoices.map((invoice) => invoice.id));
+    return {
+      selection,
+      invoices,
+      vouchersByFeeId: new Map(voucherRows.map((record) => [record.feeId, record])),
+    };
+  }
+
   private async createFeeRecord(executor: any, record: CreateFeeInput, invoicePrefix: string): Promise<Fee> {
     const timestamp = new Date().toISOString();
     const billingPeriod = record.billingPeriod?.trim() || formatBillingPeriod(record.billingMonth);
@@ -1792,6 +1861,114 @@ export class DatabaseStorage implements IStorage {
     return buildOverdueBalanceEntries(await this.getFees());
   }
 
+  async getFinanceVouchersByFeeIds(feeIds: number[]) {
+    if (feeIds.length === 0) return [];
+    const rows = await db.select().from(financeVouchers).where(inArray(financeVouchers.feeId, feeIds));
+    return this.attachFinanceVouchers(rows);
+  }
+
+  async previewFinanceVoucherSelection(input: FinanceVoucherPreviewInput) {
+    const plan = await this.getFinanceVoucherSelectionPlan(input);
+    const previewInvoices = plan.invoices.map((invoice) => {
+      const existingVoucher = plan.vouchersByFeeId.get(invoice.id);
+      return {
+        feeId: invoice.id,
+        studentId: invoice.studentId,
+        studentName: invoice.student?.name?.trim() || `Student #${invoice.studentId}`,
+        className: invoice.student?.className ?? null,
+        invoiceNumber: invoice.invoiceNumber ?? null,
+        billingMonth: invoice.billingMonth,
+        billingPeriod: invoice.billingPeriod,
+        amount: invoice.amount,
+        remainingBalance: invoice.remainingBalance,
+        dueDate: invoice.dueDate,
+        hasExistingVoucher: Boolean(existingVoucher),
+        existingVoucherDocumentNumber: existingVoucher?.documentNumber ?? null,
+        existingVoucherGeneratedAt: existingVoucher?.generatedAt ?? null,
+      };
+    });
+    const preview = buildFinanceVoucherPreview(plan.selection, previewInvoices);
+    return {
+      ...preview,
+      sampleInvoices: preview.sampleInvoices.slice(0, input.previewLimit),
+    };
+  }
+
+  async createFinanceVoucherOperation(input: FinanceVoucherStartInput, requestedBy?: number) {
+    const preview = await this.previewFinanceVoucherSelection({ ...input, previewLimit: 50 });
+    const timestamp = new Date().toISOString();
+    const [created] = await db.insert(financeVoucherOperations).values({
+      requestedBy: requestedBy ?? null,
+      status: "queued",
+      billingMonths: preview.selection.billingMonths,
+      classNames: preview.selection.classNames,
+      studentIds: preview.selection.studentIds,
+      force: preview.selection.force,
+      totalInvoices: preview.targetInvoiceCount,
+      generatedCount: 0,
+      skippedCount: preview.skippedExistingCount,
+      failedCount: 0,
+      archiveSizeBytes: 0,
+      errorMessage: null,
+      startedAt: null,
+      completedAt: null,
+      cancelledAt: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }).returning();
+    const [record] = await this.attachFinanceVoucherOperations([created]);
+    return record;
+  }
+
+  async getFinanceVoucherOperation(id: number) {
+    const [record] = await db.select().from(financeVoucherOperations).where(eq(financeVoucherOperations.id, id)).limit(1);
+    if (!record) return undefined;
+    const [withMeta] = await this.attachFinanceVoucherOperations([record]);
+    return withMeta;
+  }
+
+  async updateFinanceVoucherOperation(id: number, updates: Partial<InsertFinanceVoucherOperation>) {
+    const existing = await this.getFinanceVoucherOperation(id);
+    if (!existing) return undefined;
+    const [updated] = await db.update(financeVoucherOperations).set({
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    }).where(eq(financeVoucherOperations.id, id)).returning();
+    const [withMeta] = await this.attachFinanceVoucherOperations([updated]);
+    return withMeta;
+  }
+
+  async listFinanceVoucherOperations(limit = 10) {
+    const rows = await db.select().from(financeVoucherOperations).orderBy(desc(financeVoucherOperations.createdAt), desc(financeVoucherOperations.id)).limit(limit);
+    return this.attachFinanceVoucherOperations(rows);
+  }
+
+  async saveFinanceVoucher(record: Omit<InsertFinanceVoucher, "generatedAt"> & { generatedAt?: string }) {
+    const timestamp = record.generatedAt ?? new Date().toISOString();
+    const [existing] = await db.select().from(financeVouchers).where(eq(financeVouchers.feeId, record.feeId)).limit(1);
+    let saved: FinanceVoucher;
+    if (existing) {
+      const [updated] = await db.update(financeVouchers).set({
+        operationId: record.operationId ?? existing.operationId,
+        documentNumber: record.documentNumber,
+        fileName: record.fileName,
+        billingMonth: record.billingMonth,
+        generatedAt: timestamp,
+        generatedBy: record.generatedBy ?? existing.generatedBy,
+        generationVersion: (existing.generationVersion ?? 1) + 1,
+      }).where(eq(financeVouchers.id, existing.id)).returning();
+      saved = updated;
+    } else {
+      const [created] = await db.insert(financeVouchers).values({
+        ...record,
+        generatedAt: timestamp,
+      }).returning();
+      saved = created;
+    }
+    const [withMeta] = await this.attachFinanceVouchers([saved]);
+    return withMeta;
+  }
+
   async getTotalStudents(): Promise<number> {
     await this.syncRoleProfiles();
     const [result] = await db.select({ value: count() }).from(students);
@@ -1867,7 +2044,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAdminDashboardStats() {
-    const [totalStudents, totalTeachers, feesCollected, activeClasses, report, allAttendance, publicSettings] = await Promise.all([
+    const [totalStudents, totalTeachers, feesCollected, activeClasses, report, allAttendance, publicSettings, recentVoucherOperations] = await Promise.all([
       this.getTotalStudents(),
       this.getTotalTeachers(),
       this.getFeesCollected(),
@@ -1875,6 +2052,7 @@ export class DatabaseStorage implements IStorage {
       this.getFinanceReport(),
       this.getAttendance(),
       this.getPublicSchoolSettings(),
+      this.listFinanceVoucherOperations(5),
     ]);
 
     const now = new Date();
@@ -1946,6 +2124,7 @@ export class DatabaseStorage implements IStorage {
         revenue: bucket.paid,
       })),
       recentActivity: recentActivities,
+      recentVoucherOperations,
     };
   }
 }

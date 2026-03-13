@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, serial, integer, jsonb, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, jsonb, boolean, uniqueIndex, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import type { FeeLineItem, FeeStatus, PaymentMethod } from "./finance.js";
+import type { FeeLineItem, FeeStatus, FinanceVoucherOperationStatus, PaymentMethod } from "./finance.js";
 import type { SchoolSettingsAuditAction, SchoolSettingsData } from "./settings.js";
 
 export const attendanceStatuses = ["Present", "Absent", "Late", "Excused"] as const;
@@ -33,6 +33,12 @@ export const users = pgTable("users", {
   className: text("class_name"), // For students
   fatherName: text("father_name"), // For students
   studentPhotoUrl: text("student_photo_url"), // For students
+});
+
+export const sessions = pgTable("session", {
+  sid: text("sid").primaryKey(),
+  sess: jsonb("sess").notNull(),
+  expire: timestamp("expire", { withTimezone: true }).notNull(),
 });
 
 export const students = pgTable("students", {
@@ -216,6 +222,44 @@ export const studentBillingProfiles = pgTable("student_billing_profiles", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const financeVoucherOperations = pgTable("finance_voucher_operations", {
+  id: serial("id").primaryKey(),
+  requestedBy: integer("requested_by").references(() => users.id, { onDelete: "set null" }),
+  status: text("status").$type<FinanceVoucherOperationStatus>().notNull().default("queued"),
+  billingMonths: jsonb("billing_months").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  classNames: jsonb("class_names").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  studentIds: jsonb("student_ids").$type<number[]>().notNull().default(sql`'[]'::jsonb`),
+  force: boolean("force").notNull().default(false),
+  totalInvoices: integer("total_invoices").notNull().default(0),
+  generatedCount: integer("generated_count").notNull().default(0),
+  skippedCount: integer("skipped_count").notNull().default(0),
+  failedCount: integer("failed_count").notNull().default(0),
+  archiveSizeBytes: integer("archive_size_bytes").notNull().default(0),
+  errorMessage: text("error_message"),
+  startedAt: text("started_at"),
+  completedAt: text("completed_at"),
+  cancelledAt: text("cancelled_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const financeVouchers = pgTable("finance_vouchers", {
+  id: serial("id").primaryKey(),
+  feeId: integer("fee_id")
+    .notNull()
+    .references(() => fees.id, { onDelete: "cascade" }),
+  operationId: integer("operation_id").references(() => financeVoucherOperations.id, { onDelete: "set null" }),
+  documentNumber: text("document_number").notNull(),
+  fileName: text("file_name").notNull(),
+  billingMonth: text("billing_month").notNull(),
+  generationVersion: integer("generation_version").notNull().default(1),
+  generatedAt: text("generated_at").notNull(),
+  generatedBy: integer("generated_by").references(() => users.id, { onDelete: "set null" }),
+}, (table) => ({
+  feeIdx: uniqueIndex("finance_vouchers_fee_idx").on(table.feeId),
+  documentNumberIdx: uniqueIndex("finance_vouchers_document_number_idx").on(table.documentNumber),
+}));
+
 export const schoolSettings = pgTable("school_settings", {
   id: serial("id").primaryKey(),
   version: integer("version").notNull().default(1),
@@ -295,6 +339,8 @@ export const insertTimetableSchema = createInsertSchema(timetable).omit({ id: tr
 export const insertFeeSchema = createInsertSchema(fees).omit({ id: true });
 export const insertFeePaymentSchema = createInsertSchema(feePayments).omit({ id: true });
 export const insertStudentBillingProfileSchema = createInsertSchema(studentBillingProfiles);
+export const insertFinanceVoucherOperationSchema = createInsertSchema(financeVoucherOperations).omit({ id: true });
+export const insertFinanceVoucherSchema = createInsertSchema(financeVouchers).omit({ id: true });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -320,6 +366,10 @@ export type FeePayment = typeof feePayments.$inferSelect;
 export type InsertFeePayment = z.infer<typeof insertFeePaymentSchema>;
 export type StudentBillingProfile = typeof studentBillingProfiles.$inferSelect;
 export type InsertStudentBillingProfile = z.infer<typeof insertStudentBillingProfileSchema>;
+export type FinanceVoucherOperation = typeof financeVoucherOperations.$inferSelect;
+export type InsertFinanceVoucherOperation = z.infer<typeof insertFinanceVoucherOperationSchema>;
+export type FinanceVoucher = typeof financeVouchers.$inferSelect;
+export type InsertFinanceVoucher = z.infer<typeof insertFinanceVoucherSchema>;
 export type SchoolSettings = typeof schoolSettings.$inferSelect;
 export type SchoolSettingsVersion = typeof schoolSettingsVersions.$inferSelect;
 export type SchoolSettingsAuditLog = typeof schoolSettingsAuditLogs.$inferSelect;
@@ -338,6 +388,8 @@ export type ResultWithStudent = Result & { student?: User };
 export type FeePaymentWithMeta = FeePayment & { createdByUser?: User };
 export type FeeWithStudent = Fee & { student?: User; payments?: FeePaymentWithMeta[] };
 export type StudentBillingProfileWithStudent = StudentBillingProfile & { student?: User };
+export type FinanceVoucherOperationWithMeta = FinanceVoucherOperation & { requestedByUser?: User };
+export type FinanceVoucherWithMeta = FinanceVoucher & { generatedByUser?: User };
 export type AcademicWithTeacher = Academic & { teacher?: User };
 export type TimetableWithDetails = Timetable & {
   academic?: Academic;

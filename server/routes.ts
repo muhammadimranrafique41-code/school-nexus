@@ -6,6 +6,15 @@ import { attendanceSessionSchema, attendanceStatusSchema, timetableDays, type Re
 import { registerQrAttendanceRoutes } from "./qr-attendance-routes.js";
 import { createSessionMiddleware } from "./session.js";
 import { storage } from "./storage.js";
+import {
+  cancelVoucherJob,
+  clearJobZip,
+  getJobProgress,
+  getJobZip,
+  previewVoucherJob,
+  startVoucherJob,
+  subscribeJobSse,
+} from "./services/voucherService.js";
 
 declare module "express-session" {
   interface SessionData {
@@ -805,6 +814,133 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (user.role === "student" && invoice.studentId !== user.id) return res.status(403).json({ message: "Forbidden" });
     res.json(invoice);
   });
+
+  // ─── Voucher / Bulk Print Routes ─────────────────────────────────────────────
+
+  app.post(api.fees.vouchers.preview.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const input = api.fees.vouchers.preview.input.parse(req.body);
+      res.json(await previewVoucherJob(input));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid input" });
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.fees.vouchers.start.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const input = api.fees.vouchers.start.input.parse(req.body);
+      const operation = await startVoucherJob(input, user.id);
+      res.status(201).json(operation);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid input" });
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get(api.fees.vouchers.recent.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const limit = Math.min(Number(req.query.limit) || 10, 50);
+      res.json(await storage.listFinanceVoucherOperations(limit));
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get(api.fees.vouchers.detail.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const id = parseNumberValue(req.params.operationId);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid operation id" });
+      const operation = await storage.getFinanceVoucherOperation(id);
+      if (!operation) return res.status(404).json({ message: "Voucher operation not found" });
+      res.json(operation);
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.fees.vouchers.cancel.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const id = parseNumberValue(req.params.operationId);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid operation id" });
+      const operation = await cancelVoucherJob(id);
+      if (!operation) return res.status(404).json({ message: "Voucher operation not found" });
+      res.json(operation);
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get(api.fees.vouchers.progress.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const id = parseNumberValue(req.params.operationId);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid operation id" });
+      const progress = getJobProgress(id);
+      if (progress) return res.json(progress);
+      // Fall back to DB
+      const operation = await storage.getFinanceVoucherOperation(id);
+      if (!operation) return res.status(404).json({ message: "Voucher operation not found" });
+      res.json({ ...operation, phase: operation.status, message: null });
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get(api.fees.vouchers.events.path, async (req, res) => {
+    const user = await requireRole(req, res, ["admin"]);
+    if (!user) return;
+    const id = parseNumberValue(req.params.operationId);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid operation id" });
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    const send = (chunk: string) => { res.write(chunk); };
+    send(`: connected\n\n`);
+
+    const unsub = subscribeJobSse(id, send);
+    req.on("close", () => { unsub(); });
+  });
+
+  app.get(api.fees.vouchers.download.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const id = parseNumberValue(req.params.operationId);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid operation id" });
+      const zipBuffer = getJobZip(id);
+      if (!zipBuffer) return res.status(404).json({ message: "ZIP download not available. The job may have expired or hasn't completed yet." });
+      const operation = await storage.getFinanceVoucherOperation(id);
+      const fileName = `vouchers-job-${id}-${new Date().toISOString().slice(0, 10)}.zip`;
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.setHeader("Content-Length", zipBuffer.length);
+      res.end(zipBuffer);
+      // Clean up after download (optional — comment out to allow multiple downloads)
+      // clearJobZip(id);
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ─── QR Attendance ──────────────────────────────────────────────────────────
 
   registerQrAttendanceRoutes(app, {
     storage,

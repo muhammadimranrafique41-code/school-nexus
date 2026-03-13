@@ -14,6 +14,10 @@ import {
 import {
   billingMonthSchema,
   billingProfileInputSchema,
+  financeVoucherOperationStatusSchema,
+  financeVoucherPreviewInputSchema,
+  financeVoucherSelectionInputSchema,
+  financeVoucherStartInputSchema,
   createFeeInputSchema,
   feeLineItemSchema,
   feeStatusSchema,
@@ -300,6 +304,62 @@ const overdueBalanceItemSchema = z.object({
 const paymentReceiptSchema = z.object({
   invoice: feeSchema,
   payment: feePaymentSchema,
+});
+
+const financeVoucherPreviewInvoiceSchema = z.object({
+  feeId: z.number(),
+  studentId: z.number(),
+  studentName: z.string(),
+  className: z.string().nullable().optional(),
+  invoiceNumber: z.string().nullable().optional(),
+  billingMonth: billingMonthSchema,
+  billingPeriod: z.string(),
+  amount: z.number(),
+  remainingBalance: z.number(),
+  dueDate: z.string(),
+  hasExistingVoucher: z.boolean(),
+  existingVoucherDocumentNumber: z.string().nullable().optional(),
+  existingVoucherGeneratedAt: z.string().nullable().optional(),
+});
+
+const financeVoucherOperationSchema = z.object({
+  id: z.number(),
+  status: financeVoucherOperationStatusSchema,
+  billingMonths: z.array(billingMonthSchema),
+  classNames: z.array(z.string()),
+  studentIds: z.array(z.number()),
+  force: z.boolean(),
+  totalInvoices: z.number(),
+  generatedCount: z.number(),
+  skippedCount: z.number(),
+  failedCount: z.number(),
+  archiveSizeBytes: z.number(),
+  requestedBy: z.number().nullable().optional(),
+  requestedByName: z.string().nullable().optional(),
+  errorMessage: z.string().nullable().optional(),
+  startedAt: z.string().nullable().optional(),
+  completedAt: z.string().nullable().optional(),
+  cancelledAt: z.string().nullable().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+const financeVoucherPreviewSchema = z.object({
+  selection: financeVoucherSelectionInputSchema,
+  targetInvoiceCount: z.number(),
+  targetStudentCount: z.number(),
+  existingVoucherCount: z.number(),
+  skippedExistingCount: z.number(),
+  readyToGenerateCount: z.number(),
+  sampleInvoices: z.array(financeVoucherPreviewInvoiceSchema),
+});
+
+const financeVoucherProgressSchema = financeVoucherOperationSchema.extend({
+  currentInvoiceId: z.number().nullable().optional(),
+  currentInvoiceNumber: z.string().nullable().optional(),
+  currentStudentName: z.string().nullable().optional(),
+  phase: z.enum(["queued", "planning", "rendering", "archiving", "completed", "cancelled", "failed"]),
+  message: z.string(),
 });
 
 const timetableItemSchema = z.object({
@@ -643,6 +703,52 @@ export const api = {
       }),
       responses: { 200: financeReportSchema },
     },
+    vouchers: {
+      preview: {
+        path: "/api/fees/vouchers/preview",
+        method: "POST",
+        input: financeVoucherPreviewInputSchema,
+        responses: { 200: financeVoucherPreviewSchema },
+      },
+      start: {
+        path: "/api/fees/vouchers/bulk-print",
+        method: "POST",
+        input: financeVoucherStartInputSchema,
+        responses: { 201: financeVoucherOperationSchema },
+      },
+      recent: {
+        path: "/api/fees/vouchers/operations",
+        method: "GET",
+        input: z.object({ limit: z.coerce.number().int().min(1).max(20).optional() }),
+        responses: { 200: z.array(financeVoucherOperationSchema) },
+      },
+      detail: {
+        path: "/api/fees/vouchers/operations/:operationId",
+        method: "GET",
+        responses: { 200: financeVoucherOperationSchema },
+      },
+      cancel: {
+        path: "/api/fees/vouchers/operations/:operationId/cancel",
+        method: "POST",
+        input: z.object({}).optional(),
+        responses: { 200: financeVoucherOperationSchema },
+      },
+      progress: {
+        path: "/api/fees/vouchers/operations/:operationId/progress",
+        method: "GET",
+        responses: { 200: financeVoucherProgressSchema },
+      },
+      events: {
+        path: "/api/fees/vouchers/operations/:operationId/events",
+        method: "GET",
+        responses: { 200: z.any() },
+      },
+      download: {
+        path: "/api/fees/vouchers/operations/:operationId/download",
+        method: "GET",
+        responses: { 200: z.any() },
+      },
+    },
   },
   qrAttendance: {
     profiles: {
@@ -774,6 +880,7 @@ export const api = {
               dateLabel: z.string(),
             }),
           ),
+          recentVoucherOperations: z.array(financeVoucherOperationSchema),
         }),
       },
     },

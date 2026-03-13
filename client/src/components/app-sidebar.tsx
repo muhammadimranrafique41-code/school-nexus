@@ -1,6 +1,6 @@
 import {
   BookOpen, Users, LayoutDashboard, Calculator,
-  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, ShieldCheck, QrCode, ScanLine
+  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, ShieldCheck, QrCode, ScanLine, Printer
 } from "lucide-react";
 import {
   Sidebar,
@@ -54,7 +54,10 @@ const adminSections: SidebarSection[] = [
   },
   {
     label: "Finance",
-    items: [{ title: "Finance", url: "/admin/finance", icon: Calculator }],
+    items: [
+      { title: "Finance", url: "/admin/finance", icon: Calculator },
+      { title: "Bulk Print Vouchers", url: "/admin/finance/bulk-print", icon: Printer, badge: "New" },
+    ],
   },
 ];
 

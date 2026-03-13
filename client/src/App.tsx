@@ -10,6 +10,7 @@ import AdminDashboard from "./pages/admin/dashboard";
 import AdminUsers from "./pages/admin/users";
 import AdminAcademics from "./pages/admin/academics";
 import AdminFinance from "./pages/admin/finance";
+import BulkVouchersPage from "./pages/admin/finance/BulkVouchersPage";
 import AdminQrAttendance from "./pages/admin/qr-attendance";
 import AdminSettings from "./pages/admin/settings";
 import CreateStudent from "./pages/admin/students";
@@ -53,6 +54,9 @@ function Router() {
       </Route>
       <Route path="/admin/academics">
         <ProtectedRoute allowedRoles={['admin']}><AdminAcademics /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/finance/bulk-print">
+        <ProtectedRoute allowedRoles={['admin']}><BulkVouchersPage /></ProtectedRoute>
       </Route>
       <Route path="/admin/finance">
         <ProtectedRoute allowedRoles={['admin']}><AdminFinance /></ProtectedRoute>

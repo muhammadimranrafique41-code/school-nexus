@@ -3,10 +3,12 @@ import { z } from "zod";
 export const feeStatuses = ["Paid", "Partially Paid", "Unpaid", "Overdue"] as const;
 export const paymentMethods = ["Cash", "Bank Transfer", "Card", "Mobile Money", "Cheque", "Other"] as const;
 export const invoiceSources = ["manual", "monthly"] as const;
+export const financeVoucherOperationStatuses = ["queued", "running", "completed", "cancelled", "failed"] as const;
 
 export const feeStatusSchema = z.enum(feeStatuses);
 export const paymentMethodSchema = z.enum(paymentMethods);
 export const invoiceSourceSchema = z.enum(invoiceSources);
+export const financeVoucherOperationStatusSchema = z.enum(financeVoucherOperationStatuses);
 export const billingMonthSchema = z.string().regex(/^\d{4}-\d{2}$/, "Billing month must use YYYY-MM format");
 export const feeLineItemSchema = z.object({
   label: z.string().trim().min(1, "Line item label is required").max(120),
@@ -52,15 +54,44 @@ export const generateMonthlyFeesInputSchema = z.object({
   dueDayOverride: z.coerce.number().int().min(1).max(28).optional(),
 });
 
+const financeVoucherSelectionBaseSchema = z.object({
+  billingMonths: z.array(billingMonthSchema).min(1, "Select at least one billing month").max(12),
+  classNames: z.array(z.string().trim().min(1).max(80)).max(24).default([]),
+  studentIds: z.array(z.coerce.number().int().positive()).max(300).default([]),
+  force: z.boolean().default(false),
+});
+
+const validateVoucherSelection = (value: { classNames: string[], studentIds: number[] }, ctx: z.RefinementCtx) => {
+  if (value.classNames.length === 0 && value.studentIds.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["classNames"],
+      message: "Select at least one class or one student",
+    });
+  }
+};
+
+export const financeVoucherSelectionInputSchema = financeVoucherSelectionBaseSchema.superRefine(validateVoucherSelection);
+
+export const financeVoucherPreviewInputSchema = financeVoucherSelectionBaseSchema.extend({
+  previewLimit: z.coerce.number().int().min(1).max(50).default(20),
+}).superRefine(validateVoucherSelection);
+
+export const financeVoucherStartInputSchema = financeVoucherSelectionInputSchema;
+
 export type FeeStatus = z.infer<typeof feeStatusSchema>;
 export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
 export type InvoiceSource = z.infer<typeof invoiceSourceSchema>;
+export type FinanceVoucherOperationStatus = z.infer<typeof financeVoucherOperationStatusSchema>;
 export type FeeLineItem = z.infer<typeof feeLineItemSchema>;
 export type CreateFeeInput = z.infer<typeof createFeeInputSchema>;
 export type UpdateFeeInput = z.infer<typeof updateFeeInputSchema>;
 export type RecordFeePaymentInput = z.infer<typeof recordFeePaymentInputSchema>;
 export type BillingProfileInput = z.infer<typeof billingProfileInputSchema>;
 export type GenerateMonthlyFeesInput = z.infer<typeof generateMonthlyFeesInputSchema>;
+export type FinanceVoucherSelectionInput = z.infer<typeof financeVoucherSelectionInputSchema>;
+export type FinanceVoucherPreviewInput = z.infer<typeof financeVoucherPreviewInputSchema>;
+export type FinanceVoucherStartInput = z.infer<typeof financeVoucherStartInputSchema>;
 
 export type FinanceStudentSnapshot = {
   name?: string | null;
@@ -184,6 +215,128 @@ export type OverdueBalanceEntry = {
   daysOverdue: number;
   status: FeeStatus;
 };
+
+export type FinanceVoucherPreviewInvoice = {
+  feeId: number;
+  studentId: number;
+  studentName: string;
+  className?: string | null;
+  invoiceNumber?: string | null;
+  billingMonth: string;
+  billingPeriod: string;
+  amount: number;
+  remainingBalance: number;
+  dueDate: string;
+  hasExistingVoucher: boolean;
+  existingVoucherDocumentNumber?: string | null;
+  existingVoucherGeneratedAt?: string | null;
+};
+
+export type FinanceVoucherPreview = {
+  selection: FinanceVoucherSelectionInput;
+  targetInvoiceCount: number;
+  targetStudentCount: number;
+  existingVoucherCount: number;
+  skippedExistingCount: number;
+  readyToGenerateCount: number;
+  sampleInvoices: FinanceVoucherPreviewInvoice[];
+};
+
+export type FinanceVoucherOperationRecord = FinanceVoucherSelectionInput & {
+  id: number;
+  status: FinanceVoucherOperationStatus;
+  totalInvoices: number;
+  generatedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  archiveSizeBytes: number;
+  requestedBy?: number | null;
+  requestedByName?: string | null;
+  errorMessage?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FinanceVoucherProgressSnapshot = FinanceVoucherOperationRecord & {
+  currentInvoiceId?: number | null;
+  currentInvoiceNumber?: string | null;
+  currentStudentName?: string | null;
+  phase: "queued" | "planning" | "rendering" | "archiving" | "completed" | "cancelled" | "failed";
+  message: string;
+};
+
+const billingMonthSortValue = (value: string) => {
+  const [year, month] = value.split("-").map(Number);
+  return (year || 0) * 100 + (month || 0);
+};
+
+function dedupeStrings(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function dedupeNumbers(values: number[]) {
+  return Array.from(new Set(values.filter((value) => Number.isInteger(value) && value > 0)));
+}
+
+function sanitizeDocumentSegment(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+}
+
+export function sortBillingMonths(values: string[]) {
+  return [...values].sort((left, right) => billingMonthSortValue(left) - billingMonthSortValue(right));
+}
+
+export function normalizeFinanceVoucherSelection(input: FinanceVoucherSelectionInput): FinanceVoucherSelectionInput {
+  return {
+    billingMonths: sortBillingMonths(dedupeStrings(input.billingMonths)),
+    classNames: dedupeStrings(input.classNames).sort((left, right) => left.localeCompare(right)),
+    studentIds: dedupeNumbers(input.studentIds).sort((left, right) => left - right),
+    force: Boolean(input.force),
+  };
+}
+
+export function buildFinanceVoucherOperationLabel(selection: Pick<FinanceVoucherSelectionInput, "billingMonths" | "classNames" | "studentIds">) {
+  const monthLabel = sortBillingMonths(selection.billingMonths).join(", ");
+  if (selection.classNames.length > 0) return `${monthLabel} · ${selection.classNames.join(", ")}`;
+  return `${monthLabel} · ${selection.studentIds.length} students`;
+}
+
+export function buildFinanceVoucherFileName(input: {
+  billingMonth: string;
+  invoiceNumber?: string | null;
+  studentName: string;
+  className?: string | null;
+}) {
+  const invoiceSegment = sanitizeDocumentSegment(input.invoiceNumber || "invoice");
+  const studentSegment = sanitizeDocumentSegment(input.studentName || "student");
+  const classSegment = sanitizeDocumentSegment(input.className || "class");
+  return `${input.billingMonth}_${classSegment}_${studentSegment}_${invoiceSegment}_voucher.pdf`;
+}
+
+export function buildFinanceVoucherPreview(
+  selection: FinanceVoucherSelectionInput,
+  invoices: FinanceVoucherPreviewInvoice[],
+): FinanceVoucherPreview {
+  const existingVoucherCount = invoices.filter((invoice) => invoice.hasExistingVoucher).length;
+  const targetStudentCount = new Set(invoices.map((invoice) => invoice.studentId)).size;
+  return {
+    selection: normalizeFinanceVoucherSelection(selection),
+    targetInvoiceCount: invoices.length,
+    targetStudentCount,
+    existingVoucherCount,
+    skippedExistingCount: selection.force ? 0 : existingVoucherCount,
+    readyToGenerateCount: selection.force ? invoices.length : invoices.length - existingVoucherCount,
+    sampleInvoices: invoices,
+  };
+}
 
 export function formatBillingPeriod(billingMonth: string, locale = "en-US") {
   const [year, month] = billingMonth.split("-").map(Number);

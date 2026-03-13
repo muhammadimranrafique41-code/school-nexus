@@ -5,10 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Banknote, Clock, GraduationCap, TrendingUp, Users } from "lucide-react";
+import { Banknote, Clock, GraduationCap, Printer, TrendingUp, Users } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Link } from "wouter";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import type { FinanceVoucherOperationRecord } from "@shared/finance";
 
 const activityMeta = {
   fee: { icon: Banknote, iconColor: "text-emerald-600", iconBg: "bg-emerald-100" },
@@ -162,6 +163,45 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Recent Bulk Voucher Operations */}
+        {(stats?.recentVoucherOperations ?? []).length > 0 && (
+          <Card className="bg-white/80">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Printer className="h-4 w-4 text-violet-600" />
+                  Recent bulk voucher jobs
+                </CardTitle>
+                <CardDescription className="text-xs mt-1">Last 5 bulk voucher print operations.</CardDescription>
+              </div>
+              <Button asChild size="sm" variant="outline" className="h-7 text-xs">
+                <Link href="/admin/finance/bulk-print">View all</Link>
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                {(stats?.recentVoucherOperations as FinanceVoucherOperationRecord[]).map((op) => {
+                  const colorMap: Record<string, string> = {
+                    completed: "border-emerald-200/70 bg-emerald-50/60 text-emerald-700",
+                    running: "border-blue-200/70 bg-blue-50/60 text-blue-700",
+                    queued: "border-amber-200/70 bg-amber-50/60 text-amber-700",
+                    failed: "border-rose-200/70 bg-rose-50/60 text-rose-700",
+                    cancelled: "border-slate-200/70 bg-slate-50/60 text-slate-500",
+                  };
+                  return (
+                    <div key={op.id} className={cn("rounded-xl border p-3 text-xs", colorMap[op.status] ?? "border-slate-200/70 bg-slate-50")}>                      
+                      <p className="font-semibold capitalize">{op.status}</p>
+                      <p className="mt-1 text-[11px] opacity-80">{op.billingMonths.join(", ")}</p>
+                      <p className="mt-1 opacity-70">{op.generatedCount}/{op.totalInvoices} vouchers</p>
+                      {op.createdAt && <p className="mt-1 opacity-60">{formatDate(op.createdAt, "MMM dd")}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-7">
           <Card className="lg:col-span-4 bg-white/75">

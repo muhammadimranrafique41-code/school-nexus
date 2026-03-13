@@ -20,7 +20,7 @@ export function createSessionMiddleware() {
     proxy: Boolean(process.env.VERCEL),
     store: new PgSessionStore({
       pool,
-      createTableIfMissing: true,
+      createTableIfMissing: false,
     }),
     cookie: buildSessionCookieConfig(useSecureCookies),
   });
