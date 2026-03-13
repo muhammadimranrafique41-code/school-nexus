@@ -6,6 +6,8 @@ import {
   insertUserSchema,
   attendanceSessionSchema,
   attendanceStatusSchema,
+  classes,
+  classTeachers,
   qrAttendanceDirectionSchema,
   qrAttendanceMarkStatusSchema,
   qrAttendanceMethodSchema,
@@ -385,6 +387,28 @@ const teacherClassSchema = z.object({
   subjects: z.array(z.string()),
 });
 
+const classSchema = z.object({
+  id: z.number(),
+  grade: z.string(),
+  section: z.string(),
+  stream: z.string().nullable().optional(),
+  academicYear: z.string(),
+  capacity: z.number(),
+  currentCount: z.number(),
+  homeroomTeacherId: z.number().nullable().optional(),
+  status: z.string(),
+});
+
+const classTeacherSchema = z.object({
+  id: z.number(),
+  classId: z.number(),
+  teacherId: z.number(),
+  subjects: z.array(z.string()),
+  periodsPerWeek: z.number(),
+  priority: z.number(),
+  isActive: z.boolean(),
+});
+
 const qrProfileSchema = z.object({
   userId: z.number(),
   publicId: z.string(),
@@ -747,6 +771,33 @@ export const api = {
         path: "/api/fees/vouchers/operations/:operationId/download",
         method: "GET",
         responses: { 200: z.any() },
+      },
+    },
+  },
+  classes: {
+    list: {
+      path: "/api/v1/classes",
+      method: "GET",
+      input: z
+        .object({
+          academicYear: z.string().optional(),
+          grade: z.string().optional(),
+        })
+        .optional(),
+      responses: {
+        200: z.object({
+          data: z.array(classSchema),
+          total: z.number(),
+        }),
+      },
+    },
+    teachers: {
+      list: {
+        path: "/api/v1/classes/:id/teachers",
+        method: "GET",
+        responses: {
+          200: z.array(classTeacherSchema),
+        },
       },
     },
   },

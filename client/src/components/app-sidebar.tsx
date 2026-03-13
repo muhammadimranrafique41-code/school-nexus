@@ -48,7 +48,7 @@ const adminSections: SidebarSection[] = [
     items: [
       { title: "Teachers", url: "/admin/teachers", icon: Briefcase },
       { title: "Students", url: "/admin/students", icon: GraduationCap },
-      { title: "Classes", url: "/admin/academics", icon: BookOpen },
+      { title: "Classes", url: "/admin/classes", icon: BookOpen },
       { title: "QR Attendance", url: "/admin/qr-attendance", icon: QrCode, badge: "New" },
     ],
   },

@@ -1,8 +1,19 @@
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { api } from "../shared/routes.js";
-import { attendanceSessionSchema, attendanceStatusSchema, timetableDays, type ResultWithStudent, type User } from "../shared/schema.js";
+import {
+  attendanceSessionSchema,
+  attendanceStatusSchema,
+  classTeachers,
+  classes,
+  timetableDays,
+  type ResultWithStudent,
+  type User,
+} from "../shared/schema.js";
+import { db } from "./db.js";
+import { AssignTeacherSchema, CreateClassSchema } from "../lib/validators/classes.js";
 import { registerQrAttendanceRoutes } from "./qr-attendance-routes.js";
 import { createSessionMiddleware } from "./session.js";
 import { storage } from "./storage.js";
@@ -983,6 +994,156 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const subjectResults = (await storage.getResults()).filter((record) => record.subject === user.subject);
     const averageClassPerformance = subjectResults.length ? Math.round(subjectResults.reduce((sum, record) => sum + record.marks, 0) / subjectResults.length) : 0;
     res.json({ totalStudents: uniqueStudents.size, classesToday, averageClassPerformance });
+  });
+
+  // ─── Class & Class-Teacher Assignment Routes (per-class teacher allocation) ──
+
+  // POST /api/v1/classes
+  app.post("/api/v1/classes", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const input = CreateClassSchema.parse(req.body);
+      const [inserted] = await db
+        .insert(classes)
+        .values({
+          grade: input.grade,
+          section: input.section,
+          stream: input.stream,
+          academicYear: input.academicYear,
+          capacity: input.capacity,
+          currentCount: 0,
+          status: "active",
+        })
+        .returning();
+
+      return res.status(201).json(inserted);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      }
+      if (isUniqueViolation(err)) {
+        return res.status(409).json({ message: "A class with this grade/section/year already exists" });
+      }
+      console.error("Failed to create class", err);
+      return res.status(500).json({ message: "Failed to create class" });
+    }
+  });
+
+  // ─── Class & Class-Teacher Assignment Routes (per-class teacher allocation) ──
+
+  // GET  /api/v1/classes?academicYear=&grade=
+  app.get("/api/v1/classes", async (req, res) => {
+    try {
+      const academicYear = typeof parseScalar(req.query.academicYear) === "string" ? String(parseScalar(req.query.academicYear)) : undefined;
+      const grade = typeof parseScalar(req.query.grade) === "string" ? String(parseScalar(req.query.grade)) : undefined;
+
+      const conditions = [];
+      if (academicYear) conditions.push(eq(classes.academicYear, academicYear));
+      if (grade) conditions.push(eq(classes.grade, grade));
+
+      const rows = await db
+        .select()
+        .from(classes)
+        .where(conditions.length ? and(...conditions) : undefined);
+
+      res.json({ data: rows, total: rows.length });
+    } catch (err) {
+      console.error("Failed to list classes", err);
+      res.status(500).json({ message: "Failed to list classes" });
+    }
+  });
+
+  // GET  /api/v1/classes/:id/teachers
+  app.get("/api/v1/classes/:id/teachers", async (req, res) => {
+    try {
+      const classId = parseNumberValue(req.params.id);
+      if (Number.isNaN(classId)) return res.status(400).json({ message: "Invalid class id" });
+
+      const teachersRows = await db
+        .select()
+        .from(classTeachers)
+        .where(eq(classTeachers.classId, classId));
+
+      res.json(teachersRows);
+    } catch (err) {
+      console.error("Failed to list class teachers", err);
+      res.status(500).json({ message: "Failed to list class teachers" });
+    }
+  });
+
+  // POST /api/v1/classes/:id/assign-teacher
+  app.post("/api/v1/classes/:id/assign-teacher", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const classId = parseNumberValue(req.params.id);
+      if (Number.isNaN(classId)) return res.status(400).json({ message: "Invalid class id" });
+
+      const { teacherId, subjects, periodsPerWeek, priority } = AssignTeacherSchema.parse(req.body);
+
+      const teacherUser = await storage.getUser(teacherId);
+      if (!teacherUser || teacherUser.role !== "teacher") {
+        return res.status(400).json({ message: "Invalid teacher id" });
+      }
+
+      await db.transaction(async (tx) => {
+        const existing = await tx
+          .select()
+          .from(classTeachers)
+          .where(eq(classTeachers.classId, classId));
+
+        if (existing.length >= 6) {
+          throw new Error("Max 6 teachers per class");
+        }
+
+        const totalPeriods = existing.reduce((sum, item) => sum + item.periodsPerWeek, 0);
+        if (totalPeriods + periodsPerWeek > 40) {
+          throw new Error("Exceeds 40 periods/week");
+        }
+
+        await tx.insert(classTeachers).values({
+          classId,
+          teacherId,
+          subjects,
+          periodsPerWeek,
+          priority,
+        });
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      }
+      if (err instanceof Error && err.message) {
+        return res.status(400).json({ message: err.message });
+      }
+      console.error("Failed to assign teacher to class", err);
+      res.status(500).json({ message: "Failed to assign teacher to class" });
+    }
+  });
+
+  // DELETE /api/v1/classes/:id/teachers/:teacherId
+  app.delete("/api/v1/classes/:id/teachers/:teacherId", async (req, res) => {
+    try {
+      const classId = parseNumberValue(req.params.id);
+      const teacherId = parseNumberValue(req.params.teacherId);
+      if (Number.isNaN(classId) || Number.isNaN(teacherId)) {
+        return res.status(400).json({ message: "Invalid class or teacher id" });
+      }
+
+      await db
+        .delete(classTeachers)
+        .where(and(eq(classTeachers.classId, classId), eq(classTeachers.teacherId, teacherId)));
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to remove class teacher", err);
+      res.status(500).json({ message: "Failed to remove class teacher" });
+    }
   });
 
   return httpServer;

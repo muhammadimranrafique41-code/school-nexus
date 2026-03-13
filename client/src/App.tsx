@@ -15,6 +15,8 @@ import AdminQrAttendance from "./pages/admin/qr-attendance";
 import AdminSettings from "./pages/admin/settings";
 import CreateStudent from "./pages/admin/students";
 import CreateTeacher from "./pages/admin/teachers";
+import AdminClasses from "./pages/admin/classes";
+import AdminClassDetail from "./pages/admin/class-detail";
 
 import TeacherDashboard from "./pages/teacher/dashboard";
 import TeacherAttendance from "./pages/teacher/attendance";
@@ -54,6 +56,12 @@ function Router() {
       </Route>
       <Route path="/admin/academics">
         <ProtectedRoute allowedRoles={['admin']}><AdminAcademics /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/classes">
+        <ProtectedRoute allowedRoles={['admin']}><AdminClasses /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/classes/:id">
+        <ProtectedRoute allowedRoles={['admin']}><AdminClassDetail /></ProtectedRoute>
       </Route>
       <Route path="/admin/finance/bulk-print">
         <ProtectedRoute allowedRoles={['admin']}><BulkVouchersPage /></ProtectedRoute>

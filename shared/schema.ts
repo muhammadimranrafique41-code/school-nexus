@@ -296,6 +296,55 @@ export const schoolSettingsAuditLogs = pgTable("school_settings_audit_logs", {
   createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
 });
 
+export const classes = pgTable(
+  "classes",
+  {
+    id: serial("id").primaryKey(),
+    grade: text("grade").notNull(),
+    section: text("section").notNull(),
+    stream: text("stream"),
+    academicYear: text("academic_year").notNull(),
+    capacity: integer("capacity").notNull().default(40),
+    currentCount: integer("current_count").notNull().default(0),
+    homeroomTeacherId: integer("homeroom_teacher_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    status: text("status").notNull().default("active"),
+  },
+  (table) => ({
+    uniqueClassIdx: uniqueIndex("classes_grade_section_stream_year_idx").on(
+      table.grade,
+      table.section,
+      table.stream,
+      table.academicYear,
+    ),
+  }),
+);
+
+export const classTeachers = pgTable(
+  "class_teachers",
+  {
+    id: serial("id").primaryKey(),
+    classId: integer("class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "cascade" }),
+    teacherId: integer("teacher_id")
+      .notNull()
+      .references(() => users.id),
+    subjects: text("subjects").array().notNull(),
+    periodsPerWeek: integer("periods_per_week").notNull().default(4),
+    priority: integer("priority").notNull().default(3),
+    isActive: boolean("is_active").notNull().default(true),
+  },
+  (table) => ({
+    uniqueClassTeacherSubjectsIdx: uniqueIndex("class_teachers_class_teacher_subjects_idx").on(
+      table.classId,
+      table.teacherId,
+      table.subjects,
+    ),
+  }),
+);
+
 const optionalUserTextFieldSchema = z.preprocess(
   (value) => typeof value === "string" ? value.trim() || null : value,
   z.string().max(120).nullable().optional(),
@@ -341,6 +390,8 @@ export const insertFeePaymentSchema = createInsertSchema(feePayments).omit({ id:
 export const insertStudentBillingProfileSchema = createInsertSchema(studentBillingProfiles);
 export const insertFinanceVoucherOperationSchema = createInsertSchema(financeVoucherOperations).omit({ id: true });
 export const insertFinanceVoucherSchema = createInsertSchema(financeVouchers).omit({ id: true });
+export const insertClassSchema = createInsertSchema(classes).omit({ id: true });
+export const insertClassTeacherSchema = createInsertSchema(classTeachers).omit({ id: true });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -373,6 +424,10 @@ export type InsertFinanceVoucher = z.infer<typeof insertFinanceVoucherSchema>;
 export type SchoolSettings = typeof schoolSettings.$inferSelect;
 export type SchoolSettingsVersion = typeof schoolSettingsVersions.$inferSelect;
 export type SchoolSettingsAuditLog = typeof schoolSettingsAuditLogs.$inferSelect;
+export type Class = typeof classes.$inferSelect;
+export type InsertClass = z.infer<typeof insertClassSchema>;
+export type ClassTeacher = typeof classTeachers.$inferSelect;
+export type InsertClassTeacher = z.infer<typeof insertClassTeacherSchema>;
 
 export type AttendanceWithStudent = Attendance & { student?: User; teacher?: User };
 export type QrProfileWithUser = QrProfile & {
