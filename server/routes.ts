@@ -18,6 +18,7 @@ import { AssignTeacherSchema, CreateClassSchema } from "../lib/validators/classe
 import { registerQrAttendanceRoutes } from "./qr-attendance-routes.js";
 import { createSessionMiddleware } from "./session.js";
 import { storage } from "./storage.js";
+import { loadTimetableSettings, computePeriodTimeline } from "./lib/settings-loader.js";
 import {
   cancelVoucherJob,
   clearJobZip,
@@ -549,16 +550,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { timetables: ttTable, timetablesPeriods: periodsTable, classes } = await import("../shared/schema.js");
       const { loadTimetableSettings, computePeriodTimeline } = await import("./lib/settings-loader.js");
       
-      const normalizeName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const normalizeName = (name: string) => name.toLowerCase().replace(/^(grade|year)\s+/i, "").replace(/[^a-z0-9]/g, "");
       const targetClassName = normalizeName(className);
-      console.log(`[AUDIT] Normalized className: "${targetClassName}"`);
+      console.log(`[AUDIT] Raw className: "${className}", Normalized: "${targetClassName}"`);
 
       const allClasses = await db.select().from(classes);
       const matchedClass = allClasses.find((c) => {
         const cGrade = c.grade ?? "";
         const cSection = c.section ?? "";
         const cStream = c.stream ? `-${c.stream}` : "";
-        const constructedName = normalizeName(`${cGrade}-${cSection}${cStream}`);
+        const fullName = `${cGrade}-${cSection}${cStream}`;
+        
+        // 1. Literal match check
+        if (fullName === className) return true;
+        if (`Grade ${fullName}` === className || `Year ${fullName}` === className) return true;
+
+        // 2. Normalized match check
+        const constructedName = normalizeName(fullName);
         return constructedName === targetClassName;
       });
 
@@ -572,15 +580,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           console.log(`[AUDIT] Found Published Timetable ID: ${published.id}`);
           const periods = await db.select().from(periodsTable).where(eq(periodsTable.timetableId, published.id));
           const settings = await loadTimetableSettings();
-          const timeline = computePeriodTimeline(settings);
+          // Identify all period numbers we need times for to ensure a full timeline is calculated
+          const requestedPeriodIds = Array.from(new Set(periods.map(p => p.period)));
+          const timeline = computePeriodTimeline(settings, requestedPeriodIds);
           
-          const daysMap = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-          
+          const daysMap = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
           const mappedItems = [];
           for (const p of periods) {
             if (!p.subject && !p.teacherId && !p.room) continue;
+            
+            // Period matching logic
             const timeSlot = timeline.find(t => t.periodNumber === p.period);
-            if (!timeSlot) continue;
             
             let teacherName = null;
             if (p.teacherId) {
@@ -588,14 +599,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               teacherName = tUser?.name ?? null;
             }
             
+            // Use calculated times from our expanded timeline
+            const startTime = timeSlot?.startTime ?? "TBA";
+            const endTime = timeSlot?.endTime ?? "TBA";
+
             mappedItems.push({
               id: p.id,
               academicId: null,
               className: className,
               dayOfWeek: daysMap[p.dayOfWeek],
               periodLabel: `Period ${p.period}`,
-              startTime: timeSlot.startTime,
-              endTime: timeSlot.endTime,
+              startTime,
+              endTime,
               room: p.room,
               classType: "Class",
               teacherId: p.teacherId,
@@ -606,7 +621,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             });
           }
           
-          console.log(`[AUDIT] Student Timetable Success: class="${className}", items=${mappedItems.length}, days=${JSON.stringify(settings.workingDays)}`);
+          console.log(`[AUDIT] Student Timetable: class="${className}", items=${mappedItems.length}/${periods.length} mapped`);
 
           const activeDays = settings.workingDays.map(d => daysMap[d]);
           return res.json({

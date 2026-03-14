@@ -96,11 +96,13 @@ import {
 
 const generatedDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
 const generatedSlots = [
-  { periodLabel: "Period 1", startTime: "08:00", endTime: "08:50" },
-  { periodLabel: "Period 2", startTime: "09:00", endTime: "09:50" },
-  { periodLabel: "Period 3", startTime: "10:10", endTime: "11:00" },
-  { periodLabel: "Period 4", startTime: "11:10", endTime: "12:00" },
-  { periodLabel: "Period 5", startTime: "13:00", endTime: "13:50" },
+  { periodLabel: "Period 1", startTime: "08:00", endTime: "08:40" },
+  { periodLabel: "Period 2", startTime: "08:40", endTime: "09:20" },
+  { periodLabel: "Period 3", startTime: "09:20", endTime: "10:00" },
+  { periodLabel: "Period 4", startTime: "10:15", endTime: "10:55" }, // Break 10:00 - 10:15
+  { periodLabel: "Period 5", startTime: "10:55", endTime: "11:35" },
+  { periodLabel: "Period 6", startTime: "11:35", endTime: "12:15" },
+  { periodLabel: "Period 7", startTime: "12:15", endTime: "12:55" },
 ] as const;
 
 type RuntimeSettingsState = {
@@ -768,8 +770,8 @@ export class DatabaseStorage implements IStorage {
 
     if (source.length === 0) {
       return generatedDays.flatMap((dayOfWeek, dayIndex) =>
-        generatedSlots.slice(0, 4).map((slot, slotIndex) => ({
-          id: -(dayIndex * 4 + slotIndex + 1),
+        generatedSlots.map((slot, slotIndex) => ({
+          id: -(dayIndex * generatedSlots.length + slotIndex + 1),
           academicId: null,
           className,
           dayOfWeek,

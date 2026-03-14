@@ -18,7 +18,6 @@ const ALL_DAYS: Record<number, { label: string; short: string; num: number }> = 
   4: { label: "Thursday", short: "Thu", num: 4 },
   5: { label: "Friday", short: "Fri", num: 5 },
   6: { label: "Saturday", short: "Sat", num: 6 },
-  7: { label: "Sunday", short: "Sun", num: 7 },
 };
 
 // Assign a consistent color accent per unique className

@@ -25,7 +25,6 @@ const ALL_DAYS: Record<number, { label: string; short: string; num: number }> = 
   4: { label: "Thursday", short: "Thu", num: 4 },
   5: { label: "Friday", short: "Fri", num: 5 },
   6: { label: "Saturday", short: "Sat", num: 6 },
-  7: { label: "Sunday", short: "Sun", num: 7 },
 };
 
 export default function StudentTimetable() {
@@ -38,7 +37,7 @@ export default function StudentTimetable() {
 
   const days = useMemo(() => {
     // 1. Get days from settings (preferred for consistency)
-    const settingsDays = settings?.workingDays?.map(d => ALL_DAYS[d]?.label).filter(Boolean) ?? [];
+    const settingsDays = settings?.workingDays?.map((d: number) => ALL_DAYS[d as keyof typeof ALL_DAYS]?.label).filter(Boolean) ?? [];
     
     // 2. Get days from API response (secondary fallback)
     const apiDays = data?.days ?? [];
@@ -57,10 +56,8 @@ export default function StudentTimetable() {
     }
 
     // Consistent sorting
-    const order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-    const result = order.filter(d => daySet.has(d));
-    console.log(`[STUDENT_TT_UI] days=${JSON.stringify(result)}, item_count=${items.length}`);
-    return result;
+    const order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    return order.filter((d: string) => daySet.has(d));
   }, [settings?.workingDays, data?.days, items]);
 
   const summary = useMemo(() => {
@@ -76,28 +73,51 @@ export default function StudentTimetable() {
   }, [items]);
 
   const periodRows = useMemo<PeriodRow[]>(() => {
-    // 1. If we have settings, generate the full timeline (including breaks)
-    if (settings && settings.totalPeriods) {
-      const timeline = computePeriodTimeline(settings);
-      return timeline.map((t: any) => ({
-        key: t.isBreak ? `break-${t.startTime}` : `p-${t.periodNumber}`,
-        periodLabel: t.isBreak ? "Break" : `Period ${t.periodNumber}`,
-        startTime: t.startTime,
-        endTime: t.endTime,
-        sortOrder: t.periodNumber ?? 99,
-        isBreak: t.isBreak
-      }));
+    // 2. Combine with existing periods from items to ensure no data is lost
+    const rowsMap = new Map<string, PeriodRow>();
+    
+    // Add settings-based rows first (now using all period IDs found in data for robustness)
+    if (settings) {
+      const requestedPeriodIds = Array.from(new Set(items.map(i => Number(i.sortOrder || 0)))).filter(n => n > 0);
+      const timeline = computePeriodTimeline(settings, requestedPeriodIds);
+      timeline.forEach((t: any) => {
+        const key = t.isBreak ? `break-${t.startTime}-${t.endTime}` : `p-${t.periodNumber}`;
+        rowsMap.set(key, {
+          key,
+          periodLabel: t.isBreak ? "Break" : `Period ${t.periodNumber}`,
+          startTime: t.startTime,
+          endTime: t.endTime,
+          sortOrder: t.periodNumber ?? 99,
+          isBreak: t.isBreak
+        });
+      });
     }
 
-    // 2. Fallback to existing periods if settings not available
-    const unique = new Map<string, PeriodRow>();
+    // Add any items that don't match the timeline (e.g. legacy data or extra periods)
     items.forEach((item) => {
-      const key = `${item.sortOrder}-${item.periodLabel}-${item.startTime}-${item.endTime}`;
-      if (!unique.has(key)) {
-        unique.set(key, { key, periodLabel: item.periodLabel, startTime: item.startTime, endTime: item.endTime, sortOrder: item.sortOrder });
+      // Find if this item matches an existing row (by sortOrder/periodLabel)
+      const matches = Array.from(rowsMap.values()).some(r => 
+        !r.isBreak && (Number(r.sortOrder) === Number(item.sortOrder) || String(r.periodLabel) === String(item.periodLabel))
+      );
+
+      if (!matches) {
+        const key = `extra-${item.sortOrder}-${item.periodLabel}-${item.startTime}`;
+        if (!rowsMap.has(key)) {
+          rowsMap.set(key, {
+            key,
+            periodLabel: item.periodLabel,
+            startTime: item.startTime,
+            endTime: item.endTime,
+            sortOrder: item.sortOrder
+          });
+        }
       }
     });
-    return Array.from(unique.values()).sort((left, right) => left.sortOrder - right.sortOrder || left.startTime.localeCompare(right.startTime));
+
+    return Array.from(rowsMap.values()).sort((left, right) => {
+      // Keep breaks in their chronological place via sortOrder
+      return left.sortOrder - right.sortOrder || left.startTime.localeCompare(right.startTime);
+    });
   }, [settings, items]);
 
   const itemsByDay = useMemo(() => {
@@ -128,12 +148,44 @@ export default function StudentTimetable() {
   const printTimetable = () => {
     const sections = days
       .map((day) => {
-        const rows = (itemsByDay[day] ?? [])
-          .map(
-            (item) => `<tr><td>${escapeHtml(item.periodLabel)}</td><td>${escapeHtml(`${item.startTime} - ${item.endTime}`)}</td><td>${escapeHtml(item.subject)}</td><td>${escapeHtml(item.teacherName ?? "—")}</td><td>${escapeHtml(item.room ?? "—")}</td></tr>`,
-          )
+        const dayName = typeof day === 'string' ? day : ALL_DAYS[day as number]?.label;
+        const dayNum = typeof day === 'number' ? day : Object.values(ALL_DAYS).find(d => d.label === day)?.num;
+
+        const tableRows = periodRows
+          .map((prow) => {
+            if (prow.isBreak) {
+              return `<tr style="background-color: #f8fafc; font-style: italic;"><td colspan="2">${escapeHtml(prow.startTime)} - ${escapeHtml(prow.endTime)}</td><td colspan="3">Intermission (Break)</td></tr>`;
+            }
+
+            const item = items.find(
+              (entry) => (String(entry.dayOfWeek) === String(dayName) || Number(entry.dayOfWeek) === dayNum) && (Number(entry.sortOrder) === Number(prow.sortOrder) || String(entry.periodLabel) === String(prow.periodLabel)),
+            );
+
+            return `<tr>
+              <td>${escapeHtml(prow.periodLabel)}</td>
+              <td>${escapeHtml(`${prow.startTime} - ${prow.endTime}`)}</td>
+              <td>${escapeHtml(item?.subject || "—")}</td>
+              <td>${escapeHtml(item?.teacherName || "—")}</td>
+              <td>${escapeHtml(item?.room || "—")}</td>
+            </tr>`;
+          })
           .join("");
-        return `<div class="section"><h2>${escapeHtml(day)}</h2><table><thead><tr><th>Period</th><th>Time</th><th>Subject</th><th>Teacher</th><th>Room</th></tr></thead><tbody>${rows || "<tr><td colspan='5'>No classes scheduled.</td></tr>"}</tbody></table></div>`;
+
+        return `<div class="section">
+          <h2 style="margin-top: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">${escapeHtml(day)}</h2>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+            <thead>
+              <tr style="background-color: #f1f5f9;">
+                <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: left;">Period</th>
+                <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: left;">Time</th>
+                <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: left;">Subject</th>
+                <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: left;">Teacher</th>
+                <th style="border: 1px solid #e2e8f0; padding: 8px; text-align: left;">Room</th>
+              </tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>`;
       })
       .join("");
 
@@ -220,7 +272,7 @@ export default function StudentTimetable() {
                         }
 
                         const item = items.find(
-                          (entry) => (entry.dayOfWeek === dayName || entry.dayOfWeek === dayNum) && (entry.sortOrder === period.sortOrder || entry.periodLabel === period.periodLabel),
+                          (entry) => (String(entry.dayOfWeek) === String(dayName) || Number(entry.dayOfWeek) === dayNum) && (Number(entry.sortOrder) === Number(period.sortOrder) || String(entry.periodLabel) === String(period.periodLabel)),
                         );
                         return (
                           <TableCell key={`${period.key}-${day}`}>

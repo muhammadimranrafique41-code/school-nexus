@@ -48,7 +48,6 @@ const ALL_DAYS: Record<number, { label: string; short: string; num: number }> = 
   4: { label: "Thursday", short: "Thu", num: 4 },
   5: { label: "Friday", short: "Fri", num: 5 },
   6: { label: "Saturday", short: "Sat", num: 6 },
-  7: { label: "Sunday", short: "Sun", num: 7 },
 };
 
 type CellData = {
@@ -288,7 +287,13 @@ function TimetableEditor({ timetableId, onBack }: { timetableId: number; onBack:
 
   const teachers = (users ?? []).filter((u: any) => u.role === "teacher");
 
-  const timeline = settings ? computePeriodTimeline(settings) : [];
+  const timeline = useMemo(() => {
+    if (!settings) return [];
+    // Ensure the timeline always includes any period IDs that exist in the current data
+    const requestedPeriodIds = Array.from(new Set(tt?.periods?.map((p: any) => p.period) || [])).filter(n => n > 0);
+    return computePeriodTimeline(settings, requestedPeriodIds);
+  }, [settings, tt?.periods]);
+
   const activeDays = settings ? settings.workingDays.map((d: number) => ALL_DAYS[d]) : [];
   const activePeriods = settings ? Array.from({ length: settings.totalPeriods }, (_, i) => i + 1) : [];
 

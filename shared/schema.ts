@@ -7,7 +7,7 @@ import type { SchoolSettingsAuditAction, SchoolSettingsData } from "./settings.j
 
 export const attendanceStatuses = ["Present", "Absent", "Late", "Excused"] as const;
 export const attendanceSessions = ["Full Day", "Morning", "Afternoon"] as const;
-export const timetableDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+export const timetableDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
 export const qrAttendanceDirections = ["Check In", "Check Out"] as const;
 export const qrAttendanceMethods = ["camera", "manual"] as const;
 export const qrAttendanceMarkStatuses = ["Present", "Late"] as const;
