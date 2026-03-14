@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { api } from "../shared/routes.js";
 import {
@@ -8,6 +8,7 @@ import {
   attendanceStatusSchema,
   classTeachers,
   classes,
+  dailyTeachingPulse,
   timetableDays,
   type ResultWithStudent,
   type User,
@@ -584,6 +585,65 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.json(Array.from(classMap.entries()).map(([className, studentCount]) => ({ className, studentCount, subjects: [] })));
     }
     res.json(await storage.getTeacherClasses(user.id));
+  });
+
+  app.get(api.teacher.pulse.today.path, async (req, res) => {
+    const user = await requireRole(req, res, ["teacher"]);
+    if (!user) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    const periods = await db
+      .select()
+      .from(dailyTeachingPulse)
+      .where(and(eq(dailyTeachingPulse.teacherId, user.id), eq(dailyTeachingPulse.date, today as unknown as Date)))
+      .orderBy(asc(dailyTeachingPulse.period));
+
+    const stats = {
+      total: periods.length,
+      completed: periods.filter((item) => item.status === "completed").length,
+      missed: periods.filter((item) => item.status === "missed").length,
+      pending: periods.filter((item) => item.status === "scheduled").length,
+    };
+
+    res.json({ periods, stats, date: today });
+  });
+
+  app.put(api.teacher.pulse.complete.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["teacher"]);
+      if (!user) return;
+
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid pulse id", field: "id" });
+
+      const input = api.teacher.pulse.complete.input.parse(req.body);
+
+      const [existing] = await db
+        .select()
+        .from(dailyTeachingPulse)
+        .where(eq(dailyTeachingPulse.id, id))
+        .limit(1);
+
+      if (!existing) return res.status(404).json({ message: "Pulse record not found" });
+      if (existing.teacherId !== user.id) return res.status(403).json({ message: "Forbidden" });
+
+      await db
+        .update(dailyTeachingPulse)
+        .set({
+          status: "completed",
+          markedAt: new Date().toISOString(),
+          note: input.note ?? null,
+        })
+        .where(eq(dailyTeachingPulse.id, id));
+
+      res.json({ success: true });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   app.get(api.teacher.attendance.students.path, async (req, res) => {

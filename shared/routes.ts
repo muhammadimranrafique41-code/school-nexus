@@ -8,6 +8,7 @@ import {
   attendanceStatusSchema,
   classes,
   classTeachers,
+  dailyTeachingPulseStatusSchema,
   qrAttendanceDirectionSchema,
   qrAttendanceMarkStatusSchema,
   qrAttendanceMethodSchema,
@@ -407,6 +408,38 @@ const classTeacherSchema = z.object({
   periodsPerWeek: z.number(),
   priority: z.number(),
   isActive: z.boolean(),
+});
+
+const dailyTeachingPulseItemSchema = z.object({
+  id: z.number(),
+  teacherId: z.number(),
+  classId: z.number(),
+  subject: z.string(),
+  period: z.number(),
+  startTime: z.string(),
+  endTime: z.string(),
+  room: z.string().nullable().optional(),
+  date: z.string(),
+  status: dailyTeachingPulseStatusSchema,
+  markedAt: z.string().nullable().optional(),
+  note: z.string().nullable().optional(),
+});
+
+const teacherPulseStatsSchema = z.object({
+  total: z.number(),
+  completed: z.number(),
+  missed: z.number(),
+  pending: z.number(),
+});
+
+const teacherPulseTodayResponseSchema = z.object({
+  periods: z.array(dailyTeachingPulseItemSchema),
+  stats: teacherPulseStatsSchema,
+  date: z.string(),
+});
+
+const teacherPulseMarkCompleteInputSchema = z.object({
+  note: z.string().max(255).optional(),
 });
 
 const qrProfileSchema = z.object({
@@ -1109,6 +1142,19 @@ export const api = {
           remarks: z.string().max(250).optional().nullable(),
         }),
         responses: { 200: attendanceRecordSchema },
+      },
+    },
+    pulse: {
+      today: {
+        path: "/api/teacher/pulse/today",
+        method: "GET",
+        responses: { 200: teacherPulseTodayResponseSchema },
+      },
+      complete: {
+        path: "/api/teacher/pulse/:id/complete",
+        method: "PUT",
+        input: teacherPulseMarkCompleteInputSchema,
+        responses: { 200: z.object({ success: z.boolean() }) },
       },
     },
   },

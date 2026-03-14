@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, serial, integer, jsonb, boolean, uniqueIndex, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, jsonb, boolean, uniqueIndex, timestamp, date, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { FeeLineItem, FeeStatus, FinanceVoucherOperationStatus, PaymentMethod } from "./finance.js";
@@ -12,12 +12,15 @@ export const qrAttendanceDirections = ["Check In", "Check Out"] as const;
 export const qrAttendanceMethods = ["camera", "manual"] as const;
 export const qrAttendanceMarkStatuses = ["Present", "Late"] as const;
 
+export const dailyTeachingPulseStatuses = ["scheduled", "completed", "missed", "cancelled"] as const;
+
 export const attendanceStatusSchema = z.enum(attendanceStatuses);
 export const attendanceSessionSchema = z.enum(attendanceSessions);
 export const timetableDaySchema = z.enum(timetableDays);
 export const qrAttendanceDirectionSchema = z.enum(qrAttendanceDirections);
 export const qrAttendanceMethodSchema = z.enum(qrAttendanceMethods);
 export const qrAttendanceMarkStatusSchema = z.enum(qrAttendanceMarkStatuses);
+export const dailyTeachingPulseStatusSchema = z.enum(dailyTeachingPulseStatuses);
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -345,6 +348,36 @@ export const classTeachers = pgTable(
   }),
 );
 
+export const dailyTeachingPulse = pgTable(
+  "daily_teaching_pulse",
+  {
+    id: serial("id").primaryKey(),
+    teacherId: integer("teacher_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    classId: integer("class_id")
+      .notNull()
+      .references(() => classes.id),
+    subject: text("subject").notNull(),
+    period: integer("period").notNull(),
+    startTime: text("start_time").notNull(),
+    endTime: text("end_time").notNull(),
+    room: text("room"),
+    date: date("date").notNull(),
+    status: text("status")
+      .$type<(typeof dailyTeachingPulseStatuses)[number]>()
+      .notNull()
+      .default("scheduled"),
+    markedAt: timestamp("marked_at", { withTimezone: true }),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    idxTeacherDate: index("idx_pulse_teacher_date").on(table.teacherId, table.date),
+    idxDate: index("idx_pulse_date").on(table.date),
+  }),
+);
+
 const optionalUserTextFieldSchema = z.preprocess(
   (value) => typeof value === "string" ? value.trim() || null : value,
   z.string().max(120).nullable().optional(),
@@ -392,6 +425,11 @@ export const insertFinanceVoucherOperationSchema = createInsertSchema(financeVou
 export const insertFinanceVoucherSchema = createInsertSchema(financeVouchers).omit({ id: true });
 export const insertClassSchema = createInsertSchema(classes).omit({ id: true });
 export const insertClassTeacherSchema = createInsertSchema(classTeachers).omit({ id: true });
+export const insertDailyTeachingPulseSchema = createInsertSchema(dailyTeachingPulse).omit({
+  id: true,
+  createdAt: true,
+  markedAt: true,
+});
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -428,6 +466,8 @@ export type Class = typeof classes.$inferSelect;
 export type InsertClass = z.infer<typeof insertClassSchema>;
 export type ClassTeacher = typeof classTeachers.$inferSelect;
 export type InsertClassTeacher = z.infer<typeof insertClassTeacherSchema>;
+export type DailyTeachingPulse = typeof dailyTeachingPulse.$inferSelect;
+export type InsertDailyTeachingPulse = z.infer<typeof insertDailyTeachingPulseSchema>;
 
 export type AttendanceWithStudent = Attendance & { student?: User; teacher?: User };
 export type QrProfileWithUser = QrProfile & {

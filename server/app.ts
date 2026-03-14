@@ -2,6 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import { registerRoutes } from "./routes.js";
 import { serveStatic } from "./static.js";
+import { scheduleDailyTeachingPulseCron } from "./generate-pulse.js";
+import { attachSocketServer } from "./socket.js";
 
 declare module "http" {
   interface IncomingMessage {
@@ -68,7 +70,13 @@ export async function initializeApp() {
   }
 
   initializePromise = (async () => {
+    // Attach Socket.io server
+    attachSocketServer(httpServer);
+
     await registerRoutes(httpServer, app);
+
+    // Schedule background cron jobs
+    scheduleDailyTeachingPulseCron();
 
     app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
       const status = err.status || err.statusCode || 500;

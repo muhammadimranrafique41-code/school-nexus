@@ -11,6 +11,7 @@ import { useAcademics } from "@/hooks/use-academics";
 import { useAttendance } from "@/hooks/use-attendance";
 import { useResults } from "@/hooks/use-results";
 import { useUsers } from "@/hooks/use-users";
+import { useTeacherPulseMarkComplete, useTeacherPulseSocket, useTeacherPulseToday } from "@/hooks/use-teacher-pulse";
 import { ArrowRight, BookOpenCheck, CalendarDays, ClipboardCheck, GraduationCap, Users } from "lucide-react";
 
 export default function TeacherDashboard() {
@@ -19,6 +20,9 @@ export default function TeacherDashboard() {
   const { data: attendance, isLoading: attendanceLoading } = useAttendance();
   const { data: results, isLoading: resultsLoading } = useResults();
   const { data: users, isLoading: usersLoading } = useUsers();
+  const { data: pulse, isLoading: pulseLoading } = useTeacherPulseToday();
+  const markComplete = useTeacherPulseMarkComplete();
+  useTeacherPulseSocket();
 
   const subjectName = user?.subject?.trim() || "Not assigned";
   const todayKey = format(new Date(), "yyyy-MM-dd");
@@ -113,20 +117,79 @@ export default function TeacherDashboard() {
           <Card className="bg-white/75">
             <CardHeader>
               <CardTitle>Today&apos;s teaching pulse</CardTitle>
-              <CardDescription>Track class activity and keep your daily teaching workflow moving.</CardDescription>
+              <CardDescription>Track today&apos;s periods and keep your teaching workflow moving.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2">
-              {[
-                { label: "Attendance marked", value: markedToday.length },
-                { label: "Linked classes", value: classNames.length },
-                { label: "Monitored students", value: monitoredStudents.length },
-                { label: "Recent results", value: recentResults.length },
-              ].map((item) => (
-                <div key={item.label} className="rounded-[1.25rem] border border-slate-200/70 bg-slate-50/80 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
-                  <p className="mt-3 text-3xl font-display font-bold text-slate-900">{item.value}</p>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-4">
+                <div className="rounded-[1.25rem] border border-slate-200/70 bg-slate-50/80 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Total periods</p>
+                  <p className="mt-3 text-3xl font-display font-bold text-slate-900">{pulse?.stats.total ?? 0}</p>
                 </div>
-              ))}
+                <div className="rounded-[1.25rem] border border-emerald-200/80 bg-emerald-50/80 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Completed</p>
+                  <p className="mt-3 text-3xl font-display font-bold text-emerald-900">{pulse?.stats.completed ?? 0}</p>
+                </div>
+                <div className="rounded-[1.25rem] border border-amber-200/80 bg-amber-50/80 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Pending</p>
+                  <p className="mt-3 text-3xl font-display font-bold text-amber-900">{pulse?.stats.pending ?? 0}</p>
+                </div>
+                <div className="rounded-[1.25rem] border border-rose-200/80 bg-rose-50/80 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">Missed</p>
+                  <p className="mt-3 text-3xl font-display font-bold text-rose-900">{pulse?.stats.missed ?? 0}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {pulseLoading && (
+                  <div className="space-y-2">
+                    {Array.from({ length: 4 }).map((_, index) => (
+                      <Skeleton key={index} className="h-16 rounded-[1.25rem]" />
+                    ))}
+                  </div>
+                )}
+                {!pulseLoading && (pulse?.periods.length ?? 0) === 0 && (
+                  <div className="rounded-[1.25rem] border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500">
+                    No periods scheduled for today yet. Your daily teaching pulse will appear here once generated.
+                  </div>
+                )}
+                {!pulseLoading &&
+                  (pulse?.periods ?? []).map((period) => (
+                    <div
+                      key={period.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-[1.25rem] border border-slate-200/80 bg-white/90 p-4"
+                    >
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Period {period.period} · {period.startTime} – {period.endTime}
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">{period.subject}</p>
+                        {period.room && <p className="text-xs text-slate-500">Room {period.room}</p>}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Badge
+                          variant={
+                            period.status === "completed"
+                              ? "secondary"
+                              : period.status === "missed"
+                                ? "destructive"
+                                : "outline"
+                          }
+                        >
+                          {period.status === "scheduled" ? "Scheduled" : period.status.charAt(0).toUpperCase() + period.status.slice(1)}
+                        </Badge>
+                        {period.status === "scheduled" && (
+                          <Button
+                            size="sm"
+                            disabled={markComplete.isPending}
+                            onClick={() => markComplete.mutate({ id: period.id, note: undefined })}
+                          >
+                            Mark complete
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+              </div>
             </CardContent>
           </Card>
         </section>
