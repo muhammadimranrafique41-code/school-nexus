@@ -12,13 +12,17 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
-import { exportSchoolSettings, parseImportedSchoolSettings, useAdminSchoolSettings, useImportSchoolSettings, useRestoreSchoolSettings, useUpdateSchoolSettings } from "@/hooks/use-settings"
+import { exportSchoolSettings, parseImportedSchoolSettings, useAdminSchoolSettings, useImportSchoolSettings, useRestoreSchoolSettings, useUpdateSchoolSettings, useTimetableSettings, useUpdateTimetableSettings } from "@/hooks/use-settings"
 import { cn, formatDate, getErrorMessage } from "@/lib/utils"
-import { BellRing, Building2, Download, FileJson, History, Loader2, Palette, RotateCcw, Save, Settings2, ShieldCheck, SlidersHorizontal, Upload } from "lucide-react"
+import { BellRing, Building2, Download, FileJson, History, Loader2, Palette, RotateCcw, Save, Settings2, ShieldCheck, SlidersHorizontal, Upload, CalendarClock } from "lucide-react"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { Separator } from "@/components/ui/separator"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
-type SettingsTab = keyof SchoolSettingsData
+type SettingsTab = keyof SchoolSettingsData | "timetable"
 
-const settingsTabs: Array<{ key: SettingsTab; label: string; icon: typeof Building2 }> = [
+const settingsTabs: Array<{ key: SettingsTab; label: string; icon: React.ElementType }> = [
   { key: "schoolInformation", label: schoolSettingsCategoryLabels.schoolInformation, icon: Building2 },
   { key: "academicConfiguration", label: schoolSettingsCategoryLabels.academicConfiguration, icon: SlidersHorizontal },
   { key: "financialSettings", label: schoolSettingsCategoryLabels.financialSettings, icon: FileJson },
@@ -26,6 +30,7 @@ const settingsTabs: Array<{ key: SettingsTab; label: string; icon: typeof Buildi
   { key: "systemPreferences", label: schoolSettingsCategoryLabels.systemPreferences, icon: Settings2 },
   { key: "documentTemplates", label: schoolSettingsCategoryLabels.documentTemplates, icon: ShieldCheck },
   { key: "notificationSettings", label: schoolSettingsCategoryLabels.notificationSettings, icon: BellRing },
+  { key: "timetable", label: "Timetable Defaults", icon: CalendarClock },
 ]
 
 function FieldShell({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -49,6 +54,244 @@ function ToggleField({ label, hint, checked, onCheckedChange }: { label: string;
       </div>
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
     </div>
+  )
+}
+
+function TimetableSettingsTab() {
+  const { toast } = useToast()
+  const { data, isLoading, isError } = useTimetableSettings()
+  const updateMutation = useUpdateTimetableSettings()
+  
+  const [draft, setDraft] = useState<any>(null)
+  
+  useEffect(() => {
+    if (data) {
+      setDraft(data)
+    }
+  }, [data])
+
+  const isDirty = useMemo(() => {
+    if (!draft || !data) return false
+    return JSON.stringify(draft) !== JSON.stringify(data)
+  }, [draft, data])
+
+  // Computed values based on draft
+  const startTimeParts = draft?.startTime?.split(':').map(Number) || [8, 0];
+  const endTimeParts = draft?.endTime?.split(':').map(Number) || [15, 0];
+  const startTotalMinutes = startTimeParts[0] * 60 + startTimeParts[1];
+  const endTotalMinutes = endTimeParts[0] * 60 + endTimeParts[1];
+  const totalMinutes = endTotalMinutes - startTotalMinutes;
+  
+  const computedTotalPeriods = useMemo(() => {
+    if (!draft) return 0;
+    const breaksTotal = draft.breakAfterPeriod.length * draft.breakDuration;
+    return Math.floor((totalMinutes - breaksTotal) / draft.periodDuration);
+  }, [draft, totalMinutes]);
+
+  const timeline = useMemo(() => {
+    if (!draft) return []
+    const blocks = []
+    let currentT = startTotalMinutes
+    let p = 1
+    while (p <= computedTotalPeriods) {
+      blocks.push({ type: 'period', number: p, start: currentT, duration: draft.periodDuration })
+      currentT += draft.periodDuration
+      if (draft.breakAfterPeriod.includes(p)) {
+        blocks.push({ type: 'break', start: currentT, duration: draft.breakDuration })
+        currentT += draft.breakDuration
+      }
+      p++
+    }
+    return blocks
+  }, [draft, startTotalMinutes, computedTotalPeriods])
+
+  const handleSave = () => {
+    if (!draft) return
+    updateMutation.mutate(draft, {
+      onSuccess: (savedSettings) => {
+        toast({ title: "Timetable settings saved", description: "Your timetable configuration has been updated." })
+        window.dispatchEvent(new CustomEvent('timetable-settings-updated', { detail: savedSettings }))
+      },
+      onError: (error) => {
+        toast({ variant: "destructive", title: "Save failed", description: getErrorMessage(error) })
+      }
+    })
+  }
+
+  if (isError) {
+    return (
+      <Card className="border-rose-100 bg-rose-50/50">
+        <CardContent className="flex flex-col items-center justify-center p-8 text-center">
+          <div className="mb-3 rounded-full bg-rose-100 p-3">
+            <CalendarClock className="h-6 w-6 text-rose-600" />
+          </div>
+          <h3 className="font-semibold text-slate-900">Failed to load settings</h3>
+          <p className="mt-1 text-sm text-slate-500">There was a problem communicating with the server. Please try refreshing the page.</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (isLoading || !draft) {
+    return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-violet-600" /></div>
+  }
+
+  const breaksTotalMinutes = draft.breakAfterPeriod.length * draft.breakDuration;
+  const teachingMinutes = totalMinutes - breaksTotalMinutes;
+  const totalHoursStr = `${Math.floor(totalMinutes / 60)} hrs ${totalMinutes % 60} mins`;
+
+  const formatTime = (totalMins: number) => {
+    const h = Math.floor(totalMins / 60)
+    const m = totalMins % 60
+    const ampm = h >= 12 ? 'PM' : 'AM'
+    const dispH = h % 12 || 12
+    const dispM = m.toString().padStart(2, '0')
+    return `${dispH}:${dispM} ${ampm}`
+  }
+
+  return (
+    <Card className="border-white/60 bg-white/80 shadow-lg shadow-slate-200/50">
+      <CardHeader>
+        <CardTitle>Timetable Defaults</CardTitle>
+        <CardDescription>Configure global school hours, working days, and default period durations.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        
+        <div className="space-y-3">
+          <div className="flex items-center gap-4">
+            <h3 className="text-sm font-semibold text-slate-900 w-32 shrink-0">School Hours</h3>
+            <Separator className="flex-1" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <FieldShell label="Start Time">
+              <Input type="time" value={draft.startTime} onChange={e => setDraft({...draft, startTime: e.target.value})} />
+            </FieldShell>
+            <FieldShell label="End Time">
+              <Input type="time" value={draft.endTime} onChange={e => setDraft({...draft, endTime: e.target.value})} />
+            </FieldShell>
+          </div>
+          <p className="text-sm text-slate-500">Total school hours: {totalHoursStr}</p>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-4">
+            <h3 className="text-sm font-semibold text-slate-900 w-32 shrink-0">Working Days</h3>
+            <Separator className="flex-1" />
+          </div>
+          <ToggleGroup type="multiple" value={draft.workingDays.map(String)} onValueChange={v => {
+            let nextDays = v.map(Number).sort()
+            if (!nextDays.some(d => d >= 1 && d <= 5)) {
+              toast({ variant: "destructive", description: "At least one weekday must be selected" })
+              setTimeout(() => {
+                setDraft({...draft, workingDays: [1]})
+              }, 300)
+              return
+            }
+            setDraft({...draft, workingDays: nextDays})
+          }} className="justify-start">
+            {[1,2,3,4,5,6,7].map(d => (
+              <ToggleGroupItem key={d} value={String(d)} className="data-[state=on]:bg-indigo-600 data-[state=on]:text-white">
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][d-1]}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-4">
+            <h3 className="text-sm font-semibold text-slate-900 w-32 shrink-0">Configuration</h3>
+            <Separator className="flex-1" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <FieldShell label="Period Duration">
+              <Select value={String(draft.periodDuration)} onValueChange={v => setDraft({...draft, periodDuration: Number(v)})}>
+                <SelectTrigger><SelectValue/></SelectTrigger>
+                <SelectContent>
+                  {[30, 35, 40, 45, 50, 60].map(m => <SelectItem key={m} value={String(m)}>{m} minutes</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FieldShell>
+            
+            <FieldShell label="Break After Period">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start text-left font-normal truncate">
+                    {draft.breakAfterPeriod.length > 0 ? `After P${draft.breakAfterPeriod.join(', P')}` : 'No breaks selected'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-2">
+                  <div className="grid border rounded-md p-1 bg-white max-h-60 overflow-y-auto">
+                    {Array.from({length: Math.max(8, computedTotalPeriods)}).map((_, i) => {
+                      const p = i + 1;
+                      return (
+                        <div key={p} className="flex items-center space-x-2 p-1.5 hover:bg-slate-100 rounded-sm">
+                          <Checkbox checked={draft.breakAfterPeriod.includes(p)} onCheckedChange={(checked) => {
+                            if (checked) {
+                              setDraft({...draft, breakAfterPeriod: [...draft.breakAfterPeriod, p].sort((a,b)=>a-b)})
+                            } else {
+                              setDraft({...draft, breakAfterPeriod: draft.breakAfterPeriod.filter((x: number) => x !== p)})
+                            }
+                          }} id={`break-${p}`} />
+                          <label htmlFor={`break-${p}`} className="text-sm font-medium cursor-pointer flex-1 user-select-none">
+                            After Period {p}
+                          </label>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </FieldShell>
+
+            <FieldShell label="Break Duration">
+              <Select value={String(draft.breakDuration)} onValueChange={v => setDraft({...draft, breakDuration: Number(v)})}>
+                <SelectTrigger><SelectValue/></SelectTrigger>
+                <SelectContent>
+                  {[5, 10, 15, 20, 30].map(m => <SelectItem key={m} value={String(m)}>{m} minutes</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FieldShell>
+
+            <FieldShell label="Number of Breaks">
+              <div className="h-10 flex border rounded-md px-3 border-slate-200 bg-slate-50/50 text-slate-600 font-medium items-center">{draft.breakAfterPeriod.length} breaks</div>
+            </FieldShell>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-4">
+            <h3 className="text-sm font-semibold text-slate-900 w-32 shrink-0">Live Preview</h3>
+            <Separator className="flex-1" />
+          </div>
+          <div className="flex flex-wrap gap-2 mb-4">
+            <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-50">Total Periods: {computedTotalPeriods}</Badge>
+            <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50">Teaching: {teachingMinutes} mins</Badge>
+            <Badge variant="secondary" className="bg-amber-50 text-amber-700 hover:bg-amber-50">Break: {breaksTotalMinutes} mins</Badge>
+          </div>
+
+          <div className="w-full overflow-x-auto pb-4 custom-scrollbar">
+            <div className="flex items-center gap-2 min-w-max">
+              {timeline.map((block, i) => (
+                <div key={i} className={cn(
+                  "flex flex-col items-center justify-center rounded-xl p-3 shrink-0 shadow-sm border",
+                  block.type === 'period' ? "bg-indigo-50 border-indigo-100 text-indigo-900 w-24" : "bg-slate-100 border-slate-200 text-slate-600 w-20"
+                )}>
+                  <div className="font-bold text-sm mb-1">{block.type === 'period' ? `P${block.number}` : 'Break'}</div>
+                  <div className="text-[10px] opacity-70 mb-1">{block.duration}m</div>
+                  <div className="text-[10px] font-medium tracking-tight">
+                    {formatTime(block.start)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <Button onClick={handleSave} disabled={!isDirty || updateMutation.isPending} className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white">
+          {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />} Save Timetable Settings
+        </Button>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -362,6 +605,10 @@ export default function AdminSettings() {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="timetable">
+              <TimetableSettingsTab />
             </TabsContent>
           </Tabs>
 

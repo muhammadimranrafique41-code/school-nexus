@@ -7,7 +7,7 @@ import type { SchoolSettingsAuditAction, SchoolSettingsData } from "./settings.j
 
 export const attendanceStatuses = ["Present", "Absent", "Late", "Excused"] as const;
 export const attendanceSessions = ["Full Day", "Morning", "Afternoon"] as const;
-export const timetableDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+export const timetableDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 export const qrAttendanceDirections = ["Check In", "Check Out"] as const;
 export const qrAttendanceMethods = ["camera", "manual"] as const;
 export const qrAttendanceMarkStatuses = ["Present", "Late"] as const;
@@ -422,6 +422,27 @@ export const dailyTeachingPulse = pgTable(
   }),
 );
 
+export const timetableSettings = pgTable("timetable_settings", {
+  id: serial("id").primaryKey(),
+  schoolId: integer("school_id").notNull().default(1).unique(),
+  startTime: text("start_time").notNull().default("08:00"),
+  endTime: text("end_time").notNull().default("15:00"),
+  workingDays: integer("working_days").array().notNull().default([1, 2, 3, 4, 5, 6]),
+  periodDuration: integer("period_duration").notNull().default(45),
+  breakAfterPeriod: integer("break_after_period").array().notNull().default([4]),
+  breakDuration: integer("break_duration").notNull().default(15),
+  totalPeriods: integer("total_periods").notNull().default(8),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+export const timetableSettingsVersion = pgTable("timetable_settings_version", {
+  id: serial("id").primaryKey(),
+  settingsId: integer("settings_id").notNull().references(() => timetableSettings.id, { onDelete: "cascade" }),
+  changedAt: timestamp("changed_at", { withTimezone: true }).defaultNow(),
+  changedBy: integer("changed_by").references(() => users.id, { onDelete: "set null" }),
+  snapshot: jsonb("snapshot").notNull(),
+});
+
 const optionalUserTextFieldSchema = z.preprocess(
   (value) => typeof value === "string" ? value.trim() || null : value,
   z.string().max(120).nullable().optional(),
@@ -476,6 +497,8 @@ export const insertDailyTeachingPulseSchema = createInsertSchema(dailyTeachingPu
   createdAt: true,
   markedAt: true,
 });
+export const insertTimetableSettingsSchema = createInsertSchema(timetableSettings).omit({ id: true });
+export const insertTimetableSettingsVersionSchema = createInsertSchema(timetableSettingsVersion).omit({ id: true });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -518,6 +541,10 @@ export type ClassTeacher = typeof classTeachers.$inferSelect;
 export type InsertClassTeacher = z.infer<typeof insertClassTeacherSchema>;
 export type DailyTeachingPulse = typeof dailyTeachingPulse.$inferSelect;
 export type InsertDailyTeachingPulse = z.infer<typeof insertDailyTeachingPulseSchema>;
+export type TimetableSettings = typeof timetableSettings.$inferSelect;
+export type InsertTimetableSettings = z.infer<typeof insertTimetableSettingsSchema>;
+export type TimetableSettingsVersion = typeof timetableSettingsVersion.$inferSelect;
+export type InsertTimetableSettingsVersion = z.infer<typeof insertTimetableSettingsVersionSchema>;
 
 export type AttendanceWithStudent = Attendance & { student?: User; teacher?: User };
 export type QrProfileWithUser = QrProfile & {

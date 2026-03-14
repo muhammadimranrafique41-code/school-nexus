@@ -293,6 +293,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Timetable settings moved to line 1340+
+
   app.get(api.users.list.path, async (req, res) => {
     const user = await requireRole(req, res, ["admin", "teacher"]);
     if (user) res.json(await storage.getUsers());
@@ -530,31 +532,121 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.get(api.student.timetable.list.path, async (req, res) => {
-    const user = await requireRole(req, res, ["student"]);
-    if (!user) return;
-    const className = user.className?.trim();
-    if (!className) return res.json({ className: "Unassigned", items: [], days: [...timetableDays] });
-    const items = await storage.getTimetableByClass(className);
-    res.json({
-      className,
-      items: items.map((item) => ({
-        id: item.id,
-        academicId: item.academicId,
-        className: item.className,
-        dayOfWeek: item.dayOfWeek as (typeof timetableDays)[number],
-        periodLabel: item.periodLabel,
-        startTime: item.startTime,
-        endTime: item.endTime,
-        room: item.room,
-        classType: item.classType,
-        teacherId: item.teacherId,
-        teacherName: item.teacher?.name ?? null,
-        subject: item.academic?.title ?? item.classType ?? "Class",
-        subjectCode: item.academic?.code ?? null,
-        sortOrder: item.sortOrder,
-      })),
-      days: [...timetableDays],
-    });
+    try {
+      console.log(`[AUDIT] Start student timetable fetch`);
+      const user = await requireRole(req, res, ["student"]);
+      if (!user) {
+        console.log(`[AUDIT] requireRole failed or user not found`);
+        return;
+      }
+      const className = user.className?.trim();
+      console.log(`[AUDIT] User: id=${user.id}, className="${className}"`);
+      if (!className) {
+        console.log(`[AUDIT] No className found for student`);
+        return res.json({ className: "Unassigned", items: [], days: [...timetableDays] });
+      }
+      
+      const { timetables: ttTable, timetablesPeriods: periodsTable, classes } = await import("../shared/schema.js");
+      const { loadTimetableSettings, computePeriodTimeline } = await import("./lib/settings-loader.js");
+      
+      const normalizeName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const targetClassName = normalizeName(className);
+      console.log(`[AUDIT] Normalized className: "${targetClassName}"`);
+
+      const allClasses = await db.select().from(classes);
+      const matchedClass = allClasses.find((c) => {
+        const cGrade = c.grade ?? "";
+        const cSection = c.section ?? "";
+        const cStream = c.stream ? `-${c.stream}` : "";
+        const constructedName = normalizeName(`${cGrade}-${cSection}${cStream}`);
+        return constructedName === targetClassName;
+      });
+
+      if (matchedClass) {
+        console.log(`[AUDIT] Matched Class ID: ${matchedClass.id}`);
+        const [published] = await db.select().from(ttTable)
+          .where(and(eq(ttTable.classId, matchedClass.id), eq(ttTable.status, "published")))
+          .limit(1);
+
+        if (published) {
+          console.log(`[AUDIT] Found Published Timetable ID: ${published.id}`);
+          const periods = await db.select().from(periodsTable).where(eq(periodsTable.timetableId, published.id));
+          const settings = await loadTimetableSettings();
+          const timeline = computePeriodTimeline(settings);
+          
+          const daysMap = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+          
+          const mappedItems = [];
+          for (const p of periods) {
+            if (!p.subject && !p.teacherId && !p.room) continue;
+            const timeSlot = timeline.find(t => t.periodNumber === p.period);
+            if (!timeSlot) continue;
+            
+            let teacherName = null;
+            if (p.teacherId) {
+              const tUser = await storage.getUser(p.teacherId);
+              teacherName = tUser?.name ?? null;
+            }
+            
+            mappedItems.push({
+              id: p.id,
+              academicId: null,
+              className: className,
+              dayOfWeek: daysMap[p.dayOfWeek],
+              periodLabel: `Period ${p.period}`,
+              startTime: timeSlot.startTime,
+              endTime: timeSlot.endTime,
+              room: p.room,
+              classType: "Class",
+              teacherId: p.teacherId,
+              teacherName,
+              subject: p.subject ?? "Class",
+              subjectCode: null,
+              sortOrder: p.period,
+            });
+          }
+          
+          console.log(`[AUDIT] Student Timetable Success: class="${className}", items=${mappedItems.length}, days=${JSON.stringify(settings.workingDays)}`);
+
+          const activeDays = settings.workingDays.map(d => daysMap[d]);
+          return res.json({
+            className,
+            items: mappedItems,
+            days: activeDays,
+          });
+        } else {
+          console.log(`[AUDIT] No published timetable found for class ${matchedClass.id}`);
+        }
+      } else {
+        console.log(`[AUDIT] No class found matching "${targetClassName}" in allClasses (total=${allClasses.length})`);
+      }
+
+      console.log(`[AUDIT] Falling back to storage.getTimetableByClass for "${className}"`);
+      const items = await storage.getTimetableByClass(className);
+      res.json({
+        className,
+        items: items.map((item) => ({
+          id: item.id,
+          academicId: item.academicId,
+          className: item.className,
+          dayOfWeek: item.dayOfWeek as (typeof timetableDays)[number],
+          periodLabel: item.periodLabel,
+          startTime: item.startTime,
+          endTime: item.endTime,
+          room: item.room,
+          classType: item.classType,
+          teacherId: item.teacherId,
+          teacherName: item.teacher?.name ?? null,
+          subject: item.academic?.title ?? item.classType ?? "Class",
+          subjectCode: item.academic?.code ?? null,
+          sortOrder: item.sortOrder,
+        })),
+        days: [...timetableDays],
+      });
+    } catch (error) {
+      console.error("[AUDIT] Student timetable error:", error);
+      res.status(500).json({ message: "Failed to load student timetable" });
+    }
   });
 
   app.get(api.student.results.list.path, async (req, res) => {
@@ -1207,6 +1299,74 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ─── Timetable Management ──────────────────────────────────────────────────
+  
+  // GET /api/v1/timetables/settings — common settings for all roles
+  app.get("/api/v1/timetables/settings", async (req, res) => {
+    try {
+      const user = await requireUser(req, res);
+      if (!user) return;
+      console.log(`[DEBUG] GET /api/v1/timetables/settings: Hit by user ${user.id} (${user.role})`);
+      const settings = await loadTimetableSettings();
+      res.json(settings);
+    } catch (error) {
+      console.error("GET timetableSettings error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PUT /api/v1/timetables/settings — admin only
+  app.put("/api/v1/timetables/settings", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      
+      const { timetableSettings, timetableSettingsVersion } = await import("../shared/schema.js");
+      const input = api.settings.timetableUpdate.input.parse(req.body);
+      
+      const recordToUpsert = {
+        schoolId: 1,
+        startTime: input.startTime,
+        endTime: input.endTime,
+        workingDays: input.workingDays,
+        periodDuration: input.periodDuration,
+        breakAfterPeriod: input.breakAfterPeriod,
+        breakDuration: input.breakDuration,
+        totalPeriods: 8, // Initial calc, will be refined in loop if needed
+        updatedAt: new Date(),
+      };
+
+      // Recalculate totalPeriods based on duration if needed (re-implement logic)
+      const [startH, startM] = input.startTime.split(':').map(Number);
+      const [endH, endM] = input.endTime.split(':').map(Number);
+      const totalMinutes = (endH * 60 + endM) - (startH * 60 + startM);
+      const breaksTotalMinutes = input.breakAfterPeriod.length * input.breakDuration;
+      const teachingMinutes = totalMinutes - breaksTotalMinutes;
+      recordToUpsert.totalPeriods = Math.floor(teachingMinutes / input.periodDuration);
+
+      const result = await db.transaction(async (tx) => {
+        const [saved] = await tx.insert(timetableSettings)
+          .values(recordToUpsert)
+          .onConflictDoUpdate({
+            target: timetableSettings.schoolId,
+            set: recordToUpsert,
+          }).returning();
+          
+        await tx.insert(timetableSettingsVersion).values({
+          settingsId: saved.id,
+          changedBy: user.id,
+          snapshot: saved,
+        });
+        
+        return saved;
+      });
+      
+      res.json(result);
+    } catch (err) {
+      console.error("PUT timetableSettings error:", err);
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message });
+      res.status(500).json({ message: "Failed to update timetable settings" });
+    }
+  });
 
   // Must be before /api/v1/timetables/:id to avoid conflict
   app.get("/api/v1/timetables/teacher/mine", async (req, res) => {

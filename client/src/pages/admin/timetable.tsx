@@ -39,26 +39,16 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const DAYS = [
-  { label: "Monday", short: "Mon", num: 1 },
-  { label: "Tuesday", short: "Tue", num: 2 },
-  { label: "Wednesday", short: "Wed", num: 3 },
-  { label: "Thursday", short: "Thu", num: 4 },
-  { label: "Friday", short: "Fri", num: 5 },
-  { label: "Saturday", short: "Sat", num: 6 },
-];
+import { useLiveSettings, computePeriodTimeline } from "@/lib/timetable-settings-bus";
 
-const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8];
-
-const PERIOD_TIMES: Record<number, string> = {
-  1: "8:00 – 8:45",
-  2: "8:45 – 9:30",
-  3: "9:30 – 10:15",
-  4: "10:30 – 11:15",
-  5: "11:15 – 12:00",
-  6: "13:00 – 13:45",
-  7: "13:45 – 14:30",
-  8: "14:30 – 15:15",
+const ALL_DAYS: Record<number, { label: string; short: string; num: number }> = {
+  1: { label: "Monday", short: "Mon", num: 1 },
+  2: { label: "Tuesday", short: "Tue", num: 2 },
+  3: { label: "Wednesday", short: "Wed", num: 3 },
+  4: { label: "Thursday", short: "Thu", num: 4 },
+  5: { label: "Friday", short: "Fri", num: 5 },
+  6: { label: "Saturday", short: "Sat", num: 6 },
+  7: { label: "Sunday", short: "Sun", num: 7 },
 };
 
 type CellData = {
@@ -291,11 +281,16 @@ function TimetableEditor({ timetableId, onBack }: { timetableId: number; onBack:
   const upsert = useUpsertPeriods(timetableId);
   const publish = usePublishTimetable();
   const { toast } = useToast();
+  const settings = useLiveSettings();
 
   const [grid, setGrid] = useState<GridState>({});
   const [conflictSet, setConflictSet] = useState<Set<string>>(new Set());
 
   const teachers = (users ?? []).filter((u: any) => u.role === "teacher");
+
+  const timeline = settings ? computePeriodTimeline(settings) : [];
+  const activeDays = settings ? settings.workingDays.map((d: number) => ALL_DAYS[d]) : [];
+  const activePeriods = settings ? Array.from({ length: settings.totalPeriods }, (_, i) => i + 1) : [];
 
   useEffect(() => {
     if (tt?.periods) {
@@ -325,8 +320,8 @@ function TimetableEditor({ timetableId, onBack }: { timetableId: number; onBack:
       }
       // simple same-period conflict per teacher
       for (const [d, periods] of Object.entries(
-        DAYS.reduce((acc: Record<string, CellData[]>, day) => {
-          acc[String(day.num)] = PERIODS.map((p) => updatedGrid[cellKey(day.num, p)] ?? emptyCell());
+        activeDays.reduce((acc: Record<string, CellData[]>, day: {num: number, label: string, short: string}) => {
+          acc[String(day.num)] = activePeriods.map((p) => updatedGrid[cellKey(day.num, p)] ?? emptyCell());
           return acc;
         }, {}),
       )) {
@@ -337,8 +332,8 @@ function TimetableEditor({ timetableId, onBack }: { timetableId: number; onBack:
   }, [grid]);
 
   const handleSave = async () => {
-    const periods = DAYS.flatMap((day) =>
-      PERIODS.map((p) => {
+    const periods = activeDays.flatMap((day: {num: number}) =>
+      activePeriods.map((p) => {
         const cell = grid[cellKey(day.num, p)] ?? emptyCell();
         return {
           dayOfWeek: day.num,
@@ -377,7 +372,7 @@ function TimetableEditor({ timetableId, onBack }: { timetableId: number; onBack:
   const cls = tt?.class;
   const className = cls ? `${cls.grade}-${cls.section}${cls.stream ? `-${cls.stream}` : ""}` : `Timetable ${timetableId}`;
 
-  if (isLoading) {
+  if (isLoading || !settings) {
     return (
       <div className="space-y-6 pb-8">
         <Skeleton className="h-40 rounded-[1.9rem]" />
@@ -483,22 +478,31 @@ function TimetableEditor({ timetableId, onBack }: { timetableId: number; onBack:
         <CardContent className="overflow-x-auto p-0">
           <div className="min-w-[860px]">
             {/* Header row */}
-            <div className="grid grid-cols-[80px_repeat(6,1fr)] border-b bg-slate-50">
+            <div className="grid border-b bg-slate-50" style={{ gridTemplateColumns: `80px repeat(${activeDays.length}, 1fr)` }}>
               <div className="p-3 text-xs font-semibold uppercase tracking-widest text-slate-500">Period</div>
-              {DAYS.map((d) => (
+              {activeDays.map((d: {num: number, short: string}) => (
                 <div key={d.num} className="border-l p-3 text-center text-xs font-semibold uppercase tracking-widest text-slate-700">
                   {d.short}
                 </div>
               ))}
             </div>
             {/* Period rows */}
-            {PERIODS.map((period) => (
-              <div key={period} className="grid grid-cols-[80px_repeat(6,1fr)] border-b last:border-0">
+            {timeline.map((slot) => {
+              if (slot.isBreak) {
+                return (
+                  <div key={`break-${slot.startTime}`} className="bg-amber-50/50 border-b py-3 text-center text-amber-700 font-medium text-sm flex items-center justify-center shadow-inner">
+                    Break Time ({slot.startTime} – {slot.endTime})
+                  </div>
+                );
+              }
+              const period = slot.periodNumber!;
+              return (
+              <div key={`period-${period}`} className="grid border-b last:border-0" style={{ gridTemplateColumns: `80px repeat(${activeDays.length}, 1fr)` }}>
                 <div className="flex flex-col items-center justify-center gap-1 p-3">
                   <span className="text-sm font-bold text-slate-700">P{period}</span>
-                  <span className="text-center text-[10px] leading-tight text-slate-400">{PERIOD_TIMES[period]}</span>
+                  <span className="text-center text-[10px] leading-tight text-slate-400">{slot.startTime} – {slot.endTime}</span>
                 </div>
-                {DAYS.map((day) => {
+                {activeDays.map((day: {num: number}) => {
                   const key = cellKey(day.num, period);
                   const isConflict = conflictSet.has(key);
                   return (
@@ -513,7 +517,7 @@ function TimetableEditor({ timetableId, onBack }: { timetableId: number; onBack:
                   );
                 })}
               </div>
-            ))}
+            )})}
           </div>
         </CardContent>
       </Card>

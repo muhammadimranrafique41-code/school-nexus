@@ -119,3 +119,43 @@ export function parseImportedSchoolSettings(raw: string) {
   const parsed = JSON.parse(raw) as { data?: unknown }
   return schoolSettingsDataSchema.parse(parsed.data ?? parsed)
 }
+
+export function useTimetableSettings() {
+  return useQuery({
+    queryKey: [api.settings.timetableGet.path],
+    queryFn: async () => {
+      const url = api.settings.timetableGet.path
+      console.log(`Fetching timetable settings from: ${url}`)
+      const res = await fetch(url, { credentials: "include" })
+      if (!res.ok) {
+        console.error(`Timetable settings fetch failed: ${res.status} ${res.statusText}`)
+        throw new Error(await getResponseErrorMessage(res, "Failed to fetch timetable settings"))
+      }
+      const data = await res.json()
+      console.log('Timetable settings received:', data)
+      return api.settings.timetableGet.responses[200].parse(data)
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useUpdateTimetableSettings() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: z.infer<typeof api.settings.timetableUpdate.input>) => {
+      const res = await fetch(api.settings.timetableUpdate.path, {
+        method: api.settings.timetableUpdate.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to update timetable settings"))
+      return api.settings.timetableUpdate.responses[200].parse(await res.json())
+    },
+    onSuccess: (response) => {
+      queryClient.setQueryData([api.settings.timetableGet.path], response)
+      queryClient.invalidateQueries({ queryKey: [api.settings.timetableGet.path] })
+    },
+  })
+}

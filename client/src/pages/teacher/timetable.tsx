@@ -9,24 +9,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BookOpen, CalendarDays, Clock, Loader2, MapPin, School } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const DAYS = [
-  { label: "Monday", short: "Mon", num: 1 },
-  { label: "Tuesday", short: "Tue", num: 2 },
-  { label: "Wednesday", short: "Wed", num: 3 },
-  { label: "Thursday", short: "Thu", num: 4 },
-  { label: "Friday", short: "Fri", num: 5 },
-  { label: "Saturday", short: "Sat", num: 6 },
-];
+import { useLiveSettingsFull, computePeriodTimeline } from "@/lib/timetable-settings-bus";
 
-const PERIOD_TIMES: Record<number, string> = {
-  1: "8:00 – 8:45",
-  2: "8:45 – 9:30",
-  3: "9:30 – 10:15",
-  4: "10:30 – 11:15",
-  5: "11:15 – 12:00",
-  6: "13:00 – 13:45",
-  7: "13:45 – 14:30",
-  8: "14:30 – 15:15",
+const ALL_DAYS: Record<number, { label: string; short: string; num: number }> = {
+  1: { label: "Monday", short: "Mon", num: 1 },
+  2: { label: "Tuesday", short: "Tue", num: 2 },
+  3: { label: "Wednesday", short: "Wed", num: 3 },
+  4: { label: "Thursday", short: "Thu", num: 4 },
+  5: { label: "Friday", short: "Fri", num: 5 },
+  6: { label: "Saturday", short: "Sat", num: 6 },
+  7: { label: "Sunday", short: "Sun", num: 7 },
 };
 
 // Assign a consistent color accent per unique className
@@ -51,31 +43,39 @@ export default function TeacherTimetable() {
   const todayNum = new Date().getDay(); // 0=Sun 1=Mon … 6=Sat
   const todayDayNum = todayNum === 0 ? 7 : todayNum; // map Sun to 7 (unused); Sat=6
 
+  const { settings, isLoading: isSettingsLoading, isError: isSettingsError } = useLiveSettingsFull();
+  
+  const activeDays = settings ? settings.workingDays.map((d: number) => ALL_DAYS[d]) : [];
+  const timeline = settings ? computePeriodTimeline(settings) : [];
+
   const colorMap = useMemo(() => new Map<string, number>(), [periods]);
 
   const byDay = useMemo(() => {
     const map: Record<number, any[]> = {};
-    DAYS.forEach((d) => (map[d.num] = []));
+    activeDays.forEach((d: {num: number}) => (map[d.num] = []));
     for (const p of periods ?? []) {
       if (map[p.dayOfWeek]) map[p.dayOfWeek].push(p);
     }
-    for (const d of DAYS) map[d.num].sort((a, b) => a.period - b.period);
+    for (const d of activeDays) map[d.num].sort((a: any, b: any) => a.period - b.period);
     return map;
-  }, [periods]);
+  }, [periods, activeDays]);
 
   const stats = useMemo(() => {
     const all = periods ?? [];
     const classes = new Set(all.map((p: any) => p.className));
-    const periodsPerDay = DAYS.map((d) => byDay[d.num]?.length ?? 0);
-    const busiestDay = DAYS[periodsPerDay.indexOf(Math.max(...periodsPerDay))]?.label ?? "—";
+    const periodsPerDay = activeDays.map((d: {num: number}) => byDay[d.num]?.length ?? 0);
+    const busiestDay = activeDays[periodsPerDay.indexOf(Math.max(...periodsPerDay))]?.label ?? "—";
     return {
       totalPeriods: all.length,
       classes: classes.size,
       busiestDay,
     };
-  }, [periods, byDay]);
+  }, [periods, byDay, activeDays]);
 
-  if (isLoading) {
+  // We removed the isSettingsError block here to allow the fallback settings to work gracefully.
+  // The user will see console warnings but the app will remain functional.
+
+  if (isLoading || isSettingsLoading || !settings) {
     return (
       <Layout>
         <div className="space-y-6 pb-8">
@@ -143,7 +143,7 @@ export default function TeacherTimetable() {
         {/* Day columns */}
         {(periods ?? []).length > 0 && (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {DAYS.map((day) => {
+            {activeDays.map((day: {num: number, label: string}) => {
               const dayPeriods = byDay[day.num] ?? [];
               const isToday = day.num === todayDayNum;
               return (
@@ -200,7 +200,11 @@ export default function TeacherTimetable() {
                             </div>
                             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                               <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" /> {PERIOD_TIMES[p.period] ?? `Period ${p.period}`}
+                                <Clock className="h-3 w-3" /> 
+                                {(() => {
+                                  const slot = timeline.find((t: any) => t.periodNumber === p.period);
+                                  return slot ? `${slot.startTime} – ${slot.endTime}` : `Period ${p.period}`;
+                                })()}
                               </span>
                               {p.room && (
                                 <span className="flex items-center gap-1">

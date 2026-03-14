@@ -94,7 +94,7 @@ import {
   getSafeSchoolSettingsDefaults,
 } from "./settings-service.js";
 
-const generatedDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"] as const;
+const generatedDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
 const generatedSlots = [
   { periodLabel: "Period 1", startTime: "08:00", endTime: "08:50" },
   { periodLabel: "Period 2", startTime: "09:00", endTime: "09:50" },

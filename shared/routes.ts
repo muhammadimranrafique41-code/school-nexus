@@ -13,6 +13,8 @@ import {
   qrAttendanceMarkStatusSchema,
   qrAttendanceMethodSchema,
   timetableDaySchema,
+  insertTimetableSettingsSchema,
+  insertFinanceVoucherSchema,
 } from "./schema.js";
 import {
   billingMonthSchema,
@@ -1025,6 +1027,31 @@ export const api = {
       path: "/api/admin/settings/export",
       method: "GET",
       responses: { 200: exportSchoolSettingsResponseSchema },
+    },
+    timetableGet: {
+      path: "/api/v1/timetables/settings",
+      method: "GET",
+      responses: { 
+        200: z.any() 
+      },
+    },
+    timetableUpdate: {
+      path: "/api/v1/timetables/settings",
+      method: "PUT",
+      input: z.object({
+        startTime: z.string(),
+        endTime: z.string(),
+        workingDays: z.array(z.number()),
+        periodDuration: z.number(),
+        breakAfterPeriod: z.array(z.number()),
+        breakDuration: z.number(),
+      }),
+      responses: { 
+        200: insertTimetableSettingsSchema.extend({ 
+          id: z.number(),
+          updatedAt: z.any() 
+        }) 
+      },
     },
   },
   student: {
