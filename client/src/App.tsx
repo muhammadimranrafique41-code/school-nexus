@@ -17,12 +17,14 @@ import CreateStudent from "./pages/admin/students";
 import CreateTeacher from "./pages/admin/teachers";
 import AdminClasses from "./pages/admin/classes";
 import AdminClassDetail from "./pages/admin/class-detail";
+import AdminTimetable from "./pages/admin/timetable";
 
 import TeacherDashboard from "./pages/teacher/dashboard";
 import TeacherAttendance from "./pages/teacher/attendance";
 import TeacherQrCard from "./pages/teacher/qr-card";
 import TeacherQrAttendance from "./pages/teacher/qr-attendance";
 import TeacherResults from "./pages/teacher/results";
+import TeacherTimetable from "./pages/teacher/timetable";
 
 import StudentDashboard from "./pages/student/dashboard";
 import StudentAttendance from "./pages/student/attendance";
@@ -63,6 +65,9 @@ function Router() {
       <Route path="/admin/classes/:id">
         <ProtectedRoute allowedRoles={['admin']}><AdminClassDetail /></ProtectedRoute>
       </Route>
+      <Route path="/admin/timetable">
+        <ProtectedRoute allowedRoles={['admin']}><AdminTimetable /></ProtectedRoute>
+      </Route>
       <Route path="/admin/finance/bulk-print">
         <ProtectedRoute allowedRoles={['admin']}><BulkVouchersPage /></ProtectedRoute>
       </Route>
@@ -91,6 +96,9 @@ function Router() {
       </Route>
       <Route path="/teacher/results">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherResults /></ProtectedRoute>
+      </Route>
+      <Route path="/teacher/timetable">
+        <ProtectedRoute allowedRoles={['teacher']}><TeacherTimetable /></ProtectedRoute>
       </Route>
       <Route path="/teacher">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherDashboard /></ProtectedRoute>

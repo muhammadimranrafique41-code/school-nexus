@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, serial, integer, jsonb, boolean, uniqueIndex, timestamp, date, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, jsonb, boolean, uniqueIndex, timestamp, date, index, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { FeeLineItem, FeeStatus, FinanceVoucherOperationStatus, PaymentMethod } from "./finance.js";
@@ -162,6 +162,50 @@ export const timetable = pgTable("timetable", {
   teacherId: integer("teacher_id").references(() => users.id, { onDelete: "set null" }),
   sortOrder: integer("sort_order").notNull().default(0),
 });
+
+export const timetableStatusEnum = ["draft", "published"] as const;
+export type TimetableStatus = (typeof timetableStatusEnum)[number];
+
+export const timetables = pgTable(
+  "timetables",
+  {
+    id: serial("id").primaryKey(),
+    classId: integer("class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "cascade" }),
+    status: text("status").$type<TimetableStatus>().notNull().default("draft"),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    fitnessScore: numeric("fitness_score", { precision: 5, scale: 2 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    uniqueClassIdx: uniqueIndex("timetables_class_id_idx").on(table.classId),
+  }),
+);
+
+export const timetablesPeriods = pgTable(
+  "timetables_periods",
+  {
+    id: serial("id").primaryKey(),
+    timetableId: integer("timetable_id")
+      .notNull()
+      .references(() => timetables.id, { onDelete: "cascade" }),
+    dayOfWeek: integer("day_of_week").notNull(), // 1=Mon … 6=Sat
+    period: integer("period").notNull(),         // 1–8
+    subject: text("subject"),
+    teacherId: integer("teacher_id").references(() => users.id, { onDelete: "set null" }),
+    room: text("room"),
+    isConflict: boolean("is_conflict").notNull().default(false),
+  },
+  (table) => ({
+    uniquePeriodIdx: uniqueIndex("timetables_periods_timetable_day_period_idx").on(
+      table.timetableId,
+      table.dayOfWeek,
+      table.period,
+    ),
+  }),
+);
 
 export const fees = pgTable("fees", {
   id: serial("id").primaryKey(),
@@ -418,6 +462,8 @@ export const insertQrProfileSchema = createInsertSchema(qrProfiles);
 export const insertQrAttendanceEventSchema = createInsertSchema(qrAttendanceEvents).omit({ id: true });
 export const insertResultSchema = createInsertSchema(results).omit({ id: true });
 export const insertTimetableSchema = createInsertSchema(timetable).omit({ id: true });
+export const insertTimetablesSchema = createInsertSchema(timetables).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertTimetablesPeriodSchema = createInsertSchema(timetablesPeriods).omit({ id: true });
 export const insertFeeSchema = createInsertSchema(fees).omit({ id: true });
 export const insertFeePaymentSchema = createInsertSchema(feePayments).omit({ id: true });
 export const insertStudentBillingProfileSchema = createInsertSchema(studentBillingProfiles);
@@ -449,6 +495,10 @@ export type Result = typeof results.$inferSelect;
 export type InsertResult = z.infer<typeof insertResultSchema>;
 export type Timetable = typeof timetable.$inferSelect;
 export type InsertTimetable = z.infer<typeof insertTimetableSchema>;
+export type TimetableRecord = typeof timetables.$inferSelect;
+export type InsertTimetableRecord = z.infer<typeof insertTimetablesSchema>;
+export type TimetablePeriod = typeof timetablesPeriods.$inferSelect;
+export type InsertTimetablePeriod = z.infer<typeof insertTimetablesPeriodSchema>;
 export type Fee = typeof fees.$inferSelect;
 export type InsertFee = z.infer<typeof insertFeeSchema>;
 export type FeePayment = typeof feePayments.$inferSelect;

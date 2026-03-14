@@ -1,6 +1,6 @@
 import {
   BookOpen, Users, LayoutDashboard, Calculator,
-  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, ShieldCheck, QrCode, ScanLine, Printer
+  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, ShieldCheck, QrCode, ScanLine, Printer, LayoutGrid
 } from "lucide-react";
 import {
   Sidebar,
@@ -49,6 +49,7 @@ const adminSections: SidebarSection[] = [
       { title: "Teachers", url: "/admin/teachers", icon: Briefcase },
       { title: "Students", url: "/admin/students", icon: GraduationCap },
       { title: "Classes", url: "/admin/classes", icon: BookOpen },
+      { title: "Schedule Builder", url: "/admin/timetable", icon: LayoutGrid },
       { title: "QR Attendance", url: "/admin/qr-attendance", icon: QrCode, badge: "New" },
     ],
   },
@@ -70,6 +71,7 @@ const teacherSections: SidebarSection[] = [
     label: "Teaching",
     items: [
       { title: "Attendance Marking", url: "/teacher/attendance", icon: CalendarDays, badge: "New", pulse: true },
+      { title: "My Timetable", url: "/teacher/timetable", icon: LayoutGrid },
       { title: "My QR Card", url: "/teacher/qr-card", icon: QrCode, badge: "QR" },
       { title: "QR Attendance", url: "/teacher/qr-attendance", icon: ScanLine, badge: "QR" },
       { title: "Results", url: "/teacher/results", icon: GraduationCap },

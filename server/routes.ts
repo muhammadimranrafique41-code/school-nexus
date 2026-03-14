@@ -1206,5 +1206,295 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ─── Timetable Management ──────────────────────────────────────────────────
+
+  // Must be before /api/v1/timetables/:id to avoid conflict
+  app.get("/api/v1/timetables/teacher/mine", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["teacher"]);
+      if (!user) return;
+
+      const { timetables: timetablesTable, timetablesPeriods: periodsTable } = await import("../shared/schema.js");
+
+      const published = await db
+        .select()
+        .from(timetablesTable)
+        .where(eq(timetablesTable.status, "published"));
+
+      if (published.length === 0) return res.json([]);
+
+      const allPeriods = [];
+      for (const tt of published) {
+        const classRow = (await db.select().from(classes).where(eq(classes.id, tt.classId)).limit(1))[0];
+        if (!classRow) continue;
+        const className = `${classRow.grade}-${classRow.section}${classRow.stream ? `-${classRow.stream}` : ""}`;
+        const rows = await db
+          .select()
+          .from(periodsTable)
+          .where(and(eq(periodsTable.timetableId, tt.id), eq(periodsTable.teacherId, user.id)));
+        for (const row of rows) {
+          allPeriods.push({ ...row, classId: classRow.id, className });
+        }
+      }
+
+      res.json(allPeriods);
+    } catch (err) {
+      console.error("Failed to fetch teacher timetable", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/v1/timetables — admin list
+  app.get("/api/v1/timetables", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const { timetables: timetablesTable } = await import("../shared/schema.js");
+
+      const rows = await db.select().from(timetablesTable);
+      const result = await Promise.all(
+        rows.map(async (tt) => {
+          const [classRow] = await db.select().from(classes).where(eq(classes.id, tt.classId)).limit(1);
+          return {
+            ...tt,
+            publishedAt: tt.publishedAt ? tt.publishedAt.toISOString() : null,
+            createdAt: tt.createdAt ? tt.createdAt.toISOString() : null,
+            updatedAt: tt.updatedAt ? tt.updatedAt.toISOString() : null,
+            class: classRow ?? undefined,
+          };
+        }),
+      );
+      res.json(result);
+    } catch (err) {
+      console.error("Failed to list timetables", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST /api/v1/timetables — admin create
+  app.post("/api/v1/timetables", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const { classId } = z.object({ classId: z.number().int().positive() }).parse(req.body);
+      const { timetables: timetablesTable } = await import("../shared/schema.js");
+
+      const [classRow] = await db.select().from(classes).where(eq(classes.id, classId)).limit(1);
+      if (!classRow) return res.status(404).json({ message: "Class not found" });
+
+      const [inserted] = await db
+        .insert(timetablesTable)
+        .values({ classId, status: "draft" })
+        .returning();
+
+      res.status(201).json({ ...inserted, publishedAt: null });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      if (isUniqueViolation(err)) return res.status(409).json({ message: "A timetable already exists for this class" });
+      console.error("Failed to create timetable", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/v1/timetables/:id — admin get one with periods
+  app.get("/api/v1/timetables/:id", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid timetable id" });
+
+      const { timetables: timetablesTable, timetablesPeriods: periodsTable } = await import("../shared/schema.js");
+
+      const [tt] = await db.select().from(timetablesTable).where(eq(timetablesTable.id, id)).limit(1);
+      if (!tt) return res.status(404).json({ message: "Timetable not found" });
+
+      const [classRow] = await db.select().from(classes).where(eq(classes.id, tt.classId)).limit(1);
+      const periodsRows = await db.select().from(periodsTable).where(eq(periodsTable.timetableId, id));
+
+      // Enrich with teacher names
+      const periodsWithNames = await Promise.all(
+        periodsRows.map(async (p) => {
+          let teacherName: string | null = null;
+          if (p.teacherId) {
+            const teacher = await storage.getUser(p.teacherId);
+            teacherName = teacher?.name ?? null;
+          }
+          return { ...p, teacherName };
+        }),
+      );
+
+      res.json({
+        ...tt,
+        publishedAt: tt.publishedAt ? tt.publishedAt.toISOString() : null,
+        createdAt: tt.createdAt ? tt.createdAt.toISOString() : null,
+        updatedAt: tt.updatedAt ? tt.updatedAt.toISOString() : null,
+        class: classRow ?? undefined,
+        periods: periodsWithNames,
+      });
+    } catch (err) {
+      console.error("Failed to get timetable", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PUT /api/v1/timetables/:id/periods — bulk upsert periods
+  app.put("/api/v1/timetables/:id/periods", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid timetable id" });
+
+      const { timetables: timetablesTable, timetablesPeriods: periodsTable } = await import("../shared/schema.js");
+
+      const [tt] = await db.select().from(timetablesTable).where(eq(timetablesTable.id, id)).limit(1);
+      if (!tt) return res.status(404).json({ message: "Timetable not found" });
+
+      const body = z
+        .object({
+          periods: z.array(
+            z.object({
+              dayOfWeek: z.number().int().min(1).max(6),
+              period: z.number().int().min(1).max(8),
+              subject: z.string().nullable().optional(),
+              teacherId: z.number().int().positive().nullable().optional(),
+              room: z.string().nullable().optional(),
+            }),
+          ),
+        })
+        .parse(req.body);
+
+      // Detect conflicts: same teacher in same day+period across this timetable
+      const conflictKeys = new Set<string>();
+      const teacherSlots = new Map<string, number>();
+      for (const p of body.periods) {
+        if (!p.teacherId) continue;
+        const key = `${p.teacherId}:${p.dayOfWeek}:${p.period}`;
+        const count = (teacherSlots.get(key) ?? 0) + 1;
+        teacherSlots.set(key, count);
+        if (count > 1) conflictKeys.add(key);
+      }
+
+      await db.transaction(async (tx) => {
+        await tx.delete(periodsTable).where(eq(periodsTable.timetableId, id));
+        if (body.periods.length > 0) {
+          await tx.insert(periodsTable).values(
+            body.periods.map((p) => ({
+              timetableId: id,
+              dayOfWeek: p.dayOfWeek,
+              period: p.period,
+              subject: p.subject ?? null,
+              teacherId: p.teacherId ?? null,
+              room: p.room ?? null,
+              isConflict: p.teacherId ? conflictKeys.has(`${p.teacherId}:${p.dayOfWeek}:${p.period}`) : false,
+            })),
+          );
+        }
+        await tx.update(timetablesTable).set({ updatedAt: new Date() }).where(eq(timetablesTable.id, id));
+      });
+
+      res.json({ success: true, conflictCount: conflictKeys.size });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      console.error("Failed to upsert periods", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST /api/v1/timetables/:id/publish — publish timetable
+  app.post("/api/v1/timetables/:id/publish", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid timetable id" });
+
+      const { timetables: timetablesTable, timetablesPeriods: periodsTable } = await import("../shared/schema.js");
+
+      const [tt] = await db.select().from(timetablesTable).where(eq(timetablesTable.id, id)).limit(1);
+      if (!tt) return res.status(404).json({ message: "Timetable not found" });
+
+      const periods = await db.select().from(periodsTable).where(eq(periodsTable.timetableId, id));
+
+      // Re-detect conflicts across ALL published timetables (teacher double-booked globally)
+      const allPublished = await db
+        .select()
+        .from(timetablesTable)
+        .where(and(eq(timetablesTable.status, "published")));
+
+      const globalTeacherSlots = new Map<string, number>();
+      for (const published of allPublished) {
+        if (published.id === id) continue;
+        const publishedPeriods = await db.select().from(periodsTable).where(eq(periodsTable.timetableId, published.id));
+        for (const p of publishedPeriods) {
+          if (!p.teacherId) continue;
+          const key = `${p.teacherId}:${p.dayOfWeek}:${p.period}`;
+          globalTeacherSlots.set(key, (globalTeacherSlots.get(key) ?? 0) + 1);
+        }
+      }
+
+      const conflictKeys = new Set<string>();
+      for (const p of periods) {
+        if (!p.teacherId) continue;
+        const key = `${p.teacherId}:${p.dayOfWeek}:${p.period}`;
+        const globalCount = (globalTeacherSlots.get(key) ?? 0) + 1;
+        if (globalCount > 1) conflictKeys.add(`${p.id}`);
+      }
+
+      // Also check within-timetable conflicts
+      const withinSlots = new Map<string, number[]>();
+      for (const p of periods) {
+        if (!p.teacherId) continue;
+        const key = `${p.teacherId}:${p.dayOfWeek}:${p.period}`;
+        const bucket = withinSlots.get(key) ?? [];
+        bucket.push(p.id);
+        withinSlots.set(key, bucket);
+      }
+      for (const ids of withinSlots.values()) {
+        if (ids.length > 1) ids.forEach((pid) => conflictKeys.add(String(pid)));
+      }
+
+      const totalPeriods = periods.filter((p) => p.subject || p.teacherId).length;
+      const conflictCount = conflictKeys.size;
+      const fitnessScore = totalPeriods > 0 ? Math.round(((totalPeriods - conflictCount) / totalPeriods) * 100) : 100;
+
+      await db.transaction(async (tx) => {
+        // Update isConflict on each period
+        for (const p of periods) {
+          await tx
+            .update(periodsTable)
+            .set({ isConflict: conflictKeys.has(String(p.id)) })
+            .where(eq(periodsTable.id, p.id));
+        }
+        await tx
+          .update(timetablesTable)
+          .set({
+            status: "published",
+            publishedAt: new Date(),
+            fitnessScore: String(fitnessScore),
+            updatedAt: new Date(),
+          })
+          .where(eq(timetablesTable.id, id));
+      });
+
+      res.json({
+        id,
+        status: "published",
+        publishedAt: new Date().toISOString(),
+        fitnessScore: String(fitnessScore),
+        conflictCount,
+      });
+    } catch (err) {
+      console.error("Failed to publish timetable", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }

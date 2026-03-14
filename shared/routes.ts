@@ -1095,7 +1095,120 @@ export const api = {
       },
     },
   },
+  adminTimetables: {
+    list: {
+      path: "/api/v1/timetables",
+      method: "GET",
+      responses: {
+        200: z.array(
+          z.object({
+            id: z.number(),
+            classId: z.number(),
+            status: z.enum(["draft", "published"]),
+            publishedAt: z.string().nullable().optional(),
+            fitnessScore: z.string().nullable().optional(),
+            createdAt: z.string().nullable().optional(),
+            updatedAt: z.string().nullable().optional(),
+            class: classSchema.optional(),
+          }),
+        ),
+      },
+    },
+    create: {
+      path: "/api/v1/timetables",
+      method: "POST",
+      input: z.object({ classId: z.number().int().positive() }),
+      responses: {
+        201: z.object({
+          id: z.number(),
+          classId: z.number(),
+          status: z.enum(["draft", "published"]),
+          publishedAt: z.string().nullable().optional(),
+          fitnessScore: z.string().nullable().optional(),
+        }),
+      },
+    },
+    getOne: {
+      path: "/api/v1/timetables/:id",
+      method: "GET",
+      responses: {
+        200: z.object({
+          id: z.number(),
+          classId: z.number(),
+          status: z.enum(["draft", "published"]),
+          publishedAt: z.string().nullable().optional(),
+          fitnessScore: z.string().nullable().optional(),
+          class: classSchema.optional(),
+          periods: z.array(
+            z.object({
+              id: z.number(),
+              timetableId: z.number(),
+              dayOfWeek: z.number(),
+              period: z.number(),
+              subject: z.string().nullable().optional(),
+              teacherId: z.number().nullable().optional(),
+              room: z.string().nullable().optional(),
+              isConflict: z.boolean(),
+              teacherName: z.string().nullable().optional(),
+            }),
+          ),
+        }),
+      },
+    },
+    upsertPeriods: {
+      path: "/api/v1/timetables/:id/periods",
+      method: "PUT",
+      input: z.object({
+        periods: z.array(
+          z.object({
+            dayOfWeek: z.number().int().min(1).max(6),
+            period: z.number().int().min(1).max(8),
+            subject: z.string().nullable().optional(),
+            teacherId: z.number().int().positive().nullable().optional(),
+            room: z.string().nullable().optional(),
+          }),
+        ),
+      }),
+      responses: { 200: z.object({ success: z.boolean(), conflictCount: z.number() }) },
+    },
+    publish: {
+      path: "/api/v1/timetables/:id/publish",
+      method: "POST",
+      input: z.object({}).optional(),
+      responses: {
+        200: z.object({
+          id: z.number(),
+          status: z.enum(["draft", "published"]),
+          publishedAt: z.string().nullable().optional(),
+          fitnessScore: z.string().nullable().optional(),
+          conflictCount: z.number(),
+        }),
+      },
+    },
+  },
   teacher: {
+    timetable: {
+      mine: {
+        path: "/api/v1/timetables/teacher/mine",
+        method: "GET",
+        responses: {
+          200: z.array(
+            z.object({
+              id: z.number(),
+              timetableId: z.number(),
+              dayOfWeek: z.number(),
+              period: z.number(),
+              subject: z.string().nullable().optional(),
+              teacherId: z.number().nullable().optional(),
+              room: z.string().nullable().optional(),
+              isConflict: z.boolean(),
+              classId: z.number(),
+              className: z.string(),
+            }),
+          ),
+        },
+      },
+    },
     classes: {
       list: {
         path: "/api/teacher/classes",
