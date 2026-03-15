@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { useAdminTimetables, useAdminTimetable, useCreateTimetable, useUpsertPeriods, usePublishTimetable } from "@/hooks/use-timetable";
