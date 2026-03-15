@@ -21,6 +21,7 @@ import {
   UpdateHomeworkSchema,
   GradeSubmissionSchema,
   HomeworkListQuerySchema,
+  StudentHomeworkListQuerySchema,
   homeworkPrioritySchema,
   homeworkStatusSchema,
 } from "../schemas/homework.schema.js";
@@ -475,6 +476,14 @@ const homeworkDetailSchema = homeworkAssignmentSchema.extend({
   classSize: z.number(),
   submissionCount: z.number(),
   submissions: z.array(homeworkSubmissionSchema),
+});
+
+const studentHomeworkListItemSchema = homeworkAssignmentSchema.extend({
+  classLabel: z.string(),
+  teacherName: z.string().nullable().optional(),
+  submissionId: z.string().nullable(),
+  submittedAt: z.string().nullable(),
+  marks: z.number().nullable().optional(),
 });
 
 const dailyTeachingPulseItemSchema = z.object({
@@ -1152,6 +1161,14 @@ export const api = {
     },
   },
   student: {
+    homework: {
+      list: {
+        path: "/api/student/teacher-homework",
+        method: "GET",
+        input: StudentHomeworkListQuerySchema.optional(),
+        responses: { 200: homeworkEnvelope(z.array(studentHomeworkListItemSchema)) },
+      },
+    },
     attendance: {
       list: {
         path: "/api/student/attendance",

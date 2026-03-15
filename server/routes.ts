@@ -91,6 +91,42 @@ const buildClassLabel = (record: { grade: string; section: string; stream?: stri
 const buildClassNameKey = (record: { grade: string; section: string; stream?: string | null }) =>
   `${record.grade}-${record.section}${record.stream ? `-${record.stream}` : ""}`.trim();
 
+const normalizeClassKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+const normalizeGradeOnly = (value: string) => normalizeClassKey(value).replace(/^grade/, "");
+
+const findClassByNameKey = async (className: string | null) => {
+  if (!className) return null;
+  const trimmed = className.trim();
+  const normalized = normalizeClassKey(trimmed);
+  const normalizedGradeOnly = normalizeGradeOnly(trimmed);
+  const classRows = await db
+    .select({
+      id: classes.id,
+      grade: classes.grade,
+      section: classes.section,
+      stream: classes.stream,
+      academicYear: classes.academicYear,
+      capacity: classes.capacity,
+      currentCount: classes.currentCount,
+    })
+    .from(classes);
+  const exactMatch = classRows.find((row) => {
+    const key = buildClassNameKey(row);
+    return key === trimmed || normalizeClassKey(key) === normalized;
+  });
+  if (exactMatch) return exactMatch;
+
+  if (normalizedGradeOnly) {
+    const gradeOnlyMatches = classRows.filter((row) => normalizeGradeOnly(row.grade) === normalizedGradeOnly);
+    if (gradeOnlyMatches.length === 1) return gradeOnlyMatches[0];
+    if (gradeOnlyMatches.length > 1) {
+      return gradeOnlyMatches.find((row) => row.section?.toUpperCase() === "A") ?? gradeOnlyMatches[0];
+    }
+  }
+
+  return null;
+};
+
 const homeworkListStmt = db
   .select({
     id: homeworkAssignments.id,
@@ -141,6 +177,62 @@ const homeworkCountStmt = db
     ),
   )
   .prepare("teacher_homework_count");
+
+const studentHomeworkListStmt = db
+  .select({
+    id: homeworkAssignments.id,
+    classId: homeworkAssignments.classId,
+    teacherId: homeworkAssignments.teacherId,
+    subject: homeworkAssignments.subject,
+    title: homeworkAssignments.title,
+    description: homeworkAssignments.description,
+    dueDate: homeworkAssignments.dueDate,
+    priority: homeworkAssignments.priority,
+    files: homeworkAssignments.files,
+    status: homeworkAssignments.status,
+    createdAt: homeworkAssignments.createdAt,
+    teacherName: users.name,
+    classGrade: classes.grade,
+    classSection: classes.section,
+    classStream: classes.stream,
+    classAcademicYear: classes.academicYear,
+    classCapacity: classes.capacity,
+    classCurrentCount: classes.currentCount,
+    submissionId: studentSubmissions.id,
+    submittedAt: studentSubmissions.submittedAt,
+    marks: studentSubmissions.marks,
+  })
+  .from(homeworkAssignments)
+  .leftJoin(classes, eq(homeworkAssignments.classId, classes.id))
+  .leftJoin(users, eq(homeworkAssignments.teacherId, users.id))
+  .leftJoin(
+    studentSubmissions,
+    and(
+      eq(studentSubmissions.homeworkId, homeworkAssignments.id),
+      eq(studentSubmissions.studentId, sql.placeholder("studentId")),
+    ),
+  )
+  .where(
+    and(
+      eq(homeworkAssignments.classId, sql.placeholder("classId")),
+      sql`${sql.placeholder("status")}::homework_status_enum is null or ${homeworkAssignments.status} = ${sql.placeholder("status")}::homework_status_enum`,
+    ),
+  )
+  .orderBy(desc(homeworkAssignments.dueDate))
+  .limit(sql.placeholder("limit"))
+  .offset(sql.placeholder("offset"))
+  .prepare("student_homework_list");
+
+const studentHomeworkCountStmt = db
+  .select({ total: count() })
+  .from(homeworkAssignments)
+  .where(
+    and(
+      eq(homeworkAssignments.classId, sql.placeholder("classId")),
+      sql`${sql.placeholder("status")}::homework_status_enum is null or ${homeworkAssignments.status} = ${sql.placeholder("status")}::homework_status_enum`,
+    ),
+  )
+  .prepare("student_homework_count");
 
 const homeworkDetailStmt = db
   .select({
@@ -688,6 +780,72 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         count: records.filter((record) => record.status === status).length,
       })),
     });
+  });
+
+  app.get(api.student.homework.list.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["student"]);
+      if (!user) return;
+
+      const filters = api.student.homework.list.input?.parse(req.query) ?? {};
+      const page = filters.page ?? 1;
+      const limit = filters.limit ?? 20;
+      const offset = (page - 1) * limit;
+      const status = filters.status ?? "active";
+
+      const classRecord = await findClassByNameKey(user.className ?? null);
+      if (!classRecord) {
+        return sendHomeworkSuccess(res, [], { page, limit, total: 0, className: user.className ?? null });
+      }
+
+      const [rows, totals] = await Promise.all([
+        studentHomeworkListStmt.execute({
+          classId: classRecord.id,
+          studentId: user.id,
+          status,
+          limit,
+          offset,
+        }),
+        studentHomeworkCountStmt.execute({
+          classId: classRecord.id,
+          status,
+        }),
+      ]);
+
+      const total = Number(totals[0]?.total ?? 0);
+      const classLabel = buildClassLabel(classRecord);
+
+      const data = rows.map((row) => ({
+        id: row.id,
+        classId: row.classId,
+        teacherId: row.teacherId,
+        subject: row.subject,
+        title: row.title,
+        description: row.description ?? null,
+        dueDate: row.dueDate instanceof Date ? row.dueDate.toISOString().slice(0, 10) : String(row.dueDate),
+        priority: row.priority,
+        files: row.files ?? [],
+        status: row.status,
+        createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt ?? null,
+        classLabel,
+        teacherName: row.teacherName ?? null,
+        submissionId: row.submissionId ?? null,
+        submittedAt: row.submittedAt
+          ? row.submittedAt instanceof Date
+            ? row.submittedAt.toISOString()
+            : String(row.submittedAt)
+          : null,
+        marks: row.marks !== null && row.marks !== undefined ? Number(row.marks) : null,
+      }));
+
+      sendHomeworkSuccess(res, data, { page, limit, total, classLabel, classId: classRecord.id });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return sendHomeworkError(res, 400, err.errors[0]?.message ?? "Invalid query");
+      }
+      console.error("Failed to fetch student homework list", err);
+      sendHomeworkError(res, 500, "Failed to fetch homework list");
+    }
   });
 
   app.get(api.student.timetable.list.path, async (req, res) => {

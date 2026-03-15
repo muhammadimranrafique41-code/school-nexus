@@ -9,6 +9,7 @@ type HomeworkListResponse = z.infer<typeof api.teacher.homework.list.responses[2
 type HomeworkDetailResponse = z.infer<typeof api.teacher.homework.detail.responses[200]>;
 type HomeworkAssignment = z.infer<typeof api.teacher.homework.create.responses[201]>["data"];
 type HomeworkSubmission = z.infer<typeof api.teacher.homework.grade.responses[200]>["data"];
+type StudentHomeworkListResponse = z.infer<typeof api.student.homework.list.responses[200]>;
 
 function buildQueryString(filters: Record<string, string | number | undefined>) {
   const params = new URLSearchParams();
@@ -52,6 +53,22 @@ export function useTeacherHomework(filters: z.infer<typeof api.teacher.homework.
       }
       if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch homework"));
       return api.teacher.homework.list.responses[200].parse(await res.json());
+    },
+  });
+}
+
+export function useStudentTeacherHomework(filters: z.infer<typeof api.student.homework.list.input> = {}) {
+  const logout = useLogout();
+  return useQuery({
+    queryKey: ["student-teacher-homework", filters],
+    queryFn: async () => {
+      const res = await fetch(`${api.student.homework.list.path}${buildQueryString(filters)}`, { credentials: "include" });
+      if (res.status === 401 || res.status === 403) {
+        logout.mutate();
+        throw new Error("Unauthorized");
+      }
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch homework"));
+      return api.student.homework.list.responses[200].parse(await res.json()) as StudentHomeworkListResponse;
     },
   });
 }

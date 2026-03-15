@@ -57,7 +57,14 @@ export const HomeworkListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
+export const StudentHomeworkListQuerySchema = z.object({
+  status: homeworkStatusSchema.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
 export type CreateHomeworkInput = z.infer<typeof CreateHomeworkSchema>;
 export type UpdateHomeworkInput = z.infer<typeof UpdateHomeworkSchema>;
 export type GradeSubmissionInput = z.infer<typeof GradeSubmissionSchema>;
 export type HomeworkListQuery = z.infer<typeof HomeworkListQuerySchema>;
+export type StudentHomeworkListQuery = z.infer<typeof StudentHomeworkListQuerySchema>;

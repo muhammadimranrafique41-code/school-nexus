@@ -40,6 +40,7 @@ import StudentTimetable from "./pages/student/timetable";
 import StudentFees from "./pages/student/fees";
 import StudentHomeworkDiary from "./pages/student/homework-diary";
 import StudentDailyDiary from "./pages/student/daily-diary";
+import StudentTeacherHomework from "./pages/student/teacher-homework";
 
 import { ProtectedRoute } from "./components/protected-route";
 
@@ -151,6 +152,9 @@ function Router() {
       </Route>
       <Route path="/student/homework-diary">
         <ProtectedRoute allowedRoles={['student']}><StudentHomeworkDiary /></ProtectedRoute>
+      </Route>
+      <Route path="/student/teacher-homework">
+        <ProtectedRoute allowedRoles={['student']}><StudentTeacherHomework /></ProtectedRoute>
       </Route>
       <Route path="/student/daily-diary/:date">
         <ProtectedRoute allowedRoles={['student']}><StudentDailyDiary /></ProtectedRoute>
