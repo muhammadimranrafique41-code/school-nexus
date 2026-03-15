@@ -443,6 +443,36 @@ export const timetableSettingsVersion = pgTable("timetable_settings_version", {
   snapshot: jsonb("snapshot").notNull(),
 });
 
+export const homeworkDiaryStatusEnum = ["draft", "published"] as const;
+export type HomeworkDiaryStatus = (typeof homeworkDiaryStatusEnum)[number];
+
+export const homeworkDiary = pgTable(
+  "homework_diary",
+  {
+    id: serial("id").primaryKey(),
+    classId: integer("class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    entries: jsonb("entries")
+      .$type<
+        {
+          subject: string;
+          topic: string;
+          note?: string;
+        }[]
+      >()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    status: text("status").$type<HomeworkDiaryStatus>().notNull().default("draft"),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    uniqueClassDateIdx: uniqueIndex("homework_diary_class_id_date_idx").on(table.classId, table.date),
+  }),
+);
+
 const optionalUserTextFieldSchema = z.preprocess(
   (value) => typeof value === "string" ? value.trim() || null : value,
   z.string().max(120).nullable().optional(),
@@ -499,6 +529,7 @@ export const insertDailyTeachingPulseSchema = createInsertSchema(dailyTeachingPu
 });
 export const insertTimetableSettingsSchema = createInsertSchema(timetableSettings).omit({ id: true });
 export const insertTimetableSettingsVersionSchema = createInsertSchema(timetableSettingsVersion).omit({ id: true });
+export const insertHomeworkDiarySchema = createInsertSchema(homeworkDiary).omit({ id: true, createdAt: true });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -545,6 +576,8 @@ export type TimetableSettings = typeof timetableSettings.$inferSelect;
 export type InsertTimetableSettings = z.infer<typeof insertTimetableSettingsSchema>;
 export type TimetableSettingsVersion = typeof timetableSettingsVersion.$inferSelect;
 export type InsertTimetableSettingsVersion = z.infer<typeof insertTimetableSettingsVersionSchema>;
+export type HomeworkDiary = typeof homeworkDiary.$inferSelect;
+export type InsertHomeworkDiary = z.infer<typeof insertHomeworkDiarySchema>;
 
 export type AttendanceWithStudent = Attendance & { student?: User; teacher?: User };
 export type QrProfileWithUser = QrProfile & {
