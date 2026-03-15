@@ -28,6 +28,9 @@ import TeacherQrCard from "./pages/teacher/qr-card";
 import TeacherQrAttendance from "./pages/teacher/qr-attendance";
 import TeacherResults from "./pages/teacher/results";
 import TeacherTimetable from "./pages/teacher/timetable";
+import TeacherHomeworkDashboard from "./pages/teacher/homework";
+import TeacherHomeworkCreator from "./pages/teacher/homework/create";
+import TeacherHomeworkSubmissions from "./pages/teacher/homework/submissions";
 
 import StudentDashboard from "./pages/student/dashboard";
 import StudentAttendance from "./pages/student/attendance";
@@ -110,6 +113,18 @@ function Router() {
       </Route>
       <Route path="/teacher/timetable">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherTimetable /></ProtectedRoute>
+      </Route>
+      <Route path="/teacher/homework/new">
+        <ProtectedRoute allowedRoles={['teacher']}><TeacherHomeworkCreator /></ProtectedRoute>
+      </Route>
+      <Route path="/teacher/homework/:id/edit">
+        <ProtectedRoute allowedRoles={['teacher']}><TeacherHomeworkCreator /></ProtectedRoute>
+      </Route>
+      <Route path="/teacher/homework/:id/submissions">
+        <ProtectedRoute allowedRoles={['teacher']}><TeacherHomeworkSubmissions /></ProtectedRoute>
+      </Route>
+      <Route path="/teacher/homework">
+        <ProtectedRoute allowedRoles={['teacher']}><TeacherHomeworkDashboard /></ProtectedRoute>
       </Route>
       <Route path="/teacher">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherDashboard /></ProtectedRoute>

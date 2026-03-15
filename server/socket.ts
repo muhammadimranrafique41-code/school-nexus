@@ -43,6 +43,17 @@ export function attachSocketServer(httpServer: HttpServer): IOServer {
     });
   });
 
+  // Homework Assignments Namespace
+  const homeworkAssignmentsNamespace = io.of("/homework-assignments");
+
+  homeworkAssignmentsNamespace.on("connection", (socket) => {
+    socket.on("subscribe-class", (classId: string | number) => {
+      const room = `class-homework:${classId}`;
+      socket.join(room);
+      socket.emit("subscribed", { classId, room });
+    });
+  });
+
   ioInstance = io;
   return io;
 }
@@ -89,6 +100,23 @@ export function broadcastDailyDiaryPublish(classId: number, diaryData: {
   const io = ioInstance.of("/daily-diary");
   const room = `class-diary:${classId}`;
   io.to(room).emit("diary-published", diaryData);
+}
+
+export function broadcastHomeworkAssignmentUpdate(
+  classId: number,
+  payload: {
+    id: string;
+    classId: number;
+    subject: string;
+    title: string;
+    dueDate: string;
+    status: string;
+  },
+) {
+  if (!ioInstance) return;
+  const io = ioInstance.of("/homework-assignments");
+  const room = `class-homework:${classId}`;
+  io.to(room).emit("homework-updated", payload);
 }
 
 export function notifyAdminDailyDiaryPublishComplete(adminId: string | number, diaryId: number, success: boolean) {

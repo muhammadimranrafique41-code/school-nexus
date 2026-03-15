@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, avg, count, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { api } from "../shared/routes.js";
 import {
@@ -10,7 +10,10 @@ import {
   classes,
   dailyTeachingPulse,
   homeworkDiary,
+  homeworkAssignments,
+  studentSubmissions,
   timetableDays,
+  users,
   type ResultWithStudent,
   type User,
 } from "../shared/schema.js";
@@ -29,7 +32,13 @@ import {
   startVoucherJob,
   subscribeJobSse,
 } from "./services/voucherService.js";
-import { broadcastHomeworkDiaryPublish, broadcastDailyDiaryPublish, notifyAdminPublishComplete } from "./socket.js";
+import { createPresignedDownload, createPresignedUpload } from "./s3.js";
+import {
+  broadcastHomeworkDiaryPublish,
+  broadcastDailyDiaryPublish,
+  broadcastHomeworkAssignmentUpdate,
+  notifyAdminPublishComplete,
+} from "./socket.js";
 
 declare module "express-session" {
   interface SessionData {
@@ -69,6 +78,114 @@ const sendApiSuccess = <T>(res: Response, data: T, message?: string, statusCode 
   res.status(statusCode).json({ success: true, data, message });
 
 const sendApiError = (res: Response, statusCode: number, error: string) => res.status(statusCode).json({ success: false, error });
+
+const sendHomeworkSuccess = <T>(res: Response, data: T, meta?: Record<string, unknown>, statusCode = 200) =>
+  res.status(statusCode).json({ data, error: null, meta });
+
+const sendHomeworkError = (res: Response, statusCode: number, error: string, meta?: Record<string, unknown>) =>
+  res.status(statusCode).json({ data: null, error, meta });
+
+const buildClassLabel = (record: { grade: string; section: string; stream?: string | null }) =>
+  `${record.grade} ${record.section}${record.stream ? ` - ${record.stream}` : ""}`.trim();
+
+const buildClassNameKey = (record: { grade: string; section: string; stream?: string | null }) =>
+  `${record.grade}-${record.section}${record.stream ? `-${record.stream}` : ""}`.trim();
+
+const homeworkListStmt = db
+  .select({
+    id: homeworkAssignments.id,
+    classId: homeworkAssignments.classId,
+    teacherId: homeworkAssignments.teacherId,
+    subject: homeworkAssignments.subject,
+    title: homeworkAssignments.title,
+    description: homeworkAssignments.description,
+    dueDate: homeworkAssignments.dueDate,
+    priority: homeworkAssignments.priority,
+    files: homeworkAssignments.files,
+    status: homeworkAssignments.status,
+    createdAt: homeworkAssignments.createdAt,
+    classIdRef: classes.id,
+    classGrade: classes.grade,
+    classSection: classes.section,
+    classStream: classes.stream,
+    classAcademicYear: classes.academicYear,
+    classCapacity: classes.capacity,
+    classCurrentCount: classes.currentCount,
+    submissionCount: count(studentSubmissions.id),
+    averageMarks: avg(studentSubmissions.marks),
+  })
+  .from(homeworkAssignments)
+  .leftJoin(classes, eq(homeworkAssignments.classId, classes.id))
+  .leftJoin(studentSubmissions, eq(studentSubmissions.homeworkId, homeworkAssignments.id))
+  .where(
+    and(
+      eq(homeworkAssignments.teacherId, sql.placeholder("teacherId")),
+      sql`${sql.placeholder("classId")}::int is null or ${homeworkAssignments.classId} = ${sql.placeholder("classId")}::int`,
+      sql`${sql.placeholder("status")}::homework_status_enum is null or ${homeworkAssignments.status} = ${sql.placeholder("status")}::homework_status_enum`,
+    ),
+  )
+  .groupBy(homeworkAssignments.id, classes.id)
+  .orderBy(desc(homeworkAssignments.dueDate))
+  .limit(sql.placeholder("limit"))
+  .offset(sql.placeholder("offset"))
+  .prepare("teacher_homework_list");
+
+const homeworkCountStmt = db
+  .select({ total: count() })
+  .from(homeworkAssignments)
+  .where(
+    and(
+      eq(homeworkAssignments.teacherId, sql.placeholder("teacherId")),
+      sql`${sql.placeholder("classId")}::int is null or ${homeworkAssignments.classId} = ${sql.placeholder("classId")}::int`,
+      sql`${sql.placeholder("status")}::homework_status_enum is null or ${homeworkAssignments.status} = ${sql.placeholder("status")}::homework_status_enum`,
+    ),
+  )
+  .prepare("teacher_homework_count");
+
+const homeworkDetailStmt = db
+  .select({
+    id: homeworkAssignments.id,
+    classId: homeworkAssignments.classId,
+    teacherId: homeworkAssignments.teacherId,
+    subject: homeworkAssignments.subject,
+    title: homeworkAssignments.title,
+    description: homeworkAssignments.description,
+    dueDate: homeworkAssignments.dueDate,
+    priority: homeworkAssignments.priority,
+    files: homeworkAssignments.files,
+    status: homeworkAssignments.status,
+    createdAt: homeworkAssignments.createdAt,
+    classIdRef: classes.id,
+    classGrade: classes.grade,
+    classSection: classes.section,
+    classStream: classes.stream,
+    classAcademicYear: classes.academicYear,
+    classCapacity: classes.capacity,
+    classCurrentCount: classes.currentCount,
+  })
+  .from(homeworkAssignments)
+  .leftJoin(classes, eq(homeworkAssignments.classId, classes.id))
+  .where(eq(homeworkAssignments.id, sql.placeholder("id")))
+  .limit(1)
+  .prepare("teacher_homework_detail");
+
+const homeworkSubmissionsStmt = db
+  .select({
+    id: studentSubmissions.id,
+    homeworkId: studentSubmissions.homeworkId,
+    studentId: studentSubmissions.studentId,
+    submissionFile: studentSubmissions.submissionFile,
+    submittedAt: studentSubmissions.submittedAt,
+    marks: studentSubmissions.marks,
+    feedback: studentSubmissions.feedback,
+    studentName: users.name,
+    studentAvatar: users.studentPhotoUrl,
+    studentClassName: users.className,
+  })
+  .from(studentSubmissions)
+  .leftJoin(users, eq(studentSubmissions.studentId, users.id))
+  .where(eq(studentSubmissions.homeworkId, sql.placeholder("homeworkId")))
+  .prepare("teacher_homework_submissions");
 
 function buildStudentResultsPayload(records: ResultWithStudent[]) {
   const sortedRecords = [...records].sort((left, right) => {
@@ -228,6 +345,45 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.clearCookie("school-nexus.sid");
       return res.json({ success: true });
     });
+  });
+
+  app.post(api.uploads.presign.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["teacher"]);
+      if (!user) return;
+
+      const input = api.uploads.presign.input.parse(req.body);
+      const { key, url, expiresIn } = await createPresignedUpload({
+        filename: input.filename,
+        contentType: input.contentType,
+        folder: input.folder || `homework/${user.id}`,
+      });
+
+      res.json({ key, url, expiresIn, method: "PUT" });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      }
+      console.error("Failed to presign upload", err);
+      res.status(500).json({ message: "Failed to presign upload" });
+    }
+  });
+
+  app.get(api.uploads.download.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["teacher"]);
+      if (!user) return;
+
+      const input = api.uploads.download.input.parse(req.query);
+      const { url, expiresIn } = await createPresignedDownload({ key: input.key });
+      res.json({ url, expiresIn });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid request" });
+      }
+      console.error("Failed to presign download", err);
+      res.status(500).json({ message: "Failed to presign download" });
+    }
   });
 
   app.get(api.settings.publicGet.path, async (_req, res) => {
@@ -752,6 +908,432 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
       }
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ---------- Teacher Homework Diary (Assignments) ----------
+
+  app.get(api.teacher.homework.classes.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["teacher"]);
+      if (!user) return;
+
+      const rows = await db
+        .select({
+          classId: classes.id,
+          grade: classes.grade,
+          section: classes.section,
+          stream: classes.stream,
+          academicYear: classes.academicYear,
+          capacity: classes.capacity,
+          currentCount: classes.currentCount,
+          subjects: classTeachers.subjects,
+        })
+        .from(classTeachers)
+        .innerJoin(classes, eq(classTeachers.classId, classes.id))
+        .where(and(eq(classTeachers.teacherId, user.id), eq(classTeachers.isActive, true)));
+
+      const classMap = new Map<number, { record: typeof rows[number]; subjects: Set<string> }>();
+      for (const row of rows) {
+        const existing = classMap.get(row.classId);
+        const subjects = existing?.subjects ?? new Set<string>();
+        for (const subject of row.subjects ?? []) subjects.add(subject);
+        classMap.set(row.classId, { record: row, subjects });
+      }
+
+      const payload = Array.from(classMap.values()).map(({ record, subjects }) => ({
+        id: record.classId,
+        grade: record.grade,
+        section: record.section,
+        stream: record.stream,
+        academicYear: record.academicYear,
+        capacity: record.capacity,
+        currentCount: record.currentCount,
+        homeroomTeacherId: null,
+        status: "active",
+        label: buildClassLabel(record),
+        subjects: Array.from(subjects).sort(),
+      }));
+
+      sendHomeworkSuccess(res, payload);
+    } catch (err) {
+      console.error("Failed to fetch homework classes", err);
+      sendHomeworkError(res, 500, "Failed to fetch homework classes");
+    }
+  });
+
+  app.get(api.teacher.homework.list.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["teacher"]);
+      if (!user) return;
+
+      const filters = api.teacher.homework.list.input?.parse(req.query) ?? {};
+      const page = filters.page ?? 1;
+      const limit = filters.limit ?? 20;
+      const offset = (page - 1) * limit;
+      const classId = filters.classId ?? null;
+      const status = filters.status ?? null;
+
+      const [rows, totals] = await Promise.all([
+        homeworkListStmt.execute({
+          teacherId: user.id,
+          classId,
+          status,
+          limit,
+          offset,
+        }),
+        homeworkCountStmt.execute({ teacherId: user.id, classId, status }),
+      ]);
+
+      const total = Number(totals[0]?.total ?? 0);
+
+      const data = rows.map((row) => {
+        const classRecord = row.classIdRef
+          ? {
+            id: row.classIdRef,
+            grade: row.classGrade,
+            section: row.classSection,
+            stream: row.classStream,
+            academicYear: row.classAcademicYear,
+            capacity: row.classCapacity,
+            currentCount: row.classCurrentCount,
+            homeroomTeacherId: null,
+            status: "active",
+          }
+          : undefined;
+
+        const classSize = classRecord?.currentCount ?? 0;
+        return {
+          id: row.id,
+          classId: row.classId,
+          teacherId: row.teacherId,
+          subject: row.subject,
+          title: row.title,
+          description: row.description ?? null,
+          dueDate: row.dueDate instanceof Date ? row.dueDate.toISOString().slice(0, 10) : String(row.dueDate),
+          priority: row.priority,
+          files: row.files ?? [],
+          status: row.status,
+          createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt ?? null,
+          class: classRecord,
+          classLabel: classRecord ? buildClassLabel(classRecord) : "Unknown class",
+          submissionCount: Number(row.submissionCount ?? 0),
+          averageMarks: row.averageMarks !== null && row.averageMarks !== undefined ? Number(row.averageMarks) : null,
+          classSize,
+        };
+      });
+
+      sendHomeworkSuccess(res, data, { page, limit, total });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return sendHomeworkError(res, 400, err.errors[0]?.message ?? "Invalid query");
+      }
+      console.error("Failed to fetch homework list", err);
+      sendHomeworkError(res, 500, "Failed to fetch homework list");
+    }
+  });
+
+  app.post(api.teacher.homework.create.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["teacher"]);
+      if (!user) return;
+
+      const input = api.teacher.homework.create.input.parse(req.body);
+
+      const [classAssignment] = await db
+        .select()
+        .from(classTeachers)
+        .where(and(eq(classTeachers.classId, input.classId), eq(classTeachers.teacherId, user.id), eq(classTeachers.isActive, true)))
+        .limit(1);
+
+      if (!classAssignment) {
+        return sendHomeworkError(res, 403, "You are not assigned to this class");
+      }
+
+      const [created] = await db
+        .insert(homeworkAssignments)
+        .values({
+          classId: input.classId,
+          teacherId: user.id,
+          subject: input.subject,
+          title: input.title,
+          description: input.description ?? null,
+          dueDate: input.dueDate as unknown as Date,
+          priority: input.priority,
+          files: input.files ?? [],
+          status: "active",
+        })
+        .returning();
+
+      sendHomeworkSuccess(
+        res,
+        {
+          ...created,
+          dueDate: created.dueDate instanceof Date ? created.dueDate.toISOString().slice(0, 10) : String(created.dueDate),
+          createdAt: created.createdAt instanceof Date ? created.createdAt.toISOString() : created.createdAt ?? null,
+        },
+        undefined,
+        201,
+      );
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return sendHomeworkError(res, 400, err.errors[0]?.message ?? "Invalid payload");
+      }
+      if (isUniqueViolation(err)) {
+        return sendHomeworkError(res, 409, "Homework already exists for this class, date, and subject");
+      }
+      console.error("Failed to create homework", err);
+      sendHomeworkError(res, 500, "Failed to create homework");
+    }
+  });
+
+  app.get(api.teacher.homework.detail.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["teacher"]);
+      if (!user) return;
+
+      const id = String(req.params.id);
+      const [record] = await homeworkDetailStmt.execute({ id });
+      if (!record) return sendHomeworkError(res, 404, "Homework not found");
+      if (record.teacherId !== user.id) return sendHomeworkError(res, 403, "Forbidden");
+
+      const classRecord = record.classIdRef
+        ? {
+          id: record.classIdRef,
+          grade: record.classGrade,
+          section: record.classSection,
+          stream: record.classStream,
+          academicYear: record.classAcademicYear,
+          capacity: record.classCapacity,
+          currentCount: record.classCurrentCount,
+          homeroomTeacherId: null,
+          status: "active",
+        }
+        : undefined;
+
+      const classLabel = classRecord ? buildClassLabel(classRecord) : "Unknown class";
+      const classNameKey = classRecord ? buildClassNameKey(classRecord) : null;
+
+      const [submissionRows, studentRows] = await Promise.all([
+        homeworkSubmissionsStmt.execute({ homeworkId: id }),
+        classNameKey
+          ? db
+            .select({
+              id: users.id,
+              name: users.name,
+              avatarUrl: users.studentPhotoUrl,
+              className: users.className,
+            })
+            .from(users)
+            .where(and(eq(users.role, "student"), eq(users.className, classNameKey)))
+          : Promise.resolve([]),
+      ]);
+
+      const submissionMap = new Map<number, typeof submissionRows[number]>();
+      for (const submission of submissionRows) {
+        submissionMap.set(submission.studentId, submission);
+      }
+
+      const submissions = studentRows.map((student) => {
+        const submission = submissionMap.get(student.id);
+        return {
+          id: submission?.id ?? null,
+          homeworkId: id,
+          studentId: student.id,
+          submissionFile: submission?.submissionFile ?? null,
+          submittedAt: submission?.submittedAt
+            ? submission.submittedAt instanceof Date
+              ? submission.submittedAt.toISOString()
+              : String(submission.submittedAt)
+            : null,
+          marks: submission?.marks !== null && submission?.marks !== undefined ? Number(submission.marks) : null,
+          feedback: submission?.feedback ?? null,
+          student: {
+            id: student.id,
+            name: student.name,
+            avatarUrl: student.avatarUrl ?? null,
+            className: student.className ?? null,
+          },
+        };
+      });
+
+      const submissionCount = submissions.filter((item) => item.submittedAt).length;
+      const classSize = Math.max(classRecord?.currentCount ?? 0, submissions.length);
+
+      sendHomeworkSuccess(res, {
+        id: record.id,
+        classId: record.classId,
+        teacherId: record.teacherId,
+        subject: record.subject,
+        title: record.title,
+        description: record.description ?? null,
+        dueDate: record.dueDate instanceof Date ? record.dueDate.toISOString().slice(0, 10) : String(record.dueDate),
+        priority: record.priority,
+        files: record.files ?? [],
+        status: record.status,
+        createdAt: record.createdAt instanceof Date ? record.createdAt.toISOString() : record.createdAt ?? null,
+        class: classRecord,
+        classLabel,
+        classSize,
+        submissionCount,
+        submissions,
+      });
+    } catch (err) {
+      console.error("Failed to fetch homework detail", err);
+      sendHomeworkError(res, 500, "Failed to fetch homework detail");
+    }
+  });
+
+  app.patch(api.teacher.homework.update.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["teacher"]);
+      if (!user) return;
+
+      const id = String(req.params.id);
+      const [existing] = await homeworkDetailStmt.execute({ id });
+      if (!existing) return sendHomeworkError(res, 404, "Homework not found");
+      if (existing.teacherId !== user.id) return sendHomeworkError(res, 403, "Forbidden");
+
+      const input = api.teacher.homework.update.input.parse(req.body);
+      if (input.classId !== undefined && input.classId !== existing.classId) {
+        const [classAssignment] = await db
+          .select()
+          .from(classTeachers)
+          .where(and(eq(classTeachers.classId, input.classId), eq(classTeachers.teacherId, user.id), eq(classTeachers.isActive, true)))
+          .limit(1);
+        if (!classAssignment) {
+          return sendHomeworkError(res, 403, "You are not assigned to this class");
+        }
+      }
+      const updates: Record<string, unknown> = {};
+      if (input.classId !== undefined) updates.classId = input.classId;
+      if (input.subject !== undefined) updates.subject = input.subject;
+      if (input.title !== undefined) updates.title = input.title;
+      if (input.description !== undefined) updates.description = input.description ?? null;
+      if (input.dueDate !== undefined) updates.dueDate = input.dueDate as unknown as Date;
+      if (input.priority !== undefined) updates.priority = input.priority;
+      if (input.files !== undefined) updates.files = input.files;
+      if (input.status !== undefined) updates.status = input.status;
+
+      const [updated] = await db.update(homeworkAssignments).set(updates).where(eq(homeworkAssignments.id, id)).returning();
+      if (!updated) return sendHomeworkError(res, 404, "Homework not found");
+
+      broadcastHomeworkAssignmentUpdate(updated.classId, {
+        id: updated.id,
+        classId: updated.classId,
+        subject: updated.subject,
+        title: updated.title,
+        dueDate: updated.dueDate instanceof Date ? updated.dueDate.toISOString().slice(0, 10) : String(updated.dueDate),
+        status: updated.status,
+      });
+
+      sendHomeworkSuccess(res, {
+        ...updated,
+        dueDate: updated.dueDate instanceof Date ? updated.dueDate.toISOString().slice(0, 10) : String(updated.dueDate),
+        createdAt: updated.createdAt instanceof Date ? updated.createdAt.toISOString() : updated.createdAt ?? null,
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return sendHomeworkError(res, 400, err.errors[0]?.message ?? "Invalid payload");
+      }
+      console.error("Failed to update homework", err);
+      sendHomeworkError(res, 500, "Failed to update homework");
+    }
+  });
+
+  app.delete(api.teacher.homework.cancel.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["teacher"]);
+      if (!user) return;
+
+      const id = String(req.params.id);
+      const [existing] = await homeworkDetailStmt.execute({ id });
+      if (!existing) return sendHomeworkError(res, 404, "Homework not found");
+      if (existing.teacherId !== user.id) return sendHomeworkError(res, 403, "Forbidden");
+
+      const [updated] = await db
+        .update(homeworkAssignments)
+        .set({ status: "cancelled" })
+        .where(eq(homeworkAssignments.id, id))
+        .returning();
+
+      if (!updated) return sendHomeworkError(res, 404, "Homework not found");
+
+      broadcastHomeworkAssignmentUpdate(updated.classId, {
+        id: updated.id,
+        classId: updated.classId,
+        subject: updated.subject,
+        title: updated.title,
+        dueDate: updated.dueDate instanceof Date ? updated.dueDate.toISOString().slice(0, 10) : String(updated.dueDate),
+        status: updated.status,
+      });
+
+      sendHomeworkSuccess(res, { id: updated.id, status: updated.status });
+    } catch (err) {
+      console.error("Failed to cancel homework", err);
+      sendHomeworkError(res, 500, "Failed to cancel homework");
+    }
+  });
+
+  app.patch(api.teacher.homework.grade.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["teacher"]);
+      if (!user) return;
+
+      const homeworkId = String(req.params.id);
+      const submissionId = String(req.params.submissionId);
+      const [homework] = await homeworkDetailStmt.execute({ id: homeworkId });
+      if (!homework) return sendHomeworkError(res, 404, "Homework not found");
+      if (homework.teacherId !== user.id) return sendHomeworkError(res, 403, "Forbidden");
+
+      const input = api.teacher.homework.grade.input.parse(req.body);
+
+      const [existing] = await db
+        .select()
+        .from(studentSubmissions)
+        .where(and(eq(studentSubmissions.id, submissionId), eq(studentSubmissions.homeworkId, homeworkId)))
+        .limit(1);
+
+      if (!existing) return sendHomeworkError(res, 404, "Submission not found");
+
+      const [updated] = await db
+        .update(studentSubmissions)
+        .set({ marks: String(input.marks), feedback: input.feedback })
+        .where(eq(studentSubmissions.id, submissionId))
+        .returning();
+
+      const [student] = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          avatarUrl: users.studentPhotoUrl,
+          className: users.className,
+        })
+        .from(users)
+        .where(eq(users.id, updated.studentId))
+        .limit(1);
+
+      sendHomeworkSuccess(res, {
+        id: updated.id,
+        homeworkId: updated.homeworkId,
+        studentId: updated.studentId,
+        submissionFile: updated.submissionFile ?? null,
+        submittedAt: updated.submittedAt instanceof Date ? updated.submittedAt.toISOString() : updated.submittedAt ?? null,
+        marks: updated.marks !== null && updated.marks !== undefined ? Number(updated.marks) : null,
+        feedback: updated.feedback ?? null,
+        student: {
+          id: student?.id ?? updated.studentId,
+          name: student?.name ?? `Student #${updated.studentId}`,
+          avatarUrl: student?.avatarUrl ?? null,
+          className: student?.className ?? null,
+        },
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return sendHomeworkError(res, 400, err.errors[0]?.message ?? "Invalid payload");
+      }
+      console.error("Failed to grade submission", err);
+      sendHomeworkError(res, 500, "Failed to grade submission");
     }
   });
 

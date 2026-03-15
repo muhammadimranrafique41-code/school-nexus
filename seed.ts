@@ -1,6 +1,17 @@
 import { db } from "./server/db";
 import { defaultSeedAdminEmail, defaultSeedUserEmails, getMissingDefaultUsers } from "./server/default-users";
-import { academics, schoolSettings, schoolSettingsAuditLogs, schoolSettingsVersions, students, teachers, users } from "./shared/schema";
+import {
+  academics,
+  classes,
+  classTeachers,
+  homeworkAssignments,
+  schoolSettings,
+  schoolSettingsAuditLogs,
+  schoolSettingsVersions,
+  students,
+  teachers,
+  users,
+} from "./shared/schema";
 import { defaultSchoolSettingsData } from "./shared/settings";
 import { count, eq, inArray } from "drizzle-orm";
 
@@ -41,6 +52,7 @@ async function seed() {
   const [{ value }] = await db.select({ value: count() }).from(users);
   let adminUserId: number | null = null;
   const { ensuredUsers, insertedUsers, teacherUsers } = await ensureDefaultUsers();
+  const currentAcademicYear = defaultSchoolSettingsData.academicConfiguration.currentAcademicYear;
 
   if (value === 0) {
     adminUserId = insertedUsers.find((user) => user.email === defaultSeedAdminEmail)?.id ?? null;
@@ -79,6 +91,87 @@ async function seed() {
     const adminUser = ensuredUsers.find((user) => user.email === defaultSeedAdminEmail)
       ?? (await db.select().from(users).where(eq(users.role, "admin")).limit(1))[0];
     adminUserId = adminUser?.id ?? null;
+  }
+
+  const existingClasses = await db.select().from(classes);
+  if (existingClasses.length === 0) {
+    const seedClasses = [
+      { grade: "Grade 10", section: "A", stream: null, academicYear: currentAcademicYear },
+      { grade: "Grade 11", section: "B", stream: null, academicYear: currentAcademicYear },
+      { grade: "Grade 12", section: "C", stream: null, academicYear: currentAcademicYear },
+    ];
+
+    const studentsByClassName = await db
+      .select({ className: users.className, total: count() })
+      .from(users)
+      .where(eq(users.role, "student"))
+      .groupBy(users.className);
+
+    const classCounts = new Map<string, number>();
+    for (const row of studentsByClassName) {
+      if (row.className) classCounts.set(row.className, Number(row.total));
+    }
+
+    const insertedClasses = await db
+      .insert(classes)
+      .values(
+        seedClasses.map((item) => {
+          const className = `${item.grade}-${item.section}`;
+          return {
+            grade: item.grade,
+            section: item.section,
+            stream: item.stream,
+            academicYear: item.academicYear,
+            capacity: 40,
+            currentCount: classCounts.get(className) ?? 0,
+            status: "active",
+          };
+        }),
+      )
+      .returning();
+
+    const teacherAssignments = [
+      { classIndex: 0, teacher: teacherUsers[0], subjects: ["Mathematics", "Algebra"] },
+      { classIndex: 1, teacher: teacherUsers[1], subjects: ["Physics", "Science"] },
+      { classIndex: 2, teacher: teacherUsers[2], subjects: ["Literature", "English"] },
+    ];
+
+    await db.insert(classTeachers).values(
+      teacherAssignments
+        .filter((item) => item.teacher && insertedClasses[item.classIndex])
+        .map((item) => ({
+          classId: insertedClasses[item.classIndex].id,
+          teacherId: item.teacher.id,
+          subjects: item.subjects,
+          periodsPerWeek: 4,
+          priority: 3,
+          isActive: true,
+        })),
+    );
+
+    const now = new Date();
+    const assignments = Array.from({ length: 10 }).map((_, index) => {
+      const classRecord = insertedClasses[index % insertedClasses.length];
+      const teacher = teacherAssignments[index % teacherAssignments.length]?.teacher ?? teacherUsers[0];
+      const dueDate = new Date(now);
+      dueDate.setDate(now.getDate() + 3 + index);
+      return {
+        classId: classRecord.id,
+        teacherId: teacher?.id ?? teacherUsers[0]?.id ?? adminUserId ?? 1,
+        subject: teacher?.subject ?? "General",
+        title: `Homework ${index + 1}: Practice set`,
+        description: "Complete the assigned practice set and submit by the due date.",
+        dueDate,
+        priority: index % 4 === 0 ? "urgent" : index % 3 === 0 ? "high" : "medium",
+        files: [],
+        status: "active",
+      };
+    });
+
+    await db.insert(homeworkAssignments).values(assignments);
+    console.log("Seeded classes, class teachers, and homework assignments.");
+  } else {
+    console.log("Classes already exist, skipping class and homework seed.");
   }
 
   const [{ value: settingsCount }] = await db.select({ value: count() }).from(schoolSettings);

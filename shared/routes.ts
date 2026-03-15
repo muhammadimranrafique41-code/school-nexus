@@ -17,6 +17,14 @@ import {
   insertFinanceVoucherSchema,
 } from "./schema.js";
 import {
+  CreateHomeworkSchema,
+  UpdateHomeworkSchema,
+  GradeSubmissionSchema,
+  HomeworkListQuerySchema,
+  homeworkPrioritySchema,
+  homeworkStatusSchema,
+} from "../schemas/homework.schema.js";
+import {
   billingMonthSchema,
   billingProfileInputSchema,
   financeVoucherOperationStatusSchema,
@@ -412,6 +420,63 @@ const classTeacherSchema = z.object({
   isActive: z.boolean(),
 });
 
+const homeworkEnvelope = <T extends z.ZodTypeAny>(dataSchema: T) =>
+  z.object({
+    data: dataSchema.nullable(),
+    error: z.string().nullable(),
+    meta: z.record(z.unknown()).optional(),
+  });
+
+const homeworkClassSchema = classSchema.extend({
+  label: z.string(),
+  subjects: z.array(z.string()),
+});
+
+const homeworkAssignmentSchema = z.object({
+  id: z.string(),
+  classId: z.number(),
+  teacherId: z.number(),
+  subject: z.string(),
+  title: z.string(),
+  description: z.string().nullable().optional(),
+  dueDate: z.string(),
+  priority: homeworkPrioritySchema,
+  files: z.array(z.string()),
+  status: homeworkStatusSchema,
+  createdAt: z.string().nullable().optional(),
+  class: classSchema.optional(),
+});
+
+const homeworkListItemSchema = homeworkAssignmentSchema.extend({
+  submissionCount: z.number(),
+  averageMarks: z.number().nullable().optional(),
+  classLabel: z.string(),
+  classSize: z.number(),
+});
+
+const homeworkSubmissionSchema = z.object({
+  id: z.string().nullable(),
+  homeworkId: z.string(),
+  studentId: z.number(),
+  submissionFile: z.string().nullable(),
+  submittedAt: z.string().nullable(),
+  marks: z.number().nullable().optional(),
+  feedback: z.string().nullable().optional(),
+  student: z.object({
+    id: z.number(),
+    name: z.string(),
+    avatarUrl: z.string().nullable().optional(),
+    className: z.string().nullable().optional(),
+  }),
+});
+
+const homeworkDetailSchema = homeworkAssignmentSchema.extend({
+  classLabel: z.string(),
+  classSize: z.number(),
+  submissionCount: z.number(),
+  submissions: z.array(homeworkSubmissionSchema),
+});
+
 const dailyTeachingPulseItemSchema = z.object({
   id: z.number(),
   teacherId: z.number(),
@@ -487,6 +552,24 @@ const qrSummarySchema = z.object({
   scansToday: z.number(),
   studentProfiles: z.number(),
   teacherProfiles: z.number(),
+});
+
+const uploadPresignInputSchema = z.object({
+  filename: z.string().min(1).max(200),
+  contentType: z.string().min(1).max(120),
+  folder: z.string().max(80).optional(),
+});
+
+const uploadPresignResponseSchema = z.object({
+  key: z.string(),
+  url: z.string().url(),
+  expiresIn: z.number(),
+  method: z.enum(["PUT"]),
+});
+
+const uploadDownloadResponseSchema = z.object({
+  url: z.string().url(),
+  expiresIn: z.number(),
 });
 
 const attendanceSummarySchema = z.object({
@@ -834,6 +917,20 @@ export const api = {
           200: z.array(classTeacherSchema),
         },
       },
+    },
+  },
+  uploads: {
+    presign: {
+      path: "/api/uploads/presign",
+      method: "POST",
+      input: uploadPresignInputSchema,
+      responses: { 200: uploadPresignResponseSchema },
+    },
+    download: {
+      path: "/api/uploads/presign",
+      method: "GET",
+      input: z.object({ key: z.string().min(1) }),
+      responses: { 200: uploadDownloadResponseSchema },
     },
   },
   qrAttendance: {
@@ -1295,6 +1392,54 @@ export const api = {
         method: "PUT",
         input: teacherPulseMarkCompleteInputSchema,
         responses: { 200: z.object({ success: z.boolean() }) },
+      },
+    },
+    homework: {
+      classes: {
+        path: "/api/teacher/homework/classes",
+        method: "GET",
+        responses: { 200: homeworkEnvelope(z.array(homeworkClassSchema)) },
+      },
+      list: {
+        path: "/api/teacher/homework",
+        method: "GET",
+        input: HomeworkListQuerySchema.optional(),
+        responses: { 200: homeworkEnvelope(z.array(homeworkListItemSchema)) },
+      },
+      create: {
+        path: "/api/teacher/homework",
+        method: "POST",
+        input: CreateHomeworkSchema,
+        responses: { 201: homeworkEnvelope(homeworkAssignmentSchema) },
+      },
+      detail: {
+        path: "/api/teacher/homework/:id",
+        method: "GET",
+        responses: { 200: homeworkEnvelope(homeworkDetailSchema) },
+      },
+      update: {
+        path: "/api/teacher/homework/:id",
+        method: "PATCH",
+        input: UpdateHomeworkSchema,
+        responses: { 200: homeworkEnvelope(homeworkAssignmentSchema) },
+      },
+      cancel: {
+        path: "/api/teacher/homework/:id",
+        method: "DELETE",
+        responses: {
+          200: homeworkEnvelope(
+            z.object({
+              id: z.string(),
+              status: homeworkStatusSchema,
+            }),
+          ),
+        },
+      },
+      grade: {
+        path: "/api/teacher/homework/:id/submissions/:submissionId",
+        method: "PATCH",
+        input: GradeSubmissionSchema,
+        responses: { 200: homeworkEnvelope(homeworkSubmissionSchema) },
       },
     },
   },

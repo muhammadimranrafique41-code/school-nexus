@@ -1,5 +1,20 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, serial, integer, jsonb, boolean, uniqueIndex, timestamp, date, index, numeric } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
+import {
+  pgTable,
+  text,
+  serial,
+  integer,
+  jsonb,
+  boolean,
+  uniqueIndex,
+  timestamp,
+  date,
+  index,
+  numeric,
+  uuid,
+  varchar,
+  pgEnum,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { FeeLineItem, FeeStatus, FinanceVoucherOperationStatus, PaymentMethod } from "./finance.js";
@@ -530,6 +545,76 @@ export const dailyDiary = pgTable(
   }),
 );
 
+export const homeworkPriorityEnum = pgEnum("priority_enum", ["low", "medium", "high", "urgent"]);
+export const homeworkStatusEnum = pgEnum("homework_status_enum", ["active", "completed", "cancelled"]);
+
+export const homeworkAssignments = pgTable(
+  "homework_assignments",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    classId: integer("class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "cascade" }),
+    teacherId: integer("teacher_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    subject: varchar("subject", { length: 50 }).notNull(),
+    title: varchar("title", { length: 100 }).notNull(),
+    description: text("description"),
+    dueDate: date("due_date").notNull(),
+    priority: homeworkPriorityEnum("priority").notNull().default("medium"),
+    files: jsonb("files").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    status: homeworkStatusEnum("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+);
+
+export const studentSubmissions = pgTable(
+  "student_submissions",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    homeworkId: uuid("homework_id")
+      .notNull()
+      .references(() => homeworkAssignments.id, { onDelete: "cascade" }),
+    studentId: integer("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    submissionFile: varchar("submission_file", { length: 255 }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }).defaultNow(),
+    marks: numeric("marks", { precision: 5, scale: 2 }),
+    feedback: text("feedback"),
+  },
+  (table) => ({
+    uniqueHomeworkStudentIdx: uniqueIndex("student_submissions_homework_student_idx").on(
+      table.homeworkId,
+      table.studentId,
+    ),
+  }),
+);
+
+export const homeworkAssignmentsRelations = relations(homeworkAssignments, ({ one, many }) => ({
+  class: one(classes, {
+    fields: [homeworkAssignments.classId],
+    references: [classes.id],
+  }),
+  teacher: one(users, {
+    fields: [homeworkAssignments.teacherId],
+    references: [users.id],
+  }),
+  submissions: many(studentSubmissions),
+}));
+
+export const studentSubmissionsRelations = relations(studentSubmissions, ({ one }) => ({
+  homework: one(homeworkAssignments, {
+    fields: [studentSubmissions.homeworkId],
+    references: [homeworkAssignments.id],
+  }),
+  student: one(users, {
+    fields: [studentSubmissions.studentId],
+    references: [users.id],
+  }),
+}));
+
 const optionalUserTextFieldSchema = z.preprocess(
   (value) => typeof value === "string" ? value.trim() || null : value,
   z.string().max(120).nullable().optional(),
@@ -589,6 +674,8 @@ export const insertTimetableSettingsVersionSchema = createInsertSchema(timetable
 export const insertHomeworkDiarySchema = createInsertSchema(homeworkDiary).omit({ id: true, createdAt: true });
 export const insertDiaryTemplateSchema = createInsertSchema(diaryTemplates).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertDailyDiarySchema = createInsertSchema(dailyDiary).omit({ id: true, publishedAt: true, createdAt: true, updatedAt: true });
+export const insertHomeworkAssignmentSchema = createInsertSchema(homeworkAssignments).omit({ id: true, createdAt: true });
+export const insertStudentSubmissionSchema = createInsertSchema(studentSubmissions).omit({ id: true, submittedAt: true });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -641,6 +728,10 @@ export type DiaryTemplate = typeof diaryTemplates.$inferSelect;
 export type InsertDiaryTemplate = z.infer<typeof insertDiaryTemplateSchema>;
 export type DailyDiary = typeof dailyDiary.$inferSelect;
 export type InsertDailyDiary = z.infer<typeof insertDailyDiarySchema>;
+export type HomeworkAssignment = typeof homeworkAssignments.$inferSelect;
+export type InsertHomeworkAssignment = z.infer<typeof insertHomeworkAssignmentSchema>;
+export type StudentSubmission = typeof studentSubmissions.$inferSelect;
+export type InsertStudentSubmission = z.infer<typeof insertStudentSubmissionSchema>;
 
 export type AttendanceWithStudent = Attendance & { student?: User; teacher?: User };
 export type QrProfileWithUser = QrProfile & {
