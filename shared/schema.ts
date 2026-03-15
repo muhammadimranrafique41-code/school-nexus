@@ -587,6 +587,8 @@ export const insertDailyTeachingPulseSchema = createInsertSchema(dailyTeachingPu
 export const insertTimetableSettingsSchema = createInsertSchema(timetableSettings).omit({ id: true });
 export const insertTimetableSettingsVersionSchema = createInsertSchema(timetableSettingsVersion).omit({ id: true });
 export const insertHomeworkDiarySchema = createInsertSchema(homeworkDiary).omit({ id: true, createdAt: true });
+export const insertDiaryTemplateSchema = createInsertSchema(diaryTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDailyDiarySchema = createInsertSchema(dailyDiary).omit({ id: true, publishedAt: true, createdAt: true, updatedAt: true });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -635,6 +637,10 @@ export type TimetableSettingsVersion = typeof timetableSettingsVersion.$inferSel
 export type InsertTimetableSettingsVersion = z.infer<typeof insertTimetableSettingsVersionSchema>;
 export type HomeworkDiary = typeof homeworkDiary.$inferSelect;
 export type InsertHomeworkDiary = z.infer<typeof insertHomeworkDiarySchema>;
+export type DiaryTemplate = typeof diaryTemplates.$inferSelect;
+export type InsertDiaryTemplate = z.infer<typeof insertDiaryTemplateSchema>;
+export type DailyDiary = typeof dailyDiary.$inferSelect;
+export type InsertDailyDiary = z.infer<typeof insertDailyDiarySchema>;
 
 export type AttendanceWithStudent = Attendance & { student?: User; teacher?: User };
 export type QrProfileWithUser = QrProfile & {

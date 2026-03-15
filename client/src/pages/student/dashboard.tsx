@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFeeStatusClassName } from "@/lib/finance";
+import DailyDiaryCard from "@/components/daily-diary-card";
 import { Award, Banknote, BookOpen, CalendarDays, FileText, GraduationCap, Percent, XCircle, ArrowRight } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
@@ -181,7 +182,7 @@ export default function StudentDashboard() {
             <h2 className="text-2xl font-display font-semibold tracking-tight">Academic Quick Access</h2>
             <p className="text-sm text-slate-500">Your new attendance, timetable, and results pages are available directly from the dashboard and sidebar.</p>
           </div>
-          <div className="grid gap-6 lg:grid-cols-3">
+          <div className="grid gap-6 lg:grid-cols-4">
             {quickAccessCards.map((item) => (
               <Card key={item.title} className="bg-white/80 transition-all duration-300 hover:-translate-y-1">
                 <CardHeader className="space-y-4">
@@ -210,6 +211,7 @@ export default function StudentDashboard() {
                 </CardContent>
               </Card>
             ))}
+            <DailyDiaryCard />
           </div>
         </div>
 

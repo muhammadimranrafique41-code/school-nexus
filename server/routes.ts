@@ -29,7 +29,7 @@ import {
   startVoucherJob,
   subscribeJobSse,
 } from "./services/voucherService.js";
-import { broadcastHomeworkDiaryPublish, notifyAdminPublishComplete } from "./socket.js";
+import { broadcastHomeworkDiaryPublish, broadcastDailyDiaryPublish, notifyAdminPublishComplete } from "./socket.js";
 
 declare module "express-session" {
   interface SessionData {
@@ -1830,6 +1830,217 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(diary ?? null);
     } catch (err) {
       console.error("Failed to fetch homework diary", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============ DIARY TEMPLATE ROUTES ============
+
+  // POST /api/admin/diary-template — Create template
+  app.post(api.diaryTemplate.admin.create.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const input = api.diaryTemplate.admin.create.input.parse(req.body);
+      const template = await storage.createDiaryTemplate({
+        classId: input.classId,
+        title: input.title,
+        questions: input.questions,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      res.status(201).json(template);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      console.error("Failed to create diary template", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/diary-template/:classId — List templates by class
+  app.get(api.diaryTemplate.admin.list.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const classId = parseNumberValue(req.params.classId);
+      if (Number.isNaN(classId)) return res.status(400).json({ message: "Invalid class id" });
+
+      const templates = await storage.getDiaryTemplatesByClass(classId);
+      res.json(templates);
+    } catch (err) {
+      console.error("Failed to fetch templates", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PUT /api/admin/diary-template/:id — Update template
+  app.put(api.diaryTemplate.admin.update.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid template id" });
+
+      const input = api.diaryTemplate.admin.update.input.parse(req.body);
+      const template = await storage.updateDiaryTemplate(id, input);
+
+      if (!template) return res.status(404).json({ message: "Template not found" });
+      res.json(template);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      console.error("Failed to update template", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ============ DAILY DIARY ROUTES ============
+
+  // POST /api/admin/daily-diary — Create daily diary
+  app.post(api.dailyDiary.admin.create.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const input = api.dailyDiary.admin.create.input.parse(req.body);
+
+      // Check if diary already exists for this template and date
+      const existing = await storage.getDailyDiaryByTemplateAndDate(input.templateId, input.date);
+      if (existing) {
+        return res.status(409).json({ message: "Diary already exists for this template and date" });
+      }
+
+      const diary = await storage.createDailyDiary({
+        templateId: input.templateId,
+        classId: input.classId,
+        date: input.date,
+        content: input.content,
+        createdBy: user.id,
+        status: "draft",
+      });
+
+      res.status(201).json(diary);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      console.error("Failed to create daily diary", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/daily-diary/:classId/:date — Fetch diary by date
+  app.get(api.dailyDiary.admin.getByDate.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const classId = parseNumberValue(req.params.classId);
+      const date = String(req.params.date);
+
+      if (Number.isNaN(classId)) return res.status(400).json({ message: "Invalid class id" });
+      if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) return res.status(400).json({ message: "Invalid date format (YYYY-MM-DD)" });
+
+      const diary = await storage.getDailyDiariesByClassAndDate(classId, date);
+      res.json(diary ?? null);
+    } catch (err) {
+      console.error("Failed to fetch daily diary", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PUT /api/admin/daily-diary/:id — Update diary
+  app.put(api.dailyDiary.admin.update.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid diary id" });
+
+      const input = api.dailyDiary.admin.update.input.parse(req.body);
+      const diary = await storage.updateDailyDiary(id, input);
+
+      if (!diary) return res.status(404).json({ message: "Diary not found" });
+
+      // Emit publish event via Socket.io if status is being published
+      if (input.status === "published") {
+        broadcastDailyDiaryPublish(diary.classId, diary);
+      }
+
+      res.json(diary);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      console.error("Failed to update daily diary", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // DELETE /api/admin/daily-diary/:id — Delete diary
+  app.delete(api.dailyDiary.admin.delete.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid diary id" });
+
+      const deleted = await storage.deleteDailyDiary(id);
+      if (!deleted) return res.status(404).json({ message: "Diary not found" });
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to delete daily diary", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/daily-diary/class/:classId — List published diaries by class (MUST come before :classId/:date)
+  app.get(api.dailyDiary.student.listByClass.path, async (req, res) => {
+    try {
+      const user = await requireUser(req, res);
+      if (!user) return;
+
+      const classId = parseNumberValue(req.params.classId);
+      if (Number.isNaN(classId)) return res.status(400).json({ message: "Invalid class id" });
+
+      const diaries = await storage.getDailyDiariesByClass(classId);
+
+      // Only return published diaries to students
+      if (user.role === "student") {
+        return res.json(diaries.filter((d) => d.status === "published"));
+      }
+
+      res.json(diaries);
+    } catch (err) {
+      console.error("Failed to fetch daily diaries", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/daily-diary/:classId/:date — Student read-only diary
+  app.get(api.dailyDiary.student.getByDate.path, async (req, res) => {
+    try {
+      const user = await requireUser(req, res);
+      if (!user) return;
+
+      const classId = parseNumberValue(req.params.classId);
+      const date = String(req.params.date);
+
+      if (Number.isNaN(classId)) return res.status(400).json({ message: "Invalid class id" });
+      if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) return res.status(400).json({ message: "Invalid date format (YYYY-MM-DD)" });
+
+      const diary = await storage.getDailyDiariesByClassAndDate(classId, date);
+
+      // Only return published diaries to students
+      if (user.role === "student" && diary && diary.status !== "published") {
+        return res.json(null);
+      }
+
+      res.json(diary ?? null);
+    } catch (err) {
+      console.error("Failed to fetch daily diary", err);
       res.status(500).json({ message: "Internal server error" });
     }
   });

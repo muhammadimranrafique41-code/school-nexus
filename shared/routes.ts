@@ -1402,6 +1402,178 @@ export const api = {
       },
     },
   },
+  diaryTemplate: {
+    admin: {
+      create: {
+        path: "/api/admin/diary-template",
+        method: "POST",
+        input: z.object({
+          classId: z.number().int().positive(),
+          title: z.string().min(1),
+          questions: z.array(
+            z.object({
+              id: z.string(),
+              subject: z.string().min(1),
+              question: z.string().min(1),
+              type: z.enum(["text", "richtext", "checkbox"]),
+            }),
+          ),
+        }),
+        responses: {
+          201: z.object({
+            id: z.number(),
+            classId: z.number(),
+            title: z.string(),
+            questions: z.any(),
+          }),
+        },
+      },
+      list: {
+        path: "/api/admin/diary-template/:classId",
+        method: "GET",
+        responses: {
+          200: z.array(
+            z.object({
+              id: z.number(),
+              classId: z.number(),
+              title: z.string(),
+              questions: z.any(),
+              createdAt: z.string().optional(),
+              updatedAt: z.string().optional(),
+            }),
+          ),
+        },
+      },
+      update: {
+        path: "/api/admin/diary-template/:id",
+        method: "PUT",
+        input: z.object({
+          title: z.string().optional(),
+          questions: z.array(
+            z.object({
+              id: z.string(),
+              subject: z.string().min(1),
+              question: z.string().min(1),
+              type: z.enum(["text", "richtext", "checkbox"]),
+            }),
+          ).optional(),
+        }),
+        responses: {
+          200: z.object({
+            id: z.number(),
+            classId: z.number(),
+            title: z.string(),
+            questions: z.any(),
+          }),
+        },
+      },
+    },
+  },
+  dailyDiary: {
+    admin: {
+      create: {
+        path: "/api/admin/daily-diary",
+        method: "POST",
+        input: z.object({
+          templateId: z.number().int().positive(),
+          classId: z.number().int().positive(),
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          content: z.array(
+            z.object({
+              questionId: z.string(),
+              answer: z.string(),
+            }),
+          ),
+        }),
+        responses: {
+          201: z.object({
+            id: z.number(),
+            templateId: z.number(),
+            classId: z.number(),
+            date: z.string(),
+            content: z.any(),
+            status: z.enum(["draft", "published"]),
+          }),
+        },
+      },
+      getByDate: {
+        path: "/api/admin/daily-diary/:classId/:date",
+        method: "GET",
+        responses: {
+          200: z.object({
+            id: z.number(),
+            templateId: z.number(),
+            classId: z.number(),
+            date: z.string(),
+            content: z.any(),
+            status: z.enum(["draft", "published"]),
+          }).nullable(),
+        },
+      },
+      update: {
+        path: "/api/admin/daily-diary/:id",
+        method: "PUT",
+        input: z.object({
+          content: z.array(
+            z.object({
+              questionId: z.string(),
+              answer: z.string(),
+            }),
+          ).optional(),
+          status: z.enum(["draft", "published"]).optional(),
+        }),
+        responses: {
+          200: z.object({
+            id: z.number(),
+            templateId: z.number(),
+            classId: z.number(),
+            date: z.string(),
+            content: z.any(),
+            status: z.enum(["draft", "published"]),
+          }),
+        },
+      },
+      delete: {
+        path: "/api/admin/daily-diary/:id",
+        method: "DELETE",
+        responses: {
+          200: z.object({ success: z.boolean() }),
+        },
+      },
+    },
+    student: {
+      getByDate: {
+        path: "/api/daily-diary/:classId/:date",
+        method: "GET",
+        responses: {
+          200: z.object({
+            id: z.number(),
+            templateId: z.number(),
+            classId: z.number(),
+            date: z.string(),
+            content: z.any(),
+            status: z.enum(["draft", "published"]),
+          }).nullable(),
+        },
+      },
+      listByClass: {
+        path: "/api/daily-diary/class/:classId",
+        method: "GET",
+        responses: {
+          200: z.array(
+            z.object({
+              id: z.number(),
+              templateId: z.number(),
+              classId: z.number(),
+              date: z.string(),
+              content: z.any(),
+              status: z.enum(["draft", "published"]),
+            }),
+          ),
+        },
+      },
+    },
+  },
 } as const;
 
 export type ApiRoutes = typeof api;

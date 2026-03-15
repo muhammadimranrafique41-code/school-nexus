@@ -2,6 +2,8 @@ import { and, count, desc, eq, inArray, sql, sum } from "drizzle-orm";
 import {
   academics,
   attendance,
+  dailyDiary,
+  diaryTemplates,
   financeVoucherOperations,
   financeVouchers,
   feePayments,
@@ -21,6 +23,8 @@ import {
   type AcademicWithTeacher,
   type Attendance,
   type AttendanceWithStudent,
+  type DailyDiary,
+  type DiaryTemplate,
   type Fee,
   type FinanceVoucher,
   type FinanceVoucherOperation,
@@ -33,6 +37,8 @@ import {
   type InsertFinanceVoucherOperation,
   type InsertAcademic,
   type InsertAttendance,
+  type InsertDailyDiary,
+  type InsertDiaryTemplate,
   type InsertHomeworkDiary,
   type InsertQrProfile,
   type InsertResult,
@@ -2203,6 +2209,108 @@ export class DatabaseStorage implements IStorage {
       .where(eq(homeworkDiary.id, id))
       .returning();
     return updated;
+  }
+
+  // Diary Template Methods
+  async createDiaryTemplate(input: InsertDiaryTemplate): Promise<DiaryTemplate> {
+    const [created] = await db.insert(diaryTemplates).values(input).returning();
+    return created;
+  }
+
+  async getDiaryTemplate(id: number): Promise<DiaryTemplate | undefined> {
+    return db
+      .select()
+      .from(diaryTemplates)
+      .where(eq(diaryTemplates.id, id))
+      .then((rows) => rows[0]);
+  }
+
+  async getDiaryTemplatesByClass(classId: number): Promise<DiaryTemplate[]> {
+    return db
+      .select()
+      .from(diaryTemplates)
+      .where(eq(diaryTemplates.classId, classId))
+      .orderBy(desc(diaryTemplates.createdAt));
+  }
+
+  async updateDiaryTemplate(id: number, input: Partial<InsertDiaryTemplate>): Promise<DiaryTemplate | undefined> {
+    const [updated] = await db
+      .update(diaryTemplates)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(diaryTemplates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDiaryTemplate(id: number): Promise<boolean> {
+    const result = await db.delete(diaryTemplates).where(eq(diaryTemplates.id, id));
+    return !!result;
+  }
+
+  // Daily Diary Methods
+  async createDailyDiary(input: InsertDailyDiary): Promise<DailyDiary> {
+    const [created] = await db.insert(dailyDiary).values(input).returning();
+    return created;
+  }
+
+  async getDailyDiary(id: number): Promise<DailyDiary | undefined> {
+    return db
+      .select()
+      .from(dailyDiary)
+      .where(eq(dailyDiary.id, id))
+      .then((rows) => rows[0]);
+  }
+
+  async getDailyDiaryByTemplateAndDate(templateId: number, date: string): Promise<DailyDiary | undefined> {
+    return db
+      .select()
+      .from(dailyDiary)
+      .where(
+        and(
+          eq(dailyDiary.templateId, templateId),
+          sql`${dailyDiary.date} = ${date}::date`,
+        ),
+      )
+      .then((rows) => rows[0]);
+  }
+
+  async getDailyDiariesByClass(classId: number): Promise<DailyDiary[]> {
+    return db
+      .select()
+      .from(dailyDiary)
+      .where(eq(dailyDiary.classId, classId))
+      .orderBy(desc(dailyDiary.date));
+  }
+
+  async getDailyDiariesByClassAndDate(classId: number, date: string): Promise<DailyDiary | undefined> {
+    return db
+      .select()
+      .from(dailyDiary)
+      .where(
+        and(
+          eq(dailyDiary.classId, classId),
+          sql`${dailyDiary.date} = ${date}::date`,
+        ),
+      )
+      .then((rows) => rows[0]);
+  }
+
+  async updateDailyDiary(id: number, input: Partial<InsertDailyDiary>): Promise<DailyDiary | undefined> {
+    const [updated] = await db
+      .update(dailyDiary)
+      .set({
+        ...input,
+        updatedAt: new Date(),
+        ...(input.status === "published" && { publishedAt: new Date() }),
+      })
+      .where(eq(dailyDiary.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDailyDiary(id: number): Promise<boolean> {
+    const result = await db.delete(dailyDiary).where(eq(dailyDiary.id, id));
+    return !!result;
   }
 }
 

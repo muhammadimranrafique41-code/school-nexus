@@ -77,3 +77,24 @@ export function notifyAdminPublishComplete(adminId: string | number, diaryId: nu
   io.to(room).emit("publish-complete", { diaryId, success });
 }
 
+export function broadcastDailyDiaryPublish(classId: number, diaryData: {
+  id: number;
+  templateId: number;
+  classId: number;
+  date: string;
+  content: Array<{ questionId: string; answer: string }>;
+  status: string;
+}) {
+  if (!ioInstance) return;
+  const io = ioInstance.of("/daily-diary");
+  const room = `class-diary:${classId}`;
+  io.to(room).emit("diary-published", diaryData);
+}
+
+export function notifyAdminDailyDiaryPublishComplete(adminId: string | number, diaryId: number, success: boolean) {
+  if (!ioInstance) return;
+  const io = ioInstance.of("/daily-diary");
+  const room = `admin:${adminId}`;
+  io.to(room).emit("publish-complete", { diaryId, success });
+}
+
