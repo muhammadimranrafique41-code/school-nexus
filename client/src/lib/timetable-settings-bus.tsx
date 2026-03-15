@@ -20,7 +20,7 @@ export function TimetableSettingsProvider({ children }: { children: ReactNode })
         periodDuration: 45,
         breakAfterPeriod: [4],
         breakDuration: 15,
-        totalPeriods: 8,
+        totalPeriods: 7,
       });
     }
   }, [data, isError, settings]);
