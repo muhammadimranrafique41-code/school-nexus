@@ -9,6 +9,7 @@ import {
   classTeachers,
   classes,
   dailyTeachingPulse,
+  homeworkDiary,
   timetableDays,
   type ResultWithStudent,
   type User,
@@ -28,6 +29,7 @@ import {
   startVoucherJob,
   subscribeJobSse,
 } from "./services/voucherService.js";
+import { broadcastHomeworkDiaryPublish, notifyAdminPublishComplete } from "./socket.js";
 
 declare module "express-session" {
   interface SessionData {
@@ -1667,6 +1669,167 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
     } catch (err) {
       console.error("Failed to publish timetable", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ─── Homework Diary Routes ──────────────────────────────────────────────
+
+  // POST /api/admin/homework-diary — Create diary (adminAuth)
+  app.post(api.homeworkDiary.admin.create.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const input = api.homeworkDiary.admin.create.input.parse(req.body);
+
+      const existing = await storage.getHomeworkDiaryByClassDate(input.classId, input.date);
+      if (existing) {
+        return res.status(409).json({ message: "Homework diary already exists for this class and date" });
+      }
+
+      const diary = await storage.createHomeworkDiary({
+        classId: input.classId,
+        date: input.date,
+        entries: input.entries,
+        createdBy: user.id,
+      });
+
+      res.status(201).json(diary);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      console.error("Failed to create homework diary", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/admin/homework-diary/:classId/:date — Fetch by class+date
+  app.get(api.homeworkDiary.admin.getByClassDate.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const classId = parseNumberValue(req.params.classId);
+      const date = String(req.params.date);
+
+      if (Number.isNaN(classId)) return res.status(400).json({ message: "Invalid class id" });
+      if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) return res.status(400).json({ message: "Invalid date format (YYYY-MM-DD)" });
+
+      const diary = await storage.getHomeworkDiaryByClassDate(classId, date);
+      res.json(diary ?? null);
+    } catch (err) {
+      console.error("Failed to fetch homework diary", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PUT /api/admin/homework-diary/:id — Update entries/status
+  app.put(api.homeworkDiary.admin.update.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid diary id" });
+
+      const input = api.homeworkDiary.admin.update.input.parse(req.body);
+
+      // Get existing diary to check class ID
+      const existingDiary = await db
+        .select()
+        .from(homeworkDiary)
+        .where(eq(homeworkDiary.id, id))
+        .limit(1)
+        .then((rows) => rows[0]);
+
+      if (!existingDiary) return res.status(404).json({ message: "Homework diary not found" });
+
+      const diary = await storage.updateHomeworkDiary(id, input);
+      if (!diary) return res.status(404).json({ message: "Homework diary not found" });
+
+      // Emit publish event via Socket.io if status is being published
+      if (input.status === "published") {
+        broadcastHomeworkDiaryPublish(diary.classId, {
+          id: diary.id,
+          classId: diary.classId,
+          date: diary.date as unknown as string,
+          entries: diary.entries as any,
+          status: diary.status,
+        });
+      }
+
+      res.json(diary);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      console.error("Failed to update homework diary", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // DELETE /api/admin/homework-diary/:id — Remove entry
+  app.delete(api.homeworkDiary.admin.delete.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid diary id" });
+
+      const deleted = await storage.deleteHomeworkDiary(id);
+      if (!deleted) return res.status(404).json({ message: "Homework diary not found" });
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to delete homework diary", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/homework-diary/class/:classId — List published diaries by class (MUST come before :classId/:date)
+  app.get(api.homeworkDiary.student.listByClass.path, async (req, res) => {
+    try {
+      const user = await requireUser(req, res);
+      if (!user) return;
+
+      const classId = parseNumberValue(req.params.classId);
+      if (Number.isNaN(classId)) return res.status(400).json({ message: "Invalid class id" });
+
+      const diaries = await storage.getHomeworkDiariesByClass(classId);
+
+      // Only return published diaries to students
+      if (user.role === "student") {
+        return res.json(diaries.filter((d) => d.status === "published"));
+      }
+
+      res.json(diaries);
+    } catch (err) {
+      console.error("Failed to fetch homework diaries", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/homework-diary/:classId/:date — Student-facing read-only diary
+  app.get(api.homeworkDiary.student.getByClassDate.path, async (req, res) => {
+    try {
+      const user = await requireUser(req, res);
+      if (!user) return;
+
+      const classId = parseNumberValue(req.params.classId);
+      const date = String(req.params.date);
+
+      if (Number.isNaN(classId)) return res.status(400).json({ message: "Invalid class id" });
+      if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) return res.status(400).json({ message: "Invalid date format (YYYY-MM-DD)" });
+
+      const diary = await storage.getHomeworkDiaryByClassDate(classId, date);
+
+      // Only return published diaries to students
+      if (user.role === "student" && diary && diary.status !== "published") {
+        return res.json(null);
+      }
+
+      res.json(diary ?? null);
+    } catch (err) {
+      console.error("Failed to fetch homework diary", err);
       res.status(500).json({ message: "Internal server error" });
     }
   });

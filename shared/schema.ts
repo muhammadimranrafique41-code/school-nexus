@@ -473,6 +473,63 @@ export const homeworkDiary = pgTable(
   }),
 );
 
+// Template-based diary system
+export const diaryTemplates = pgTable(
+  "diary_templates",
+  {
+    id: serial("id").primaryKey(),
+    classId: integer("class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    questions: jsonb("questions")
+      .$type<
+        {
+          id: string;
+          subject: string;
+          question: string;
+          type: "text" | "richtext" | "checkbox";
+        }[]
+      >()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+);
+
+export const dailyDiary = pgTable(
+  "daily_diary",
+  {
+    id: serial("id").primaryKey(),
+    templateId: integer("template_id")
+      .notNull()
+      .references(() => diaryTemplates.id, { onDelete: "cascade" }),
+    classId: integer("class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    content: jsonb("content")
+      .$type<
+        {
+          questionId: string;
+          answer: string;
+        }[]
+      >()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    status: text("status").$type<HomeworkDiaryStatus>().notNull().default("draft"),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    uniqueTemplateDateIdx: uniqueIndex("daily_diary_template_id_date_idx").on(table.templateId, table.date),
+    classDateIdx: index("daily_diary_class_id_date_idx").on(table.classId, table.date),
+  }),
+);
+
 const optionalUserTextFieldSchema = z.preprocess(
   (value) => typeof value === "string" ? value.trim() || null : value,
   z.string().max(120).nullable().optional(),

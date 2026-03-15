@@ -19,6 +19,7 @@ import CreateTeacher from "./pages/admin/teachers";
 import AdminClasses from "./pages/admin/classes";
 import AdminClassDetail from "./pages/admin/class-detail";
 import AdminTimetable from "./pages/admin/timetable";
+import AdminHomeworkDiary from "./pages/admin/homework-diary";
 
 import TeacherDashboard from "./pages/teacher/dashboard";
 import TeacherAttendance from "./pages/teacher/attendance";
@@ -33,6 +34,7 @@ import StudentGrades from "./pages/student/grades";
 import StudentQrCard from "./pages/student/qr-card";
 import StudentTimetable from "./pages/student/timetable";
 import StudentFees from "./pages/student/fees";
+import StudentHomeworkDiary from "./pages/student/homework-diary";
 
 import { ProtectedRoute } from "./components/protected-route";
 
@@ -77,6 +79,9 @@ function Router() {
       </Route>
       <Route path="/admin/qr-attendance">
         <ProtectedRoute allowedRoles={['admin']}><AdminQrAttendance /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/homework-diary">
+        <ProtectedRoute allowedRoles={['admin']}><AdminHomeworkDiary /></ProtectedRoute>
       </Route>
       <Route path="/admin/settings">
         <ProtectedRoute allowedRoles={['admin']}><AdminSettings /></ProtectedRoute>
@@ -123,6 +128,9 @@ function Router() {
       </Route>
       <Route path="/student/fees">
         <ProtectedRoute allowedRoles={['student']}><StudentFees /></ProtectedRoute>
+      </Route>
+      <Route path="/student/homework-diary">
+        <ProtectedRoute allowedRoles={['student']}><StudentHomeworkDiary /></ProtectedRoute>
       </Route>
       <Route path="/student">
         <ProtectedRoute allowedRoles={['student']}><StudentDashboard /></ProtectedRoute>

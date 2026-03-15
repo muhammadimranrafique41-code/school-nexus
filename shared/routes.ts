@@ -1298,6 +1298,110 @@ export const api = {
       },
     },
   },
+  homeworkDiary: {
+    admin: {
+      create: {
+        path: "/api/admin/homework-diary",
+        method: "POST",
+        input: z.object({
+          classId: z.number().int().positive(),
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          entries: z.array(
+            z.object({
+              subject: z.string().min(1),
+              topic: z.string().min(1),
+              note: z.string().optional(),
+            }),
+          ),
+        }),
+        responses: {
+          201: z.object({
+            id: z.number(),
+            classId: z.number(),
+            date: z.string(),
+            entries: z.any(),
+            status: z.enum(["draft", "published"]),
+            createdAt: z.string().optional(),
+          }),
+        },
+      },
+      getByClassDate: {
+        path: "/api/admin/homework-diary/:classId/:date",
+        method: "GET",
+        responses: {
+          200: z.object({
+            id: z.number(),
+            classId: z.number(),
+            date: z.string(),
+            entries: z.any(),
+            status: z.enum(["draft", "published"]),
+            createdAt: z.string().optional(),
+          }).nullable(),
+        },
+      },
+      update: {
+        path: "/api/admin/homework-diary/:id",
+        method: "PUT",
+        input: z.object({
+          entries: z.array(
+            z.object({
+              subject: z.string().min(1),
+              topic: z.string().min(1),
+              note: z.string().optional(),
+            }),
+          ).optional(),
+          status: z.enum(["draft", "published"]).optional(),
+        }),
+        responses: {
+          200: z.object({
+            id: z.number(),
+            classId: z.number(),
+            date: z.string(),
+            entries: z.any(),
+            status: z.enum(["draft", "published"]),
+            createdAt: z.string().optional(),
+          }),
+        },
+      },
+      delete: {
+        path: "/api/admin/homework-diary/:id",
+        method: "DELETE",
+        responses: {
+          200: z.object({ success: z.boolean() }),
+        },
+      },
+    },
+    student: {
+      getByClassDate: {
+        path: "/api/homework-diary/:classId/:date",
+        method: "GET",
+        responses: {
+          200: z.object({
+            id: z.number(),
+            classId: z.number(),
+            date: z.string(),
+            entries: z.any(),
+            status: z.enum(["draft", "published"]),
+          }).nullable(),
+        },
+      },
+      listByClass: {
+        path: "/api/homework-diary/class/:classId",
+        method: "GET",
+        responses: {
+          200: z.array(
+            z.object({
+              id: z.number(),
+              classId: z.number(),
+              date: z.string(),
+              entries: z.any(),
+              status: z.enum(["draft", "published"]),
+            }),
+          ),
+        },
+      },
+    },
+  },
 } as const;
 
 export type ApiRoutes = typeof api;

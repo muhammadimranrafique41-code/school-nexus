@@ -47,6 +47,7 @@
     "@tanstack/react-query": "^5.60.5",
     "archiver": "^7.0.1",
     "bootstrap": "^5.3.8",
+    "canvas-confetti": "^1.9.4",
     "chart.js": "^4.5.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

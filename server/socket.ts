@@ -24,6 +24,25 @@ export function attachSocketServer(httpServer: HttpServer): IOServer {
     });
   });
 
+  // Homework Diary Namespace
+  const homeworkDiaryNamespace = io.of("/homework-diary");
+
+  homeworkDiaryNamespace.on("connection", (socket) => {
+    // Students join their class diary room
+    socket.on("subscribe-class", (classId: string | number) => {
+      const room = `class-diary:${classId}`;
+      socket.join(room);
+      socket.emit("subscribed", { classId, room });
+    });
+
+    // Admin listens for publish confirmations
+    socket.on("admin-subscribe", (adminId: string | number) => {
+      const room = `admin:${adminId}`;
+      socket.join(room);
+      socket.emit("admin-subscribed", { adminId });
+    });
+  });
+
   ioInstance = io;
   return io;
 }
@@ -36,5 +55,25 @@ export function notifyTeacher(teacherId: string | number, event: string, payload
   if (!ioInstance) return;
   const room = `teacher:${teacherId}`;
   ioInstance.to(room).emit(event, payload ?? {});
+}
+
+export function broadcastHomeworkDiaryPublish(classId: number, diaryData: {
+  id: number;
+  classId: number;
+  date: string;
+  entries: Array<{ subject: string; topic: string; note?: string }>;
+  status: string;
+}) {
+  if (!ioInstance) return;
+  const io = ioInstance.of("/homework-diary");
+  const room = `class-diary:${classId}`;
+  io.to(room).emit("diary-published", diaryData);
+}
+
+export function notifyAdminPublishComplete(adminId: string | number, diaryId: number, success: boolean) {
+  if (!ioInstance) return;
+  const io = ioInstance.of("/homework-diary");
+  const room = `admin:${adminId}`;
+  io.to(room).emit("publish-complete", { diaryId, success });
 }
 

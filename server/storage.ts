@@ -6,6 +6,7 @@ import {
   financeVouchers,
   feePayments,
   fees,
+  homeworkDiary,
   qrAttendanceEvents,
   qrProfiles,
   results,
@@ -27,10 +28,12 @@ import {
   type FinanceVoucherWithMeta,
   type FeePaymentWithMeta,
   type FeeWithStudent,
+  type HomeworkDiary,
   type InsertFinanceVoucher,
   type InsertFinanceVoucherOperation,
   type InsertAcademic,
   type InsertAttendance,
+  type InsertHomeworkDiary,
   type InsertQrProfile,
   type InsertResult,
   type InsertTimetable,
@@ -2128,6 +2131,78 @@ export class DatabaseStorage implements IStorage {
       recentActivity: recentActivities,
       recentVoucherOperations,
     };
+  }
+
+  // ─── Homework Diary ──────────────────────────────────────────────────────
+
+  async createHomeworkDiary(input: InsertHomeworkDiary & { classId: number; date: string }): Promise<HomeworkDiary> {
+    const [created] = await db
+      .insert(homeworkDiary)
+      .values({
+        classId: input.classId,
+        date: input.date as unknown as Date,
+        entries: input.entries ?? [],
+        status: "draft",
+        createdBy: input.createdBy,
+      })
+      .returning();
+    return created;
+  }
+
+  async getHomeworkDiaryByClassDate(classId: number, date: string): Promise<HomeworkDiary | undefined> {
+    const [record] = await db
+      .select()
+      .from(homeworkDiary)
+      .where(and(eq(homeworkDiary.classId, classId), eq(homeworkDiary.date, date as unknown as Date)))
+      .limit(1);
+    return record;
+  }
+
+  async updateHomeworkDiary(id: number, input: Partial<{ entries: any; status: string }>): Promise<HomeworkDiary | undefined> {
+    const [updated] = await db
+      .update(homeworkDiary)
+      .set({
+        entries: input.entries,
+        status: input.status as any,
+      })
+      .where(eq(homeworkDiary.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteHomeworkDiary(id: number): Promise<boolean> {
+    const result = await db.delete(homeworkDiary).where(eq(homeworkDiary.id, id));
+    return !!result;
+  }
+
+  async getHomeworkDiariesByClass(classId: number): Promise<HomeworkDiary[]> {
+    return db
+      .select()
+      .from(homeworkDiary)
+      .where(eq(homeworkDiary.classId, classId))
+      .orderBy(desc(homeworkDiary.date));
+  }
+
+  async getHomeworkDiariesByClassDateRange(classId: number, startDate: string, endDate: string): Promise<HomeworkDiary[]> {
+    return db
+      .select()
+      .from(homeworkDiary)
+      .where(
+        and(
+          eq(homeworkDiary.classId, classId),
+          sql`${homeworkDiary.date} >= ${startDate}::date AND ${homeworkDiary.date} <= ${endDate}::date`,
+        ),
+      )
+      .orderBy(desc(homeworkDiary.date));
+  }
+
+  async publishHomeworkDiary(id: number): Promise<HomeworkDiary | undefined> {
+    const [updated] = await db
+      .update(homeworkDiary)
+      .set({ status: "published" })
+      .where(eq(homeworkDiary.id, id))
+      .returning();
+    return updated;
   }
 }
 
