@@ -18,18 +18,23 @@ export default function DailyDiaryCard() {
         const classRes = await fetch(`/api/v1/classes`);
         if (!classRes.ok) return;
 
-        const classData = (await classRes.json()) as { data: Array<{ id: number; grade: string; section: string }> };
-        const matchedClass = classData.data.find(
-          (c) => c.grade === user.className || `${c.grade}-${c.section}` === user.className
-        );
-        
+        const classData = (await classRes.json()) as { data: Array<{ id: number; grade: string; section: string; stream?: string | null }> };
+        const matchedClass = classData.data.find((c) => {
+          const full = `${c.grade}-${c.section}${c.stream ? `-${c.stream}` : ""}`;
+          return (
+            c.grade === user.className ||
+            `${c.grade}-${c.section}` === user.className ||
+            full === user.className
+          );
+        });
+
         if (!matchedClass) return;
 
         const classId = matchedClass.id;
 
-        // Check today's diary
+        // Check today's homework diary
         const today = format(new Date(), "yyyy-MM-dd");
-        const diaryRes = await fetch(`/api/daily-diary/${classId}/${today}`);
+        const diaryRes = await fetch(`/api/homework-diary/${classId}/${today}`);
         if (diaryRes.ok) {
           const diary = (await diaryRes.json()) as { status: string } | null;
           if (diary?.status === "published") {
