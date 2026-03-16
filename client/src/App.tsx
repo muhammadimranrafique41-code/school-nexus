@@ -31,6 +31,7 @@ import TeacherTimetable from "./pages/teacher/timetable";
 import TeacherHomeworkDashboard from "./pages/teacher/homework";
 import TeacherHomeworkCreator from "./pages/teacher/homework/create";
 import TeacherHomeworkSubmissions from "./pages/teacher/homework/submissions";
+import TeacherHomeworkDiary from "./pages/teacher/homework-diary";
 
 import StudentDashboard from "./pages/student/dashboard";
 import StudentAttendance from "./pages/student/attendance";
@@ -123,6 +124,9 @@ function Router() {
       </Route>
       <Route path="/teacher/homework/:id/submissions">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherHomeworkSubmissions /></ProtectedRoute>
+      </Route>
+      <Route path="/teacher/homework-diary">
+        <ProtectedRoute allowedRoles={['teacher']}><TeacherHomeworkDiary /></ProtectedRoute>
       </Route>
       <Route path="/teacher/homework">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherHomeworkDashboard /></ProtectedRoute>

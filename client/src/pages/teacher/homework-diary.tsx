@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ArrowLeft,
   BookOpen,
@@ -20,8 +21,8 @@ import {
   PenTool,
   Printer,
 } from "lucide-react";
-import { useUser } from "@/hooks/use-auth";
 import { useHomeworkDiaryPublishListener } from "@/hooks/use-homework-diary-socket";
+import { useTeacherHomeworkClasses } from "@/hooks/use-homework";
 
 interface DiaryEntry {
   subject: string;
@@ -54,16 +55,23 @@ const subjectStyles: Record<
 const getSubjectStyle = (subject: string) =>
   subjectStyles[subject] ?? { bg: "bg-slate-50", border: "border-slate-200", text: "text-slate-700", icon: BookOpen };
 
-export default function StudentHomeworkDiaryPage() {
-  const { data: user } = useUser();
+export default function TeacherHomeworkDiaryPage() {
+  const { data: classPayload, isLoading: classLoading } = useTeacherHomeworkClasses();
+  const classOptions = classPayload?.data ?? [];
+
   const today = format(new Date(), "yyyy-MM-dd");
   const [selectedDate, setSelectedDate] = useState(today);
+  const [selectedClass, setSelectedClass] = useState<number | null>(null);
   const [diaries, setDiaries] = useState<HomeworkDiary[]>([]);
-  const [classId, setClassId] = useState<number | null>(null);
-  const [classLabel, setClassLabel] = useState<string>("Your class");
   const [loading, setLoading] = useState(true);
 
-  useHomeworkDiaryPublishListener(classId, (published: HomeworkDiary) => {
+  useEffect(() => {
+    if (!selectedClass && classOptions.length > 0) {
+      setSelectedClass(classOptions[0].id);
+    }
+  }, [classOptions, selectedClass]);
+
+  useHomeworkDiaryPublishListener(selectedClass, (published: HomeworkDiary) => {
     setDiaries((prev) => {
       const exists = prev.find((d) => d.id === published.id);
       return exists ? prev.map((d) => (d.id === published.id ? published : d)) : [published, ...prev];
@@ -71,7 +79,7 @@ export default function StudentHomeworkDiaryPage() {
   });
 
   useEffect(() => {
-    if (!user?.className) {
+    if (!selectedClass) {
       setLoading(false);
       return;
     }
@@ -79,27 +87,7 @@ export default function StudentHomeworkDiaryPage() {
     const fetchDiaries = async () => {
       try {
         setLoading(true);
-        const classRes = await fetch("/api/v1/classes");
-        if (!classRes.ok) return;
-
-        const classData = (await classRes.json()) as {
-          data: Array<{ id: number; grade: string; section: string; stream?: string | null }>;
-        };
-
-        const matched = classData.data.find((c) => {
-          const full = `${c.grade}-${c.section}${c.stream ? `-${c.stream}` : ""}`;
-          return (
-            c.grade === user.className ||
-            `${c.grade}-${c.section}` === user.className ||
-            full === user.className
-          );
-        });
-
-        if (!matched) return;
-        setClassId(matched.id);
-        setClassLabel(`${matched.grade}-${matched.section}${matched.stream ? `-${matched.stream}` : ""}`);
-
-        const res = await fetch(`/api/homework-diary/class/${matched.id}`);
+        const res = await fetch(`/api/homework-diary/class/${selectedClass}`);
         if (res.ok) {
           const list = (await res.json()) as HomeworkDiary[];
           setDiaries(list.filter((d) => d.status === "published"));
@@ -114,15 +102,19 @@ export default function StudentHomeworkDiaryPage() {
     fetchDiaries();
     const interval = setInterval(fetchDiaries, 30000);
     return () => clearInterval(interval);
-  }, [user?.className]);
+  }, [selectedClass]);
 
   const currentDiary = diaries.find((d) => d.date === selectedDate);
   const selectedDateLabel = useMemo(
     () => format(parseISO(selectedDate), "EEEE, MMMM d, yyyy"),
     [selectedDate],
   );
+  const classLabel = useMemo(() => {
+    const selected = classOptions.find((item) => item.id === selectedClass);
+    return selected?.label ?? "Select class";
+  }, [classOptions, selectedClass]);
 
-  if (loading) {
+  if (classLoading || loading) {
     return (
       <Layout>
         <div className="flex min-h-[70vh] items-center justify-center">
@@ -138,10 +130,10 @@ export default function StudentHomeworkDiaryPage() {
   return (
     <Layout>
       <div className="min-h-screen bg-gradient-to-b from-sky-50 via-cyan-50 to-slate-50 px-4 py-8 sm:px-6 lg:px-10">
-        <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
           <div className="flex items-center justify-between">
             <Button asChild variant="ghost" className="gap-2">
-              <Link href="/student">
+              <Link href="/teacher">
                 <ArrowLeft className="h-4 w-4" /> Back to Dashboard
               </Link>
             </Button>
@@ -175,22 +167,36 @@ export default function StudentHomeworkDiaryPage() {
             >
               <ChevronLeft className="h-4 w-4" /> Previous
             </Button>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <CalendarDays className="h-4 w-4 text-slate-500" />
-                  {format(parseISO(selectedDate), "dd-MMM-yyyy")}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="center">
-                <CalendarComponent
-                  mode="single"
-                  selected={parseISO(selectedDate)}
-                  onSelect={(date) => date && setSelectedDate(format(date, "yyyy-MM-dd"))}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            <div className="flex flex-wrap items-center gap-3">
+              <Select value={selectedClass ? String(selectedClass) : ""} onValueChange={(value) => setSelectedClass(Number(value))}>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder={classOptions.length ? "Select class" : "No classes"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {classOptions.map((item) => (
+                    <SelectItem key={item.id} value={String(item.id)}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="gap-2">
+                    <CalendarDays className="h-4 w-4 text-slate-500" />
+                    {format(parseISO(selectedDate), "dd-MMM-yyyy")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="center">
+                  <CalendarComponent
+                    mode="single"
+                    selected={parseISO(selectedDate)}
+                    onSelect={(date) => date && setSelectedDate(format(date, "yyyy-MM-dd"))}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
             <Button
               onClick={() => setSelectedDate(format(addDays(parseISO(selectedDate), 1), "yyyy-MM-dd"))}
               variant="outline"
@@ -207,7 +213,7 @@ export default function StudentHomeworkDiaryPage() {
                 No homework diary for {format(parseISO(selectedDate), "MMMM d, yyyy")}
               </p>
               {diaries.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-400">Check back soon for homework updates.</p>
+                <p className="mt-2 text-sm text-slate-400">Select a class to view homework diaries.</p>
               ) : null}
             </Card>
           ) : (

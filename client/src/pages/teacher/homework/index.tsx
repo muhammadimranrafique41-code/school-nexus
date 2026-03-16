@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { Layout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCancelHomework, useTeacherHomework, useTeacherHomeworkClasses } from "@/hooks/use-homework";
@@ -14,7 +16,7 @@ import { PriorityBadge } from "@/components/homework/priority-badge";
 import { SubjectChip } from "@/components/homework/subject-chip";
 import { StatusBadge } from "@/components/homework/status-badge";
 import { HomeworkEmptyState } from "@/components/homework/empty-state";
-import { BookOpen, Clock, TrendingUp, Star, Eye, Pencil, XCircle, Plus } from "lucide-react";
+import { BookOpen, CalendarDays, Clock, TrendingUp, Star, Eye, Pencil, XCircle, Plus, X } from "lucide-react";
 
 const statusTabs = [
   { value: "all", label: "All" },
@@ -27,6 +29,7 @@ export default function TeacherHomeworkDashboard() {
   const [selectedClass, setSelectedClass] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [page, setPage] = useState(1);
+  const [dueDateFilter, setDueDateFilter] = useState<Date | undefined>();
 
   const { data: classPayload } = useTeacherHomeworkClasses();
   const classes = classPayload?.data ?? [];
@@ -46,11 +49,17 @@ export default function TeacherHomeworkDashboard() {
   const total = typeof meta.total === "number" ? meta.total : homework.length;
   const totalPages = Math.max(1, Math.ceil(total / (filters.limit ?? 12)));
 
+  const filteredHomework = useMemo(() => {
+    if (!dueDateFilter) return homework;
+    const target = format(dueDateFilter, "yyyy-MM-dd");
+    return homework.filter((item) => format(new Date(item.dueDate), "yyyy-MM-dd") === target);
+  }, [dueDateFilter, homework]);
+
   const stats = useMemo(() => {
-    const active = homework.filter((item) => item.status === "active");
+    const active = filteredHomework.filter((item) => item.status === "active");
     const totalSubmissions = active.reduce((sum, item) => sum + item.submissionCount, 0);
     const totalCapacity = active.reduce((sum, item) => sum + item.classSize, 0);
-    const averageMarks = homework
+    const averageMarks = filteredHomework
       .map((item) => item.averageMarks)
       .filter((value): value is number => typeof value === "number");
 
@@ -60,7 +69,7 @@ export default function TeacherHomeworkDashboard() {
       submissionRate: totalCapacity ? Math.round((totalSubmissions / totalCapacity) * 100) : 0,
       classAverageMarks: averageMarks.length ? Math.round(averageMarks.reduce((sum, mark) => sum + mark, 0) / averageMarks.length) : null,
     };
-  }, [homework]);
+  }, [filteredHomework]);
 
   return (
     <Layout>
@@ -103,7 +112,7 @@ export default function TeacherHomeworkDashboard() {
             />
             <HomeworkStatCard
               title="Class average marks"
-              value={stats.classAverageMarks === null ? "—" : `${stats.classAverageMarks}%`}
+              value={stats.classAverageMarks === null ? "N/A" : `${stats.classAverageMarks}%`}
               icon={Star}
               gradient="from-amber-500 to-orange-500"
               iconClass=""
@@ -114,7 +123,7 @@ export default function TeacherHomeworkDashboard() {
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">Assignments</h2>
-            <p className="text-sm text-slate-500">Filter homework by class and status.</p>
+            <p className="text-sm text-slate-500">Filter homework by class, status, and due date.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Select value={selectedClass} onValueChange={(value) => { setSelectedClass(value); setPage(1); }}>
@@ -130,6 +139,27 @@ export default function TeacherHomeworkDashboard() {
                 ))}
               </SelectContent>
             </Select>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="gap-2 bg-white/80">
+                  <CalendarDays className="h-4 w-4 text-slate-500" />
+                  {dueDateFilter ? format(dueDateFilter, "dd-MMM-yyyy") : "All dates"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="center">
+                <Calendar
+                  mode="single"
+                  selected={dueDateFilter}
+                  onSelect={(date) => { setDueDateFilter(date ?? undefined); setPage(1); }}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            {dueDateFilter ? (
+              <Button variant="ghost" className="gap-2 text-slate-500" onClick={() => setDueDateFilter(undefined)}>
+                <X className="h-4 w-4" /> Clear date
+              </Button>
+            ) : null}
             <Tabs value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setPage(1); }}>
               <TabsList className="bg-white/80">
                 {statusTabs.map((tab) => (
@@ -150,10 +180,10 @@ export default function TeacherHomeworkDashboard() {
                   <Skeleton key={index} className="h-28 w-full rounded-2xl" />
                 ))}
               </div>
-            ) : homework.length === 0 ? (
+            ) : filteredHomework.length === 0 ? (
               <HomeworkEmptyState ctaHref="/teacher/homework/new" />
             ) : (
-              homework.map((item) => {
+              filteredHomework.map((item) => {
                 const progressValue = item.classSize ? Math.round((item.submissionCount / item.classSize) * 100) : 0;
                 const dueLabel = formatDistanceToNow(new Date(item.dueDate), { addSuffix: true });
                 return (
@@ -170,7 +200,7 @@ export default function TeacherHomeworkDashboard() {
                           <p className="mt-1 line-clamp-2 text-sm text-slate-500">{item.description || "No instructions provided yet."}</p>
                         </div>
                         <p className="text-sm text-slate-500">
-                          {item.classLabel} • Due {dueLabel}
+                          {item.classLabel} - Due {dueLabel}
                         </p>
                       </div>
 

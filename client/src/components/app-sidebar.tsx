@@ -72,7 +72,8 @@ const teacherSections: SidebarSection[] = [
     label: "Teaching",
     items: [
       { title: "Attendance Marking", url: "/teacher/attendance", icon: CalendarDays, badge: "New", pulse: true },
-      { title: "Homework Diary", url: "/teacher/homework", icon: Notebook, badge: "New" },
+      { title: "Homework Diary", url: "/teacher/homework-diary", icon: Notebook, badge: "New" },
+      { title: "Homework (Teacher)", url: "/teacher/homework", icon: Notebook, badge: "Teacher" },
       { title: "My Timetable", url: "/teacher/timetable", icon: LayoutGrid },
       { title: "My QR Card", url: "/teacher/qr-card", icon: QrCode, badge: "QR" },
       { title: "QR Attendance", url: "/teacher/qr-attendance", icon: ScanLine, badge: "QR" },
