@@ -31,7 +31,6 @@ import TeacherTimetable from "./pages/teacher/timetable";
 import TeacherHomeworkDashboard from "./pages/teacher/homework";
 import TeacherHomeworkCreator from "./pages/teacher/homework/create";
 import TeacherHomeworkSubmissions from "./pages/teacher/homework/submissions";
-import TeacherHomeworkDiary from "./pages/teacher/homework-diary";
 
 import StudentDashboard from "./pages/student/dashboard";
 import StudentAttendance from "./pages/student/attendance";
@@ -41,7 +40,6 @@ import StudentTimetable from "./pages/student/timetable";
 import StudentFees from "./pages/student/fees";
 import StudentHomeworkDiary from "./pages/student/homework-diary";
 import StudentDailyDiary from "./pages/student/daily-diary";
-import StudentTeacherHomework from "./pages/student/teacher-homework";
 
 import { ProtectedRoute } from "./components/protected-route";
 
@@ -125,10 +123,7 @@ function Router() {
       <Route path="/teacher/homework/:id/submissions">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherHomeworkSubmissions /></ProtectedRoute>
       </Route>
-      <Route path="/teacher/homework-diary">
-        <ProtectedRoute allowedRoles={['teacher']}><TeacherHomeworkDiary /></ProtectedRoute>
-      </Route>
-      <Route path="/teacher/homework">
+      <Route path="/teacher/homework-dairy">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherHomeworkDashboard /></ProtectedRoute>
       </Route>
       <Route path="/teacher">
@@ -154,11 +149,8 @@ function Router() {
       <Route path="/student/fees">
         <ProtectedRoute allowedRoles={['student']}><StudentFees /></ProtectedRoute>
       </Route>
-      <Route path="/student/homework-diary">
+      <Route path="/student/homework">
         <ProtectedRoute allowedRoles={['student']}><StudentHomeworkDiary /></ProtectedRoute>
-      </Route>
-      <Route path="/student/teacher-homework">
-        <ProtectedRoute allowedRoles={['student']}><StudentTeacherHomework /></ProtectedRoute>
       </Route>
       <Route path="/student/daily-diary/:date">
         <ProtectedRoute allowedRoles={['student']}><StudentDailyDiary /></ProtectedRoute>

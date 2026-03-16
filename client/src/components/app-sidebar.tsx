@@ -72,8 +72,7 @@ const teacherSections: SidebarSection[] = [
     label: "Teaching",
     items: [
       { title: "Attendance Marking", url: "/teacher/attendance", icon: CalendarDays, badge: "New", pulse: true },
-      { title: "Homework Diary", url: "/teacher/homework-diary", icon: Notebook, badge: "New" },
-      { title: "Homework (Teacher)", url: "/teacher/homework", icon: Notebook, badge: "Teacher" },
+      { title: "Homework Diary", url: "/teacher/homework-dairy", icon: Notebook, badge: "New" },
       { title: "My Timetable", url: "/teacher/timetable", icon: LayoutGrid },
       { title: "My QR Card", url: "/teacher/qr-card", icon: QrCode, badge: "QR" },
       { title: "QR Attendance", url: "/teacher/qr-attendance", icon: ScanLine, badge: "QR" },
@@ -90,8 +89,7 @@ const studentSections: SidebarSection[] = [
   {
     label: "Academics",
     items: [
-      { title: "Homework Diary", url: "/student/homework-diary", icon: Notebook, badge: "New" },
-      { title: "Homework (Teacher)", url: "/student/teacher-homework", icon: Notebook, badge: "Teacher" },
+      { title: "Homework Diary", url: "/student/homework", icon: Notebook, badge: "New" },
       { title: "My Attendance", url: "/student/attendance", icon: CalendarDays, badge: "New", pulse: true },
       { title: "My QR Card", url: "/student/qr-card", icon: QrCode, badge: "QR" },
       { title: "My Timetable", url: "/student/timetable", icon: BookOpen, badge: "New" },
