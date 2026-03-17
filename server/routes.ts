@@ -1679,6 +1679,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get(api.fees.adjustments.list.path, async (req, res) => {
+    const user = await requireRole(req, res, ["admin"]);
+    if (!user) return;
+    const adjustments = await storage.getFeeAdjustments(parseNumberValue(req.params.id));
+    res.json(adjustments);
+  });
+
+  app.post(api.fees.adjustments.create.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const input = api.fees.adjustments.create.input.parse(req.body);
+      const updated = await storage.createFeeAdjustment(parseNumberValue(req.params.id), input, user.id);
+      if (!updated) return res.status(404).json({ message: "Invoice not found" });
+      res.status(201).json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get(api.fees.profiles.list.path, async (req, res) => {
     const user = await requireRole(req, res, ["admin"]);
     if (!user) return;

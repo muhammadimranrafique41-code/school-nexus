@@ -241,6 +241,8 @@ export const fees = pgTable("fees", {
   generatedMonth: text("generated_month"),
   lineItems: jsonb("line_items").$type<FeeLineItem[]>().notNull().default(sql`'[]'::jsonb`),
   notes: text("notes"),
+  deletedAt: text("deleted_at"),
+  deletedBy: integer("deleted_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 }, (table) => ({
@@ -264,11 +266,96 @@ export const feePayments = pgTable(
     receiptNumber: text("receipt_number"),
     reference: text("reference"),
     notes: text("notes"),
+    idempotencyKey: text("idempotency_key"),
+    transactionId: text("transaction_id"),
+    gateway: text("gateway").$type<"cash" | "bank" | "card" | "mobile-money" | "cheque" | "online">().default("cash"),
+    gatewayStatus: text("gateway_status").$type<"pending" | "completed" | "failed">().default("completed"),
+    deletedAt: text("deleted_at"),
+    deletedBy: integer("deleted_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: text("created_at").notNull(),
     createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
   },
   (table) => ({
     receiptNumberIdx: uniqueIndex("fee_payments_receipt_number_idx").on(table.receiptNumber),
+    idempotencyKeyIdx: uniqueIndex("fee_payments_idempotency_key_idx").on(table.idempotencyKey),
+    transactionIdIdx: uniqueIndex("fee_payments_transaction_id_idx").on(table.transactionId),
+  }),
+);
+
+export const feeAdjustments = pgTable(
+  "fee_adjustments",
+  {
+    id: serial("id").primaryKey(),
+    feeId: integer("fee_id")
+      .notNull()
+      .references(() => fees.id, { onDelete: "cascade" }),
+    studentId: integer("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").$type<"discount" | "fine" | "scholarship">().notNull(),
+    amount: integer("amount").notNull(),
+    reason: text("reason").notNull(),
+    notes: text("notes"),
+    deletedAt: text("deleted_at"),
+    deletedBy: integer("deleted_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+    createdBy: integer("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+  },
+  (table) => ({
+    feeIdIdx: index("fee_adjustments_fee_id_idx").on(table.feeId),
+    studentIdIdx: index("fee_adjustments_student_id_idx").on(table.studentId),
+  }),
+);
+
+export const financeLedgerEntries = pgTable(
+  "finance_ledger_entries",
+  {
+    id: serial("id").primaryKey(),
+    studentId: integer("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    feeId: integer("fee_id").references(() => fees.id, { onDelete: "set null" }),
+    type: text("type").$type<"invoice" | "payment" | "discount" | "fine" | "refund" | "scholarship">().notNull(),
+    debit: integer("debit").notNull().default(0),
+    credit: integer("credit").notNull().default(0),
+    balanceAfter: integer("balance_after").notNull().default(0),
+    referenceId: text("reference_id"),
+    description: text("description"),
+    createdAt: text("created_at").notNull(),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => ({
+    studentIdIdx: index("finance_ledger_entries_student_id_idx").on(table.studentId),
+    feeIdIdx: index("finance_ledger_entries_fee_id_idx").on(table.feeId),
+    typeIdx: index("finance_ledger_entries_type_idx").on(table.type),
+  }),
+);
+
+export const financeAuditLogs = pgTable(
+  "finance_audit_logs",
+  {
+    id: serial("id").primaryKey(),
+    studentId: integer("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    feeId: integer("fee_id").references(() => fees.id, { onDelete: "set null" }),
+    action: text("action").$type<"create" | "update" | "delete" | "payment" | "adjustment">().notNull(),
+    entityType: text("entity_type").$type<"fee" | "payment" | "adjustment">().notNull(),
+    entityId: integer("entity_id"),
+    changesBefore: jsonb("changes_before"),
+    changesAfter: jsonb("changes_after"),
+    reason: text("reason"),
+    metadata: jsonb("metadata"),
+    createdAt: text("created_at").notNull(),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => ({
+    studentIdIdx: index("finance_audit_logs_student_id_idx").on(table.studentId),
+    feeIdIdx: index("finance_audit_logs_fee_id_idx").on(table.feeId),
+    actionIdx: index("finance_audit_logs_action_idx").on(table.action),
+    createdAtIdx: index("finance_audit_logs_created_at_idx").on(table.createdAt),
   }),
 );
 
@@ -659,6 +746,9 @@ export const insertTimetablesSchema = createInsertSchema(timetables).omit({ id: 
 export const insertTimetablesPeriodSchema = createInsertSchema(timetablesPeriods).omit({ id: true });
 export const insertFeeSchema = createInsertSchema(fees).omit({ id: true });
 export const insertFeePaymentSchema = createInsertSchema(feePayments).omit({ id: true });
+export const insertFeeAdjustmentSchema = createInsertSchema(feeAdjustments).omit({ id: true });
+export const insertFinanceLedgerEntrySchema = createInsertSchema(financeLedgerEntries).omit({ id: true });
+export const insertFinanceAuditLogSchema = createInsertSchema(financeAuditLogs).omit({ id: true });
 export const insertStudentBillingProfileSchema = createInsertSchema(studentBillingProfiles);
 export const insertFinanceVoucherOperationSchema = createInsertSchema(financeVoucherOperations).omit({ id: true });
 export const insertFinanceVoucherSchema = createInsertSchema(financeVouchers).omit({ id: true });
@@ -703,6 +793,12 @@ export type Fee = typeof fees.$inferSelect;
 export type InsertFee = z.infer<typeof insertFeeSchema>;
 export type FeePayment = typeof feePayments.$inferSelect;
 export type InsertFeePayment = z.infer<typeof insertFeePaymentSchema>;
+export type FeeAdjustment = typeof feeAdjustments.$inferSelect;
+export type InsertFeeAdjustment = z.infer<typeof insertFeeAdjustmentSchema>;
+export type FinanceLedgerEntry = typeof financeLedgerEntries.$inferSelect;
+export type InsertFinanceLedgerEntry = z.infer<typeof insertFinanceLedgerEntrySchema>;
+export type FinanceAuditLog = typeof financeAuditLogs.$inferSelect;
+export type InsertFinanceAuditLog = z.infer<typeof insertFinanceAuditLogSchema>;
 export type StudentBillingProfile = typeof studentBillingProfiles.$inferSelect;
 export type InsertStudentBillingProfile = z.infer<typeof insertStudentBillingProfileSchema>;
 export type FinanceVoucherOperation = typeof financeVoucherOperations.$inferSelect;
@@ -745,7 +841,8 @@ export type QrAttendanceEventWithUser = QrAttendanceEvent & {
 };
 export type ResultWithStudent = Result & { student?: User };
 export type FeePaymentWithMeta = FeePayment & { createdByUser?: User };
-export type FeeWithStudent = Fee & { student?: User; payments?: FeePaymentWithMeta[] };
+export type FeeAdjustmentWithMeta = FeeAdjustment & { createdByUser?: User };
+export type FeeWithStudent = Fee & { student?: User; payments?: FeePaymentWithMeta[]; adjustments?: FeeAdjustmentWithMeta[] };
 export type StudentBillingProfileWithStudent = StudentBillingProfile & { student?: User };
 export type FinanceVoucherOperationWithMeta = FinanceVoucherOperation & { requestedByUser?: User };
 export type FinanceVoucherWithMeta = FinanceVoucher & { generatedByUser?: User };

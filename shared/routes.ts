@@ -28,6 +28,8 @@ import {
 import {
   billingMonthSchema,
   billingProfileInputSchema,
+  createFeeAdjustmentInputSchema,
+  feeAdjustmentTypeSchema,
   financeVoucherOperationStatusSchema,
   financeVoucherPreviewInputSchema,
   financeVoucherSelectionInputSchema,
@@ -156,6 +158,19 @@ const feePaymentSchema = z.object({
   createdByUser: userSchema.optional(),
 });
 
+const feeAdjustmentSchema = z.object({
+  id: z.number(),
+  feeId: z.number(),
+  studentId: z.number(),
+  type: feeAdjustmentTypeSchema,
+  amount: z.number(),
+  reason: z.string(),
+  notes: z.string().nullable().optional(),
+  createdAt: z.string(),
+  createdBy: z.number(),
+  createdByUser: userSchema.optional(),
+});
+
 const billingProfileSchema = z.object({
   studentId: z.number(),
   monthlyAmount: z.number(),
@@ -190,6 +205,7 @@ const feeSchema = z.object({
   paymentCount: z.number(),
   student: userSchema.optional(),
   payments: z.array(feePaymentSchema).optional(),
+  adjustments: z.array(feeAdjustmentSchema).optional(),
 });
 
 const financeReportSchema = z.object({
@@ -791,6 +807,19 @@ export const api = {
         path: "/api/fees/payments/:paymentId/receipt",
         method: "GET",
         responses: { 200: paymentReceiptSchema },
+      },
+    },
+    adjustments: {
+      list: {
+        path: "/api/fees/:id/adjustments",
+        method: "GET",
+        responses: { 200: z.array(feeAdjustmentSchema) },
+      },
+      create: {
+        path: "/api/fees/:id/adjustments",
+        method: "POST",
+        input: createFeeAdjustmentInputSchema,
+        responses: { 201: feeSchema },
       },
     },
     balances: {

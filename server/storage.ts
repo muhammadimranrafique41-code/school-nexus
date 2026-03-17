@@ -4,6 +4,8 @@ import {
   attendance,
   dailyDiary,
   diaryTemplates,
+  feeAdjustments,
+  financeLedgerEntries,
   financeVoucherOperations,
   financeVouchers,
   feePayments,
@@ -26,6 +28,8 @@ import {
   type DailyDiary,
   type DiaryTemplate,
   type Fee,
+  type FeeAdjustment,
+  type FinanceLedgerEntry,
   type FinanceVoucher,
   type FinanceVoucherOperation,
   type FinanceVoucherOperationWithMeta,
@@ -35,6 +39,7 @@ import {
   type HomeworkDiary,
   type InsertFinanceVoucher,
   type InsertFinanceVoucherOperation,
+  type InsertFinanceLedgerEntry,
   type InsertAcademic,
   type InsertAttendance,
   type InsertDailyDiary,
@@ -76,6 +81,7 @@ import {
   toIsoDate,
   type BillingProfileInput,
   type CreateFeeInput,
+  type CreateFeeAdjustmentInput,
   type FeeBalanceSummary,
   type FinanceVoucherOperationRecord,
   type FinanceVoucherPreview,
@@ -279,8 +285,10 @@ export interface IStorage {
   getFeesByStudent(studentId: number): Promise<FeeWithStudent[]>;
   getFee(id: number): Promise<FeeWithStudent | undefined>;
   getFeePayments(filters?: { month?: string; studentId?: number; method?: RecordFeePaymentInput["method"] }): Promise<FeePaymentWithMeta[]>;
+  getFeeAdjustments(feeId: number): Promise<FeeAdjustmentWithMeta[]>;
   getPaymentReceipt(paymentId: number): Promise<{ invoice: FeeWithStudent; payment: FeePaymentWithMeta } | undefined>;
   createFee(record: CreateFeeInput): Promise<FeeWithStudent>;
+  createFeeAdjustment(feeId: number, input: CreateFeeAdjustmentInput, createdBy: number): Promise<FeeWithStudent | undefined>;
   updateFee(id: number, updates: UpdateFeeInput): Promise<FeeWithStudent | undefined>;
   deleteFee(id: number): Promise<boolean>;
   recordFeePayment(id: number, payment: RecordFeePaymentInput, createdBy?: number): Promise<FeeWithStudent | undefined>;
@@ -305,6 +313,7 @@ export interface IStorage {
   listFinanceVoucherOperations(limit?: number): Promise<FinanceVoucherOperationRecord[]>;
   getFinanceVouchersByFeeIds(feeIds: number[]): Promise<FinanceVoucherWithMeta[]>;
   saveFinanceVoucher(record: Omit<InsertFinanceVoucher, "generatedAt"> & { generatedAt?: string }): Promise<FinanceVoucherWithMeta>;
+  getLedgerEntriesByStudent(studentId: number): Promise<FinanceLedgerEntry[]>;
 
   getTotalStudents(): Promise<number>;
   getTotalTeachers(): Promise<number>;
@@ -1441,9 +1450,10 @@ export class DatabaseStorage implements IStorage {
   private async attachFeeRecords(records: Fee[]): Promise<FeeWithStudent[]> {
     if (records.length === 0) return [];
 
-    const [userMap, paymentRows] = await Promise.all([
+    const [userMap, paymentRows, adjustmentRows] = await Promise.all([
       this.getUsersMap(),
       db.select().from(feePayments).where(inArray(feePayments.feeId, records.map((record) => record.id))),
+      db.select().from(feeAdjustments).where(inArray(feeAdjustments.feeId, records.map((record) => record.id))),
     ]);
 
     const paymentsByFeeId = new Map<number, FeePaymentWithMeta[]>();
@@ -1451,6 +1461,13 @@ export class DatabaseStorage implements IStorage {
       const existing = paymentsByFeeId.get(payment.feeId) ?? [];
       existing.push({ ...payment, createdByUser: payment.createdBy ? userMap.get(payment.createdBy) : undefined });
       paymentsByFeeId.set(payment.feeId, existing);
+    }
+
+    const adjustmentsByFeeId = new Map<number, FeeAdjustmentWithMeta[]>();
+    for (const adjustment of adjustmentRows) {
+      const existing = adjustmentsByFeeId.get(adjustment.feeId) ?? [];
+      existing.push({ ...adjustment, createdByUser: userMap.get(adjustment.createdBy) });
+      adjustmentsByFeeId.set(adjustment.feeId, existing);
     }
 
     return records
@@ -1462,6 +1479,7 @@ export class DatabaseStorage implements IStorage {
           : normalizeFeeLineItems(record.amount, record.description),
         student: userMap.get(record.studentId),
         payments: (paymentsByFeeId.get(record.id) ?? []).sort((left, right) => `${right.paymentDate}-${right.id}`.localeCompare(`${left.paymentDate}-${left.id}`)),
+        adjustments: (adjustmentsByFeeId.get(record.id) ?? []).sort((left, right) => `${right.createdAt}`.localeCompare(`${left.createdAt}`)),
         paymentCount: (paymentsByFeeId.get(record.id) ?? []).length,
       }))
       .sort((left, right) => `${right.billingMonth}-${right.id}`.localeCompare(`${left.billingMonth}-${left.id}`));
@@ -1590,6 +1608,14 @@ export class DatabaseStorage implements IStorage {
       .sort((left, right) => `${right.paymentDate}-${right.id}`.localeCompare(`${left.paymentDate}-${left.id}`));
   }
 
+  async getFeeAdjustments(feeId: number): Promise<FeeAdjustmentWithMeta[]> {
+    const userMap = await this.getUsersMap();
+    const records = await db.select().from(feeAdjustments).where(eq(feeAdjustments.feeId, feeId));
+    return records
+      .map((record) => ({ ...record, createdByUser: userMap.get(record.createdBy) }))
+      .sort((left, right) => `${right.createdAt}`.localeCompare(`${left.createdAt}`));
+  }
+
   async getPaymentReceipt(paymentId: number): Promise<{ invoice: FeeWithStudent; payment: FeePaymentWithMeta } | undefined> {
     const [paymentRecord] = await db.select().from(feePayments).where(eq(feePayments.id, paymentId)).limit(1);
     if (!paymentRecord) return undefined;
@@ -1608,6 +1634,16 @@ export class DatabaseStorage implements IStorage {
     const created = await db.transaction((tx) =>
       this.createFeeRecord(tx, record, publicSettings.financialSettings.invoicePrefix || "INV"),
     );
+
+    // Log ledger entry for invoice creation
+    await this.createLedgerEntry(record.studentId, "invoice", {
+      feeId: created.id,
+      debit: created.amount,
+      credit: 0,
+      referenceId: created.invoiceNumber ?? `FEE-${created.id}`,
+      description: `Invoice created: ${created.description}`,
+      createdBy: undefined,
+    });
 
     return (await this.getFee(created.id)) as FeeWithStudent;
   }
@@ -1683,6 +1719,19 @@ export class DatabaseStorage implements IStorage {
     const publicSettings = await this.getPublicSchoolSettings();
     const receiptPrefix = publicSettings.financialSettings.receiptPrefix || "RCT";
 
+    // Check for duplicate idempotency key
+    if (payment.idempotencyKey) {
+      const [existing] = await db
+        .select()
+        .from(feePayments)
+        .where(and(eq(feePayments.feeId, id), eq(feePayments.idempotencyKey, payment.idempotencyKey)))
+        .limit(1);
+      if (existing) {
+        // Idempotent: return the existing fee without creating a duplicate payment
+        return this.getFee(id);
+      }
+    }
+
     const saved = await db.transaction(async (tx) => {
       const [feeRecord] = await tx.select().from(fees).where(eq(fees.id, id)).limit(1);
       if (!feeRecord) return undefined;
@@ -1700,6 +1749,7 @@ export class DatabaseStorage implements IStorage {
           receiptNumber: null,
           reference: payment.reference ?? null,
           notes: payment.notes ?? null,
+          idempotencyKey: payment.idempotencyKey ?? null,
           createdAt: timestamp,
           createdBy: createdBy ?? null,
         })
@@ -1728,7 +1778,62 @@ export class DatabaseStorage implements IStorage {
     });
 
     if (!saved) return undefined;
-    return this.getFee(saved);
+
+    // Log ledger entry for payment
+    const feeRecord = await this.getFee(saved);
+    if (feeRecord) {
+      await this.createLedgerEntry(feeRecord.studentId, "payment", {
+        feeId: saved,
+        debit: 0,
+        credit: payment.amount,
+        referenceId: `PAY-${saved}`,
+        description: `Payment received via ${payment.method}`,
+        createdBy,
+      });
+    }
+
+    return feeRecord;
+  }
+
+  async createFeeAdjustment(feeId: number, input: CreateFeeAdjustmentInput, createdBy: number): Promise<FeeWithStudent | undefined> {
+    const fee = await this.getFee(feeId);
+    if (!fee) throw new Error("Fee not found");
+
+    const timestamp = new Date().toISOString();
+    const adjustment = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(feeAdjustments)
+        .values({
+          feeId,
+          studentId: fee.studentId,
+          type: input.type,
+          amount: input.amount,
+          reason: input.reason,
+          notes: input.notes ?? null,
+          createdAt: timestamp,
+          createdBy,
+        })
+        .returning();
+      return created;
+    });
+
+    if (!adjustment) return undefined;
+
+    // Log ledger entry for adjustment
+    const adjustmentLedgerType = input.type === "discount" || input.type === "scholarship" ? "discount" : input.type;
+    const debit = (input.type === "fine") ? input.amount : 0;
+    const credit = (input.type === "fine") ? 0 : input.amount;
+
+    await this.createLedgerEntry(fee.studentId, adjustmentLedgerType as any, {
+      feeId,
+      debit,
+      credit,
+      referenceId: `ADJ-${feeId}-${adjustment.id}`,
+      description: `${input.type}: ${input.reason}`,
+      createdBy,
+    });
+
+    return this.getFee(feeId);
   }
 
   async getBillingProfiles(): Promise<StudentBillingProfileWithStudent[]> {
@@ -2311,6 +2416,52 @@ export class DatabaseStorage implements IStorage {
   async deleteDailyDiary(id: number): Promise<boolean> {
     const result = await db.delete(dailyDiary).where(eq(dailyDiary.id, id));
     return !!result;
+  }
+
+  // Finance Ledger Helper Methods
+  private async createLedgerEntry(
+    studentId: number,
+    type: InsertFinanceLedgerEntry["type"],
+    entry: Omit<InsertFinanceLedgerEntry, "studentId" | "type" | "createdAt">,
+  ): Promise<FinanceLedgerEntry> {
+    // Calculate running balance for this student
+    const studentEntries = await db
+      .select()
+      .from(financeLedgerEntries)
+      .where(eq(financeLedgerEntries.studentId, studentId));
+
+    let currentBalance = 0;
+    for (const e of studentEntries) {
+      currentBalance += (e.debit - e.credit);
+    }
+
+    const newBalance = currentBalance + (entry.debit - entry.credit);
+
+    const [created] = await db
+      .insert(financeLedgerEntries)
+      .values({
+        studentId,
+        type,
+        debit: entry.debit,
+        credit: entry.credit,
+        balanceAfter: newBalance,
+        referenceId: entry.referenceId ?? null,
+        description: entry.description ?? null,
+        feeId: entry.feeId ?? null,
+        createdAt: new Date().toISOString(),
+        createdBy: entry.createdBy ?? null,
+      })
+      .returning();
+
+    return created;
+  }
+
+  async getLedgerEntriesByStudent(studentId: number): Promise<FinanceLedgerEntry[]> {
+    const entries = await db
+      .select()
+      .from(financeLedgerEntries)
+      .where(eq(financeLedgerEntries.studentId, studentId));
+    return entries.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   }
 }
 

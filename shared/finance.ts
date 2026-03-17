@@ -2,11 +2,15 @@ import { z } from "zod";
 
 export const feeStatuses = ["Paid", "Partially Paid", "Unpaid", "Overdue"] as const;
 export const paymentMethods = ["Cash", "Bank Transfer", "Card", "Mobile Money", "Cheque", "Other"] as const;
+export const paymentGateways = ["cash", "bank", "card", "mobile-money", "cheque", "online"] as const;
+export const gatewayPaymentStatuses = ["pending", "completed", "failed"] as const;
 export const invoiceSources = ["manual", "monthly"] as const;
 export const financeVoucherOperationStatuses = ["queued", "running", "completed", "cancelled", "failed"] as const;
 
 export const feeStatusSchema = z.enum(feeStatuses);
 export const paymentMethodSchema = z.enum(paymentMethods);
+export const paymentGatewaySchema = z.enum(paymentGateways);
+export const gatewayPaymentStatusSchema = z.enum(gatewayPaymentStatuses);
 export const invoiceSourceSchema = z.enum(invoiceSources);
 export const financeVoucherOperationStatusSchema = z.enum(financeVoucherOperationStatuses);
 export const billingMonthSchema = z.string().regex(/^\d{4}-\d{2}$/, "Billing month must use YYYY-MM format");
@@ -38,6 +42,17 @@ export const recordFeePaymentInputSchema = z.object({
   paymentDate: z.string().min(1, "Payment date is required"),
   method: paymentMethodSchema,
   reference: z.string().trim().max(120).optional().nullable(),
+  notes: z.string().trim().max(300).optional().nullable(),
+  idempotencyKey: z.string().trim().min(1).max(255).optional().nullable(),
+});
+
+export const feeAdjustmentTypeSchema = z.enum(["discount", "fine", "scholarship"]);
+
+export const createFeeAdjustmentInputSchema = z.object({
+  feeId: z.coerce.number().int().positive(),
+  type: feeAdjustmentTypeSchema,
+  amount: z.coerce.number().int().positive("Adjustment amount must be greater than 0"),
+  reason: z.string().trim().min(3, "Reason is required").max(200),
   notes: z.string().trim().max(300).optional().nullable(),
 });
 
@@ -81,12 +96,16 @@ export const financeVoucherStartInputSchema = financeVoucherSelectionInputSchema
 
 export type FeeStatus = z.infer<typeof feeStatusSchema>;
 export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
+export type PaymentGateway = z.infer<typeof paymentGatewaySchema>;
+export type GatewayPaymentStatus = z.infer<typeof gatewayPaymentStatusSchema>;
 export type InvoiceSource = z.infer<typeof invoiceSourceSchema>;
 export type FinanceVoucherOperationStatus = z.infer<typeof financeVoucherOperationStatusSchema>;
 export type FeeLineItem = z.infer<typeof feeLineItemSchema>;
 export type CreateFeeInput = z.infer<typeof createFeeInputSchema>;
 export type UpdateFeeInput = z.infer<typeof updateFeeInputSchema>;
 export type RecordFeePaymentInput = z.infer<typeof recordFeePaymentInputSchema>;
+export type FeeAdjustmentType = z.infer<typeof feeAdjustmentTypeSchema>;
+export type CreateFeeAdjustmentInput = z.infer<typeof createFeeAdjustmentInputSchema>;
 export type BillingProfileInput = z.infer<typeof billingProfileInputSchema>;
 export type GenerateMonthlyFeesInput = z.infer<typeof generateMonthlyFeesInputSchema>;
 export type FinanceVoucherSelectionInput = z.infer<typeof financeVoucherSelectionInputSchema>;
