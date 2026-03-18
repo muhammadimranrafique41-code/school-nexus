@@ -32,6 +32,8 @@ import {
   startVoucherJob,
   subscribeJobSse,
 } from "./services/voucherService.js";
+import { LedgerService } from "./services/ledgerService.js";
+import { AuditService } from "./services/auditService.js";
 import { createPresignedDownload, createPresignedUpload } from "./s3.js";
 import {
   broadcastHomeworkDiaryPublish,
@@ -1879,6 +1881,118 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // clearJobZip(id);
     } catch {
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ─── Finance Ledger Routes ─────────────────────────────────────────────────
+
+  app.get(api.fees.ledger.student.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const { studentId } = req.params;
+      const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 100), 1000);
+
+      if (!studentId || isNaN(parseInt(studentId))) {
+        return res.status(400).json({ message: "Invalid student ID" });
+      }
+
+      const ledgerService = new LedgerService();
+      const entries = await ledgerService.getStudentLedger(parseInt(studentId));
+
+      sendApiSuccess(res, entries.slice(-limit));
+    } catch (err) {
+      sendApiError(res, err, "Failed to fetch student ledger");
+    }
+  });
+
+  app.get(api.fees.ledger.fee.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const { feeId } = req.params;
+      const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 100), 1000);
+
+      if (!feeId || isNaN(parseInt(feeId))) {
+        return res.status(400).json({ message: "Invalid fee ID" });
+      }
+
+      const ledgerService = new LedgerService();
+      const entries = await ledgerService.getFeeLedger(parseInt(feeId));
+
+      sendApiSuccess(res, entries.slice(-limit));
+    } catch (err) {
+      sendApiError(res, err, "Failed to fetch fee ledger");
+    }
+  });
+
+  // ─── Finance Audit Routes ──────────────────────────────────────────────────
+
+  app.get(api.fees.audit.student.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const { studentId } = req.params;
+      const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 100), 1000);
+
+      if (!studentId || isNaN(parseInt(studentId))) {
+        return res.status(400).json({ message: "Invalid student ID" });
+      }
+
+      const auditService = new AuditService();
+      const logs = await auditService.getStudentAuditLog(parseInt(studentId), limit);
+
+      sendApiSuccess(res, logs);
+    } catch (err) {
+      sendApiError(res, err, "Failed to fetch student audit logs");
+    }
+  });
+
+  app.get(api.fees.audit.fee.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const { feeId } = req.params;
+      const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 100), 1000);
+
+      if (!feeId || isNaN(parseInt(feeId))) {
+        return res.status(400).json({ message: "Invalid fee ID" });
+      }
+
+      const auditService = new AuditService();
+      const logs = await auditService.getFeeAuditLog(parseInt(feeId));
+
+      sendApiSuccess(res, logs.slice(-limit));
+    } catch (err) {
+      sendApiError(res, err, "Failed to fetch fee audit logs");
+    }
+  });
+
+  app.get(api.fees.audit.action.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const { action } = req.params;
+      const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 100), 1000);
+
+      const validActions = ["create", "update", "delete", "payment", "adjustment"];
+      if (!validActions.includes(action)) {
+        return res.status(400).json({ 
+          message: `Invalid action. Must be one of: ${validActions.join(", ")}` 
+        });
+      }
+
+      const auditService = new AuditService();
+      const logs = await auditService.getAuditLogsByAction(action as any, limit);
+
+      sendApiSuccess(res, logs);
+    } catch (err) {
+      sendApiError(res, err, "Failed to fetch audit logs by action");
     }
   });
 

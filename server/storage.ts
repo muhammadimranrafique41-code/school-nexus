@@ -2463,6 +2463,14 @@ export class DatabaseStorage implements IStorage {
       .where(eq(financeLedgerEntries.studentId, studentId));
     return entries.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   }
+
+  async getLedgerEntriesByFee(feeId: number): Promise<FinanceLedgerEntry[]> {
+    const entries = await db
+      .select()
+      .from(financeLedgerEntries)
+      .where(eq(financeLedgerEntries.feeId, feeId));
+    return entries.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  }
 }
 
 export const storage = new DatabaseStorage();

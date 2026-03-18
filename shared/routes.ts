@@ -929,6 +929,37 @@ export const api = {
         responses: { 200: z.any() },
       },
     },
+    ledger: {
+      student: {
+        path: "/api/fees/ledger/students/:studentId",
+        method: "GET",
+        responses: { 200: z.array(z.any()) },
+      },
+      fee: {
+        path: "/api/fees/ledger/fees/:feeId",
+        method: "GET",
+        responses: { 200: z.array(z.any()) },
+      },
+    },
+    audit: {
+      student: {
+        path: "/api/fees/audit/students/:studentId",
+        method: "GET",
+        input: z.object({ limit: z.coerce.number().int().min(1).max(100).optional() }),
+        responses: { 200: z.array(z.any()) },
+      },
+      fee: {
+        path: "/api/fees/audit/fees/:feeId",
+        method: "GET",
+        responses: { 200: z.array(z.any()) },
+      },
+      action: {
+        path: "/api/fees/audit/actions/:action",
+        method: "GET",
+        input: z.object({ limit: z.coerce.number().int().min(1).max(100).optional() }),
+        responses: { 200: z.array(z.any()) },
+      },
+    },
   },
   classes: {
     list: {

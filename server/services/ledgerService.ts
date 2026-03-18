@@ -19,6 +19,13 @@ export class LedgerService {
   }
 
   /**
+   * Get all ledger entries for a specific fee
+   */
+  async getFeeLedger(feeId: number): Promise<FinanceLedgerEntry[]> {
+    return storage.getLedgerEntriesByFee(feeId);
+  }
+
+  /**
    * Calculate running balance for a student at a specific point in time
    */
   async getBalanceAtTime(studentId: number, beforeDate?: string): Promise<number> {

@@ -296,3 +296,39 @@ export function useFinanceReport(filters?: FinanceReportFilters) {
     },
   });
 }
+
+export function useFeeAdjustments(feeId?: number) {
+  return useQuery({
+    queryKey: [api.fees.adjustments.list.path, feeId],
+    queryFn: async () => {
+      if (!feeId) return [];
+      const res = await fetch(api.fees.adjustments.list.path.replace(":id", String(feeId)), {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch adjustments"));
+      return api.fees.adjustments.list.responses[200].parse(await res.json());
+    },
+    enabled: !!feeId,
+  });
+}
+
+export function useCreateFeeAdjustment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: z.infer<typeof api.fees.adjustments.create.input>) => {
+      const validated = api.fees.adjustments.create.input.parse(data);
+      const res = await fetch(api.fees.adjustments.create.path.replace(":id", String(validated.feeId)), {
+        method: api.fees.adjustments.create.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validated),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to create adjustment"));
+      return api.fees.adjustments.create.responses[201].parse(await res.json());
+    },
+    onSuccess: () => {
+      invalidateFeeQueries(queryClient);
+    },
+  });
+}

@@ -19,6 +19,8 @@ import {
   useUpdateFee,
   useUpsertBillingProfile,
 } from "@/hooks/use-fees";
+import { FeeAdjustmentDialog } from "./finance/FeeAdjustmentDialog";
+import { GenerateSingleStudentFeeDialog } from "./finance/GenerateSingleStudentFeeDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,7 +30,7 @@ import { Pagination, PaginationContent, PaginationItem, PaginationNext, Paginati
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Banknote, CalendarDays, CreditCard, Download, Eye, FilePlus2, Loader2, Pencil, Printer, ReceiptText, RefreshCcw, Search, Settings2, Trash2, Users } from "lucide-react";
+import { Banknote, CalendarDays, CreditCard, Download, Eye, FilePlus2, Loader2, Pencil, Printer, ReceiptText, RefreshCcw, Search, Settings2, Trash2, Users, Zap, Gift } from "lucide-react";
 import { buildInvoicePrintHtml, buildPaymentReceiptPrintHtml, type FeePaymentRecord, type FeeRecord, getCurrentBillingMonth, getFeeStatusClassName, getLatestRecordedPayment } from "@/lib/finance";
 import { downloadCsv, formatCurrency, formatDate, getErrorMessage, openPrintWindow, paginateItems } from "@/lib/utils";
 
@@ -75,6 +77,8 @@ export default function Finance() {
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [editingProfileStudentId, setEditingProfileStudentId] = useState<number | null>(null);
   const [generationDialogOpen, setGenerationDialogOpen] = useState(false);
+  const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false);
+  const [singleStudentFeeDialogOpen, setSingleStudentFeeDialogOpen] = useState(false);
   const [lastGenerationResult, setLastGenerationResult] = useState<MonthlyGenerationResult | null>(null);
   const [invoiceForm, setInvoiceForm] = useState<InvoiceFormState>(() => createDefaultInvoiceForm());
   const [paymentForm, setPaymentForm] = useState<PaymentFormState>(() => createDefaultPaymentForm());
@@ -318,6 +322,8 @@ export default function Finance() {
           </div>
           <div className="flex flex-wrap gap-3">
             <Button variant="outline" onClick={() => setGenerationDialogOpen(true)}><RefreshCcw className="mr-2 h-4 w-4" />Generate monthly fees</Button>
+            <Button variant="outline" onClick={() => setSingleStudentFeeDialogOpen(true)}><Zap className="mr-2 h-4 w-4" />Single student fee</Button>
+            <Button variant="outline" onClick={() => setAdjustmentDialogOpen(true)}><Gift className="mr-2 h-4 w-4" />Fee adjustment</Button>
             <Button variant="outline" onClick={() => openProfileDialog()}><Settings2 className="mr-2 h-4 w-4" />Billing profiles</Button>
             <Button variant="outline" onClick={handleExportInvoices} disabled={filteredInvoices.length === 0}><Download className="mr-2 h-4 w-4" />Export invoices</Button>
             <Button onClick={openCreateInvoiceDialog}><FilePlus2 className="mr-2 h-4 w-4" />Create invoice</Button>
@@ -468,6 +474,16 @@ export default function Finance() {
         <AlertDialog open={!!deletingInvoice} onOpenChange={(open) => !open && setDeleteInvoiceId(null)}>
           <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete invoice?</AlertDialogTitle><AlertDialogDescription>This will permanently remove {deletingInvoice?.invoiceNumber ?? (deletingInvoice ? `invoice ${deletingInvoice.id}` : "the selected invoice")} and its payment ledger history.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleDeleteInvoice}>{deleteFee.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete invoice"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
         </AlertDialog>
+
+        {/* Fee Adjustment Dialog */}
+        <FeeAdjustmentDialog
+          open={adjustmentDialogOpen}
+          onOpenChange={setAdjustmentDialogOpen}
+          selectedStudent={studentFilter === "all" ? undefined : { id: Number(studentFilter), name: studentDirectory.get(Number(studentFilter))?.name ?? "" }}
+        />
+
+        {/* Single Student Fee Generation Dialog */}
+        <GenerateSingleStudentFeeDialog open={singleStudentFeeDialogOpen} onOpenChange={setSingleStudentFeeDialogOpen} />
       </div>
     </Layout>
   );
