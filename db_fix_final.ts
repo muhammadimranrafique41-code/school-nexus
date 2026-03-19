@@ -9,50 +9,59 @@ const client = new Client({
   }
 });
 
+import fs from 'fs';
+
+const logFile = 'db_log.txt';
+function logT(msg: string) {
+  console.log(msg);
+  fs.appendFileSync(logFile, `${new Date().toLocaleTimeString()} - ${msg}\n`);
+}
+
 async function main() {
-  console.log("Connecting to Database...");
+  if (fs.existsSync(logFile)) fs.unlinkSync(logFile);
+  logT("Connecting to Database...");
   try {
     await client.connect();
-    console.log("Connected Successfully.");
+    logT("Connected Successfully.");
 
     // 1. Check and add columns to 'fees'
-    console.log("\nVerifying 'fees' table columns...");
+    logT("\nVerifying 'fees' table columns...");
     await client.query(`
       ALTER TABLE fees ADD COLUMN IF NOT EXISTS paid_amount integer NOT NULL DEFAULT 0;
     `);
-    console.log("- 'paid_amount' verified/added.");
+    logT("- 'paid_amount' verified/added.");
 
     await client.query(`
       ALTER TABLE fees ADD COLUMN IF NOT EXISTS total_discount integer NOT NULL DEFAULT 0;
     `);
-    console.log("- 'total_discount' verified/added.");
+    logT("- 'total_discount' verified/added.");
 
     // 2. Check and add columns to 'fee_payments'
-    console.log("\nVerifying 'fee_payments' table columns...");
+    logT("\nVerifying 'fee_payments' table columns...");
     await client.query(`
       ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS discount integer NOT NULL DEFAULT 0;
     `);
-    console.log("- 'discount' verified/added.");
+    logT("- 'discount' verified/added.");
 
     await client.query(`
       ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS discount_reason text;
     `);
-    console.log("- 'discount_reason' verified/added.");
+    logT("- 'discount_reason' verified/added.");
 
     // 3. Optional: Recalculate remaining_balance if needed
     // This is just to ensure existing data is consistent
-    console.log("\nUpdating remaining_balance for existing records...");
+    logT("\nUpdating remaining_balance for existing records...");
     await client.query(`
       UPDATE fees 
       SET remaining_balance = GREATEST(amount - paid_amount - total_discount, 0);
     `);
-    console.log("- 'remaining_balance' recalculated for all fees.");
+    logT("- 'remaining_balance' recalculated for all fees.");
 
-    console.log("\nDATABASE FIX COMPLETED SUCCESSFULLY!");
+    logT("\nDATABASE FIX COMPLETED SUCCESSFULLY!");
 
-  } catch (e) {
-    console.error("\nDATABASE FIX FAILED:");
-    console.error(e.message);
+  } catch (e: any) {
+    logT("\nDATABASE FIX FAILED:");
+    logT(e.message);
   } finally {
     await client.end();
     process.exit(0);

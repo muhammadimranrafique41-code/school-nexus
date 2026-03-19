@@ -775,7 +775,7 @@ export default function Finance() {
 
                 {/* Amount Summary */}
                 {(() => {
-                  const totalDiscount = (selectedInvoice as any).totalDiscount ?? (selectedInvoice.payments ?? []).reduce((sum: number, p: any) => sum + (p.discount || 0), 0);
+                  const totalDiscount = selectedInvoice.totalDiscount;
                   const totalLateFee = selectedInvoice.adjustments?.filter(adj => adj.type === "fine").reduce((sum: number, adj: any) => sum + adj.amount, 0) ?? 0;
                   const netAmount = selectedInvoice.amount - totalDiscount + totalLateFee;
                   

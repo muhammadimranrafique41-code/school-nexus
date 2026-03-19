@@ -73,6 +73,22 @@ export async function initializeApp() {
     // Attach Socket.io server
     attachSocketServer(httpServer);
 
+    // Guaranteed DB schema alignment on startup
+    try {
+      const { sql } = await import("drizzle-orm");
+      const { db } = await import("./db.js");
+      console.log("Checking database schema alignment...");
+      await db.execute(sql`ALTER TABLE fees ADD COLUMN IF NOT EXISTS paid_amount integer NOT NULL DEFAULT 0;`);
+      await db.execute(sql`ALTER TABLE fees ADD COLUMN IF NOT EXISTS total_discount integer NOT NULL DEFAULT 0;`);
+      await db.execute(sql`ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS discount integer NOT NULL DEFAULT 0;`);
+      await db.execute(sql`ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS discount_reason text;`);
+      // Update remaining_balance to ensure consistency
+      await db.execute(sql`UPDATE fees SET remaining_balance = GREATEST(amount - paid_amount - total_discount, 0) WHERE remaining_balance IS NULL OR remaining_balance > 0;`);
+      console.log("Database schema alignment successful.");
+    } catch (err) {
+      console.error("Database schema alignment failed:", err);
+    }
+
     await registerRoutes(httpServer, app);
 
     // Schedule background cron jobs
