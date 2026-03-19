@@ -46,7 +46,7 @@ export function buildInvoicePrintHtml(fee: FeeRecord) {
   const adjustments = fee.adjustments ?? [];
   
   // Calculate totals
-  const totalDiscount = payments.reduce((sum: number, p: any) => sum + (p.discount || 0), 0);
+  const totalDiscount = (fee as any).totalDiscount ?? payments.reduce((sum: number, p: any) => sum + (p.discount || 0), 0);
   const totalLateFees = adjustments.filter((adj: any) => adj.type === "fine").reduce((sum: number, adj: any) => sum + adj.amount, 0);
   const totalAdjustments = adjustments.filter((adj: any) => adj.type !== "fine").reduce((sum: number, adj: any) => sum + adj.amount, 0);
   const netAmount = fee.amount - totalDiscount + totalLateFees - totalAdjustments;

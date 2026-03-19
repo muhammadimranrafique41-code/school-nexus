@@ -5,23 +5,38 @@ import fs from 'fs';
 const { Client } = pg;
 const client = new Client({
   connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
 async function main() {
   try {
     await client.connect();
-    fs.writeFileSync('output.txt', 'Connected to DB.\n');
-    console.log("Connected");
+    console.log("Connected to DB");
     
-    // We will cast fee_id from whatever it is to integer using USING clause
-    const res = await client.query(`
-      ALTER TABLE finance_vouchers ALTER COLUMN fee_id TYPE integer USING fee_id::integer;
+    // Check fees table columns and sample data
+    const tableInfo = await client.query(`
+      SELECT column_name, data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'fees';
     `);
     
-    fs.appendFileSync('output.txt', 'Query success: ' + JSON.stringify(res) + '\n');
+    const sampleData = await client.query(`
+      SELECT id, amount, paid_amount, total_discount, remaining_balance, status 
+      FROM fees 
+      LIMIT 5;
+    `);
+    
+    const output = {
+      columns: tableInfo.rows,
+      data: sampleData.rows
+    };
+    
+    fs.writeFileSync('output.txt', JSON.stringify(output, null, 2));
     console.log("Success");
   } catch(e) {
-    fs.appendFileSync('output.txt', 'Error: ' + e + '\n');
+    fs.writeFileSync('output.txt', 'Error: ' + e + '\n');
     console.error(e);
   } finally {
     await client.end();

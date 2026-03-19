@@ -187,6 +187,7 @@ export default function Finance() {
         BillingPeriod: invoice.billingPeriod,
         DueDate: invoice.dueDate,
         TotalAmount: invoice.amount,
+        Discount: invoice.totalDiscount ?? 0,
         PaidAmount: invoice.paidAmount,
         RemainingBalance: invoice.remainingBalance,
         Status: invoice.status,
@@ -753,10 +754,8 @@ export default function Finance() {
                 {/* Header Info */}
                 <div className="grid gap-4 md:grid-cols-4">
                   {(() => {
-                    // Calculate actual status based on remaining balance (accounting for discounts)
-                    const totalDiscount = (selectedInvoice as any).totalDiscount ?? (selectedInvoice.payments ?? []).reduce((sum: number, p: any) => sum + (p.discount || 0), 0);
-                    const actualRemainingBalance = Math.max(0, selectedInvoice.remainingBalance - totalDiscount);
-                    const actualStatus = actualRemainingBalance === 0 && selectedInvoice.paidAmount > 0 ? "Paid" : selectedInvoice.status;
+                    // remainingBalance from server already has all discounts baked in — use it directly
+                    const actualStatus = selectedInvoice.remainingBalance <= 0 && selectedInvoice.paidAmount > 0 ? "Paid" : selectedInvoice.status;
                     
                     const headerItems = [
                       { label: "Student", value: selectedInvoice.student?.name ?? `Student #${selectedInvoice.studentId}` },

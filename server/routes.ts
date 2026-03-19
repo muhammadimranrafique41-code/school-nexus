@@ -373,6 +373,22 @@ function buildStudentResultsPayload(records: ResultWithStudent[]) {
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  // Temporary debug route to fix DB schema issues
+  app.get("/api/debug/fix-db", async (req, res) => {
+    try {
+      console.log("Running manual DB fix via debug route...");
+      await db.execute(sql`ALTER TABLE fees ADD COLUMN IF NOT EXISTS paid_amount integer NOT NULL DEFAULT 0;`);
+      await db.execute(sql`ALTER TABLE fees ADD COLUMN IF NOT EXISTS total_discount integer NOT NULL DEFAULT 0;`);
+      await db.execute(sql`ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS discount integer NOT NULL DEFAULT 0;`);
+      await db.execute(sql`ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS discount_reason text;`);
+      await db.execute(sql`UPDATE fees SET remaining_balance = GREATEST(amount - paid_amount - total_discount, 0);`);
+      res.json({ success: true, message: "Database columns verified/added and balances recalculated." });
+    } catch (err: any) {
+      console.error("Debug DB fix failed:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   app.use(createSessionMiddleware());
 
   const getSessionUser = async (req: Request) => (req.session.userId ? storage.getUser(req.session.userId) : undefined);

@@ -138,6 +138,7 @@ export type FinanceInvoiceSnapshot = {
   studentId: number;
   amount: number;
   paidAmount: number;
+  totalDiscount: number;
   remainingBalance: number;
   dueDate: string;
   status: FeeStatus;
@@ -390,8 +391,8 @@ export function normalizeFeeLineItems(amount: number, description: string, lineI
   return normalized;
 }
 
-export function calculateRemainingBalance(amount: number, paidAmount: number) {
-  return Math.max(Math.round(amount) - Math.round(paidAmount), 0);
+export function calculateRemainingBalance(amount: number, paidAmount: number, totalDiscount = 0) {
+  return Math.max(Math.round(amount) - Math.round(paidAmount) - Math.round(totalDiscount), 0);
 }
 
 export function isOverdue(dueDate: string, remainingBalance: number, asOf = new Date()) {
@@ -399,24 +400,26 @@ export function isOverdue(dueDate: string, remainingBalance: number, asOf = new 
   return dueDate < toIsoDate(asOf);
 }
 
-export function getFeeStatus(params: { amount: number; paidAmount: number; dueDate: string; asOf?: Date }): FeeStatus {
-  const remainingBalance = calculateRemainingBalance(params.amount, params.paidAmount);
+export function getFeeStatus(params: { amount: number; paidAmount: number; dueDate: string; totalDiscount?: number; asOf?: Date }): FeeStatus {
+  const remainingBalance = calculateRemainingBalance(params.amount, params.paidAmount, params.totalDiscount || 0);
   if (remainingBalance <= 0) return "Paid";
   if (isOverdue(params.dueDate, remainingBalance, params.asOf)) return "Overdue";
-  if (params.paidAmount > 0) return "Partially Paid";
+  if (params.paidAmount > 0 || (params.totalDiscount || 0) > 0) return "Partially Paid";
   return "Unpaid";
 }
 
-export function summarizeFeeLedger(amount: number, paidAmount: number, dueDate: string, asOf?: Date): {
+export function summarizeFeeLedger(amount: number, paidAmount: number, dueDate: string, totalDiscount = 0, asOf?: Date): {
   paidAmount: number;
+  totalDiscount: number;
   remainingBalance: number;
   status: FeeStatus;
   isOverdue: boolean;
 } {
-  const remainingBalance = calculateRemainingBalance(amount, paidAmount);
-  const status = getFeeStatus({ amount, paidAmount, dueDate, asOf });
+  const remainingBalance = calculateRemainingBalance(amount, paidAmount, totalDiscount);
+  const status = getFeeStatus({ amount, paidAmount, dueDate, totalDiscount, asOf });
   return {
     paidAmount: Math.max(Math.round(paidAmount), 0),
+    totalDiscount: Math.max(Math.round(totalDiscount), 0),
     remainingBalance,
     status,
     isOverdue: status === "Overdue",
@@ -451,11 +454,13 @@ function getStudentClass(invoice: FinanceInvoiceSnapshot) {
 
 function normalizeInvoiceSnapshot<TInvoice extends FinanceInvoiceSnapshot>(invoice: TInvoice, asOf: Date) {
   const paidAmount = Math.max(Math.round(invoice.paidAmount), 0);
-  const remainingBalance = calculateRemainingBalance(invoice.amount, paidAmount);
-  const status = getFeeStatus({ amount: invoice.amount, paidAmount, dueDate: invoice.dueDate, asOf });
+  const totalDiscount = Math.max(Math.round(invoice.totalDiscount || 0), 0);
+  const remainingBalance = calculateRemainingBalance(invoice.amount, paidAmount, totalDiscount);
+  const status = getFeeStatus({ amount: invoice.amount, paidAmount, dueDate: invoice.dueDate, totalDiscount, asOf });
   return {
     ...invoice,
     paidAmount,
+    totalDiscount,
     remainingBalance,
     status,
     payments: [...(invoice.payments ?? [])],
@@ -693,6 +698,9 @@ export function buildOverdueBalanceEntries<TInvoice extends FinanceInvoiceSnapsh
       className: getStudentClass(invoice),
       billingPeriod: invoice.billingPeriod,
       dueDate: invoice.dueDate,
+      amount: invoice.amount,
+      paidAmount: invoice.paidAmount,
+      totalDiscount: invoice.totalDiscount,
       remainingBalance: invoice.remainingBalance,
       daysOverdue: getDaysOverdue(invoice.dueDate, asOf),
       status: invoice.status,

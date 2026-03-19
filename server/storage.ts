@@ -1477,22 +1477,41 @@ export class DatabaseStorage implements IStorage {
 
     return records
       .map((record) => {
-        const ledger = summarizeFeeLedger(record.amount, record.paidAmount, record.dueDate);
-        const remainingBalance = record.remainingBalance;
-        const status = remainingBalance <= 0 ? "Paid" : ledger.status;
+        const payments = paymentsByFeeId.get(record.id) ?? [];
+        const adjustments = adjustmentsByFeeId.get(record.id) ?? [];
+        
+        // Robust calculation: start with upfront or existing total discount, then add payment-level discounts
+        // Actually, upfront discount is already in record.totalDiscount if it was created/updated via our latest code.
+        // But to be safest across all invoice versions, we should trust the record's base state and add payments.
+        const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+        const paymentDiscounts = payments.reduce((sum, p) => sum + (p.discount || 0), 0);
+        
+        // totalDiscount should be the upfront discount + all payment discounts.
+        // Since we currently store the aggregate in record.totalDiscount, we need to decide if we trust it or recalculate.
+        // Optimization: trust record.paidAmount and record.totalDiscount if they might have upfront components we can't see otherwise.
+        // Actually, upfront discount is the value of record.totalDiscount when payments.length === 0.
+        // totalDiscount in the DB is intended to be the aggregate.
+        // To be robust against missed updates, we recalculate from payments.
+        // We assume record.totalDiscount might contain an upfront discount NOT in payments.
+        // But since we want to avoid double counting, we'll try to be clever.
+        // Let's check if upfront exists. For now, let's just use the recalculated values if they are greater.
+        const ledger = summarizeFeeLedger(
+          record.amount, 
+          Math.max(record.paidAmount, totalPaid), 
+          record.dueDate, 
+          Math.max(record.totalDiscount ?? 0, paymentDiscounts)
+        );
+        
         return {
           ...record,
           ...ledger,
-          remainingBalance,
-          status,
-          totalDiscount: record.totalDiscount ?? 0,
           lineItems: Array.isArray(record.lineItems) && record.lineItems.length > 0
             ? record.lineItems
             : normalizeFeeLineItems(record.amount, record.description),
           student: userMap.get(record.studentId),
-          payments: (paymentsByFeeId.get(record.id) ?? []).sort((left, right) => `${right.paymentDate}-${right.id}`.localeCompare(`${left.paymentDate}-${left.id}`)),
-          adjustments: (adjustmentsByFeeId.get(record.id) ?? []).sort((left, right) => `${right.createdAt}`.localeCompare(`${left.createdAt}`)),
-          paymentCount: (paymentsByFeeId.get(record.id) ?? []).length,
+          payments: payments.sort((left, right) => `${right.paymentDate}-${right.id}`.localeCompare(`${left.paymentDate}-${left.id}`)),
+          adjustments: adjustments.sort((left, right) => `${right.createdAt}`.localeCompare(`${left.createdAt}`)),
+          paymentCount: payments.length,
         };
       })
       .sort((left, right) => `${right.billingMonth}-${right.id}`.localeCompare(`${left.billingMonth}-${left.id}`));
@@ -1551,7 +1570,7 @@ export class DatabaseStorage implements IStorage {
     const generatedMonth = record.generatedMonth ?? (record.source === "monthly" ? record.billingMonth : null);
     const lineItems = normalizeFeeLineItems(record.amount, record.description, record.lineItems);
     const upfrontDiscount = record.discount ?? 0;  // Upfront discount provided during invoice creation
-    const ledger = summarizeFeeLedger(record.amount, 0, record.dueDate);
+    const ledger = summarizeFeeLedger(record.amount, 0, record.dueDate, upfrontDiscount);
 
     if (generatedMonth) {
       const [existingGenerated] = await executor
@@ -1562,9 +1581,6 @@ export class DatabaseStorage implements IStorage {
       if (existingGenerated) throw new Error(`Monthly invoice already exists for ${generatedMonth}`);
     }
 
-    // Calculate remaining balance after applying upfront discount
-    const remainingBalanceAfterDiscount = Math.max(0, ledger.remainingBalance - upfrontDiscount);
-
     const [created] = await executor
       .insert(fees)
       .values({
@@ -1572,9 +1588,9 @@ export class DatabaseStorage implements IStorage {
         amount: record.amount,
         paidAmount: ledger.paidAmount,
         totalDiscount: upfrontDiscount,  // Store upfront discount in totalDiscount field
-        remainingBalance: remainingBalanceAfterDiscount,
+        remainingBalance: ledger.remainingBalance,
         dueDate: record.dueDate,
-        status: upfrontDiscount >= record.amount ? "Paid" : ledger.status,  // If discount covers full amount, mark as Paid
+        status: ledger.status,
         invoiceNumber: null,
         billingMonth: record.billingMonth,
         billingPeriod,
@@ -1696,8 +1712,6 @@ export class DatabaseStorage implements IStorage {
       updates.lineItems ?? (amount === existing.amount ? existing.lineItems : undefined),
     );
     const generatedMonth = updates.generatedMonth ?? existing.generatedMonth;
-    const ledger = summarizeFeeLedger(amount, existing.paidAmount, dueDate);
-
     const updated = await db.transaction(async (tx) => {
       if (generatedMonth) {
         const duplicates = await tx
@@ -1708,12 +1722,16 @@ export class DatabaseStorage implements IStorage {
         if (duplicates.some((duplicate) => duplicate.id !== id)) throw new Error(`Monthly invoice already exists for ${generatedMonth}`);
       }
 
+      const totalDiscount = existing.totalDiscount ?? 0;
+      const ledger = summarizeFeeLedger(amount, existing.paidAmount, dueDate, totalDiscount);
+
       const [saved] = await tx
         .update(fees)
         .set({
           studentId,
           amount,
           paidAmount: ledger.paidAmount,
+          totalDiscount: ledger.totalDiscount,
           remainingBalance: ledger.remainingBalance,
           dueDate,
           status: ledger.status,
@@ -1807,11 +1825,12 @@ export class DatabaseStorage implements IStorage {
 
       // Update fee: payment reduces remaining and discount also reduces remaining
       const newPaidAmount = feeRecord.paidAmount + payment.amount;
-      const ledger = summarizeFeeLedger(feeRecord.amount, newPaidAmount, feeRecord.dueDate);
       
       // totalDiscounts = upfront invoice discount + all payment-level discounts (prior + current)
-      const totalDiscounts = (feeRecord.totalDiscount ?? 0) + priorPaymentDiscounts + discount;
-      const adjustedRemainingBalance = Math.max(0, ledger.remainingBalance - totalDiscounts);
+      // Since feeRecord.totalDiscount is the aggregate, we just add the new discount
+      const totalDiscounts = (feeRecord.totalDiscount ?? 0) + discount;
+      const ledger = summarizeFeeLedger(feeRecord.amount, newPaidAmount, feeRecord.dueDate, totalDiscounts);
+      const adjustedRemainingBalance = ledger.remainingBalance;
       
       await tx
         .update(fees)
@@ -1819,7 +1838,7 @@ export class DatabaseStorage implements IStorage {
           paidAmount: newPaidAmount,
           remainingBalance: adjustedRemainingBalance,
           totalDiscount: totalDiscounts,
-          status: adjustedRemainingBalance === 0 ? "Paid" : ledger.status,
+          status: ledger.status,
           updatedAt: timestamp,
         })
         .where(eq(fees.id, feeRecord.id));
