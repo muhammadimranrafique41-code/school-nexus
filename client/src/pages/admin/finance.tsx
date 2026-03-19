@@ -36,14 +36,14 @@ import { buildInvoicePrintHtml, buildPaymentReceiptPrintHtml, type FeePaymentRec
 import { downloadCsv, formatCurrency, formatDate, getErrorMessage, openPrintWindow, paginateItems } from "@/lib/utils";
 
 const PAGE_SIZE = 8;
-type InvoiceFormState = { studentId: string; amount: string; billingMonth: string; dueDate: string; description: string; feeType: string; notes: string };
+type InvoiceFormState = { studentId: string; amount: string; billingMonth: string; dueDate: string; description: string; feeType: string; notes: string; discount: string; discountReason: string };
 type PaymentFormState = { amount: string; paymentDate: string; method: "Cash" | "Bank Transfer" | "Card" | "Mobile Money" | "Cheque" | "Other"; reference: string; notes: string; discount: string; discountReason: string };
 type BillingProfileFormState = { studentId: string; monthlyAmount: string; dueDay: string; isActive: boolean; notes: string };
 type GenerationFormState = { billingMonth: string; dueDayOverride: string };
 
 function createDefaultInvoiceForm(studentId = ""): InvoiceFormState {
   const billingMonth = getCurrentBillingMonth();
-  return { studentId, amount: "", billingMonth, dueDate: buildDueDateForBillingMonth(billingMonth, 5), description: "Monthly tuition fee", feeType: "Monthly Fee", notes: "" };
+  return { studentId, amount: "", billingMonth, dueDate: buildDueDateForBillingMonth(billingMonth, 5), description: "Monthly tuition fee", feeType: "Monthly Fee", notes: "", discount: "", discountReason: "" };
 }
 function createDefaultPaymentForm(balance = 0): PaymentFormState {
   return { amount: balance > 0 ? String(balance) : "", paymentDate: new Date().toISOString().slice(0, 10), method: "Cash", reference: "", notes: "", discount: "", discountReason: "" };
@@ -134,6 +134,8 @@ export default function Finance() {
       description: invoice.description,
       feeType: invoice.feeType,
       notes: invoice.notes ?? "",
+      discount: "",
+      discountReason: "",
     });
     setInvoiceDialogOpen(true);
   };
@@ -195,6 +197,13 @@ export default function Finance() {
   const handleInvoiceSubmit = async () => {
     try {
       const amount = Number(invoiceForm.amount);
+      const discount = invoiceForm.discount ? Number(invoiceForm.discount) : null;
+      
+      // Validate discount
+      if (discount && discount > amount) {
+        throw new Error("Discount cannot exceed invoice amount");
+      }
+      
       const payload = {
         studentId: Number(invoiceForm.studentId),
         amount,
@@ -206,6 +215,8 @@ export default function Finance() {
         notes: invoiceForm.notes.trim() || null,
         lineItems: [{ label: invoiceForm.description.trim() || "Invoice item", amount }],
         source: "manual" as const,
+        discount: discount || null,
+        discountReason: (discount && invoiceForm.discountReason.trim()) || null,
       };
 
       if (editingInvoice) {
@@ -380,13 +391,14 @@ export default function Finance() {
           <Card className="overflow-hidden bg-white/80">
             <CardHeader className="gap-4 border-b pb-4"><div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle>Invoices</CardTitle><CardDescription>Detailed invoice ledger with clear billing, payment, balance, due-date, and status visibility.</CardDescription></div><div className="grid gap-2 sm:grid-cols-2"><div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Matching invoices</p><p className="mt-1 text-lg font-semibold text-slate-900">{filteredInvoices.length}</p></div><div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Outstanding</p><p className="mt-1 text-lg font-semibold text-slate-900">{formatCurrency(filteredInvoices.reduce((sum, invoice) => sum + invoice.remainingBalance, 0))}</p></div></div></div></CardHeader>
             <CardContent className="p-0">
-              <div className="hidden border-b bg-slate-50/70 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 lg:grid lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1.05fr)_minmax(96px,0.5fr)_minmax(96px,0.5fr)_minmax(110px,0.55fr)_minmax(100px,0.5fr)_minmax(110px,0.65fr)_auto] lg:gap-4">
+              <div className="hidden border-b bg-slate-50/70 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 lg:grid lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1.05fr)_minmax(96px,0.5fr)_minmax(96px,0.5fr)_minmax(110px,0.55fr)_minmax(100px,0.5fr)_minmax(100px,0.5fr)_minmax(110px,0.65fr)_auto] lg:gap-4">
                 <span>Student</span>
                 <span>Invoice</span>
                 <span>Total</span>
                 <span>Paid</span>
                 <span>Balance</span>
                 <span>Discount</span>
+                <span>Late Fee</span>
                 <span>Status</span>
                 <span className="text-right">Actions</span>
               </div>
@@ -398,7 +410,7 @@ export default function Finance() {
               ) : (
                 paginated.pageItems.map((invoice) => (
                   <div key={invoice.id} className="border-b border-slate-200/70 px-5 py-4 last:border-b-0">
-                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1.05fr)_minmax(96px,0.5fr)_minmax(96px,0.5fr)_minmax(110px,0.55fr)_minmax(100px,0.5fr)_minmax(110px,0.65fr)_auto] lg:items-center">
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1.05fr)_minmax(96px,0.5fr)_minmax(96px,0.5fr)_minmax(110px,0.55fr)_minmax(100px,0.5fr)_minmax(100px,0.5fr)_minmax(110px,0.65fr)_auto] lg:items-center">
                       <div className="min-w-0">
                         <p className="truncate text-base font-semibold text-slate-900">{invoice.student?.name ?? `Student #${invoice.studentId}`}</p>
                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
@@ -434,10 +446,7 @@ export default function Finance() {
                       <div className="rounded-2xl bg-amber-50/80 p-3 lg:bg-transparent lg:p-0">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 lg:hidden">Discount</p>
                         <p className="mt-1 text-sm font-semibold text-amber-700 lg:mt-0">
-                          {(() => {
-                            const totalDiscount = (invoice.payments ?? []).reduce((sum: number, p: any) => sum + (p.discount || 0), 0);
-                            return totalDiscount > 0 ? formatCurrency(totalDiscount) : "—";
-                          })()}
+                          {invoice.totalDiscount > 0 ? formatCurrency(invoice.totalDiscount) : "—"}
                         </p>
                       </div>
 
@@ -495,7 +504,121 @@ export default function Finance() {
         </div>
 
         <Dialog open={invoiceDialogOpen} onOpenChange={(open) => { setInvoiceDialogOpen(open); if (!open) { setEditingInvoiceId(null); setInvoiceForm(createDefaultInvoiceForm(studentFilter === "all" ? "" : studentFilter)); } }}>
-          <DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>{editingInvoice ? "Edit invoice" : "Create invoice"}</DialogTitle></DialogHeader><div className="grid gap-4 pt-2 md:grid-cols-2"><div className="space-y-2 md:col-span-2"><label className="text-sm font-medium">Student</label><Select value={invoiceForm.studentId} onValueChange={(value) => setInvoiceForm((current) => ({ ...current, studentId: value }))}><SelectTrigger><SelectValue placeholder="Select student" /></SelectTrigger><SelectContent>{studentsList.map((student) => <SelectItem key={student.id} value={String(student.id)}>{student.name} {student.className ? `(${student.className})` : ""}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><label className="text-sm font-medium">Billing month</label><Input type="month" value={invoiceForm.billingMonth} onChange={(event) => setInvoiceForm((current) => ({ ...current, billingMonth: event.target.value }))} /></div><div className="space-y-2"><label className="text-sm font-medium">Due date</label><Input type="date" value={invoiceForm.dueDate} onChange={(event) => setInvoiceForm((current) => ({ ...current, dueDate: event.target.value }))} /></div><div className="space-y-2"><label className="text-sm font-medium">Amount</label><Input type="number" min="1" value={invoiceForm.amount} onChange={(event) => setInvoiceForm((current) => ({ ...current, amount: event.target.value }))} /></div><div className="space-y-2"><label className="text-sm font-medium">Fee type</label><Input value={invoiceForm.feeType} onChange={(event) => setInvoiceForm((current) => ({ ...current, feeType: event.target.value }))} /></div><div className="space-y-2 md:col-span-2"><label className="text-sm font-medium">Description</label><Input value={invoiceForm.description} onChange={(event) => setInvoiceForm((current) => ({ ...current, description: event.target.value }))} /></div><div className="space-y-2 md:col-span-2"><label className="text-sm font-medium">Internal notes</label><Textarea value={invoiceForm.notes} onChange={(event) => setInvoiceForm((current) => ({ ...current, notes: event.target.value }))} rows={4} /></div></div><div className="flex justify-end gap-3 pt-2"><Button variant="outline" onClick={() => setInvoiceDialogOpen(false)}>Cancel</Button><Button onClick={handleInvoiceSubmit} disabled={createFee.isPending || updateFee.isPending}>{createFee.isPending || updateFee.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : editingInvoice ? "Save invoice" : "Create invoice"}</Button></div></DialogContent>
+          <DialogContent className="sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>{editingInvoice ? "Edit invoice" : "Create invoice"}</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 pt-2 md:grid-cols-2">
+              {/* Student (Full Width) */}
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-medium">Student</label>
+                <Select value={invoiceForm.studentId} onValueChange={(value) => setInvoiceForm((current) => ({ ...current, studentId: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select student" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {studentsList.map((student) => (
+                      <SelectItem key={student.id} value={String(student.id)}>
+                        {student.name} {student.className ? `(${student.className})` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Billing Month */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Billing month</label>
+                <Input type="month" value={invoiceForm.billingMonth} onChange={(event) => setInvoiceForm((current) => ({ ...current, billingMonth: event.target.value }))} />
+              </div>
+
+              {/* Due Date */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Due date</label>
+                <Input type="date" value={invoiceForm.dueDate} onChange={(event) => setInvoiceForm((current) => ({ ...current, dueDate: event.target.value }))} />
+              </div>
+
+              {/* Amount */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Amount</label>
+                <Input type="number" min="1" value={invoiceForm.amount} onChange={(event) => setInvoiceForm((current) => ({ ...current, amount: event.target.value }))} />
+              </div>
+
+              {/* Fee Type */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Fee type</label>
+                <Input value={invoiceForm.feeType} onChange={(event) => setInvoiceForm((current) => ({ ...current, feeType: event.target.value }))} />
+              </div>
+
+              {/* Discount */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  🎁 Discount (Optional)
+                </label>
+                <Input type="number" min="0" step="0.01" value={invoiceForm.discount} onChange={(event) => setInvoiceForm((current) => ({ ...current, discount: event.target.value }))} placeholder="0.00" />
+                {invoiceForm.discount && <p className="mt-1 text-xs text-amber-600">Discount: {formatCurrency(Number(invoiceForm.discount))}</p>}
+              </div>
+
+              {/* Discount Reason */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Discount reason</label>
+                <Input value={invoiceForm.discountReason} onChange={(event) => setInvoiceForm((current) => ({ ...current, discountReason: event.target.value }))} placeholder="e.g., Merit award, scholarship" maxLength={200} disabled={!invoiceForm.discount} />
+              </div>
+
+              {/* Description (Full Width) */}
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-medium">Description</label>
+                <Input value={invoiceForm.description} onChange={(event) => setInvoiceForm((current) => ({ ...current, description: event.target.value }))} />
+              </div>
+
+              {/* Internal Notes (Full Width) */}
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-medium">Internal notes</label>
+                <Textarea value={invoiceForm.notes} onChange={(event) => setInvoiceForm((current) => ({ ...current, notes: event.target.value }))} rows={4} />
+              </div>
+            </div>
+
+            {/* Summary Preview */}
+            {(invoiceForm.amount || invoiceForm.discount) && (
+              <div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {invoiceForm.amount && (
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Invoice Amount</p>
+                      <p className="mt-1 font-semibold text-slate-900">{formatCurrency(Number(invoiceForm.amount))}</p>
+                    </div>
+                  )}
+                  {invoiceForm.discount && (
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.16em] text-amber-600">Discount</p>
+                      <p className="mt-1 font-semibold text-amber-900">-{formatCurrency(Number(invoiceForm.discount))}</p>
+                    </div>
+                  )}
+                  {invoiceForm.amount && (
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Net Amount</p>
+                      <p className="mt-1 font-semibold text-slate-900">{formatCurrency(Number(invoiceForm.amount) - (Number(invoiceForm.discount) || 0))}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setInvoiceDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleInvoiceSubmit} disabled={createFee.isPending || updateFee.isPending}>
+                {createFee.isPending || updateFee.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : editingInvoice ? (
+                  "Save invoice"
+                ) : (
+                  "Create invoice"
+                )}
+              </Button>
+            </div>
+          </DialogContent>
         </Dialog>
 
         <Dialog open={paymentDialogOpen} onOpenChange={(open) => { setPaymentDialogOpen(open); if (!open) { setPaymentInvoiceId(null); setPaymentForm(createDefaultPaymentForm()); } }}>
@@ -631,7 +754,7 @@ export default function Finance() {
                 <div className="grid gap-4 md:grid-cols-4">
                   {(() => {
                     // Calculate actual status based on remaining balance (accounting for discounts)
-                    const totalDiscount = (selectedInvoice.payments ?? []).reduce((sum: number, p: any) => sum + (p.discount || 0), 0);
+                    const totalDiscount = (selectedInvoice as any).totalDiscount ?? (selectedInvoice.payments ?? []).reduce((sum: number, p: any) => sum + (p.discount || 0), 0);
                     const actualRemainingBalance = Math.max(0, selectedInvoice.remainingBalance - totalDiscount);
                     const actualStatus = actualRemainingBalance === 0 && selectedInvoice.paidAmount > 0 ? "Paid" : selectedInvoice.status;
                     
@@ -653,7 +776,7 @@ export default function Finance() {
 
                 {/* Amount Summary */}
                 {(() => {
-                  const totalDiscount = (selectedInvoice.payments ?? []).reduce((sum: number, p: any) => sum + (p.discount || 0), 0);
+                  const totalDiscount = (selectedInvoice as any).totalDiscount ?? (selectedInvoice.payments ?? []).reduce((sum: number, p: any) => sum + (p.discount || 0), 0);
                   const totalLateFee = selectedInvoice.adjustments?.filter(adj => adj.type === "fine").reduce((sum: number, adj: any) => sum + adj.amount, 0) ?? 0;
                   const netAmount = selectedInvoice.amount - totalDiscount + totalLateFee;
                   

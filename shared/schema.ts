@@ -229,6 +229,7 @@ export const fees = pgTable("fees", {
     .references(() => users.id, { onDelete: "cascade" }),
   amount: integer("amount").notNull(),
   paidAmount: integer("paid_amount").notNull().default(0),
+  totalDiscount: integer("total_discount").notNull().default(0),
   remainingBalance: integer("remaining_balance").notNull().default(0),
   dueDate: text("due_date").notNull(),
   status: text("status").$type<FeeStatus>().notNull().default("Unpaid"),

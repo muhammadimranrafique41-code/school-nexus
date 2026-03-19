@@ -1459,7 +1459,12 @@ export class DatabaseStorage implements IStorage {
     const paymentsByFeeId = new Map<number, FeePaymentWithMeta[]>();
     for (const payment of paymentRows) {
       const existing = paymentsByFeeId.get(payment.feeId) ?? [];
-      existing.push({ ...payment, createdByUser: payment.createdBy ? userMap.get(payment.createdBy) : undefined });
+      existing.push({
+        ...payment,
+        discount: payment.discount ?? 0,
+        discountReason: payment.discountReason ?? null,
+        createdByUser: payment.createdBy ? userMap.get(payment.createdBy) : undefined,
+      });
       paymentsByFeeId.set(payment.feeId, existing);
     }
 
@@ -1471,17 +1476,25 @@ export class DatabaseStorage implements IStorage {
     }
 
     return records
-      .map((record) => ({
-        ...record,
-        ...summarizeFeeLedger(record.amount, record.paidAmount, record.dueDate),
-        lineItems: Array.isArray(record.lineItems) && record.lineItems.length > 0
-          ? record.lineItems
-          : normalizeFeeLineItems(record.amount, record.description),
-        student: userMap.get(record.studentId),
-        payments: (paymentsByFeeId.get(record.id) ?? []).sort((left, right) => `${right.paymentDate}-${right.id}`.localeCompare(`${left.paymentDate}-${left.id}`)),
-        adjustments: (adjustmentsByFeeId.get(record.id) ?? []).sort((left, right) => `${right.createdAt}`.localeCompare(`${left.createdAt}`)),
-        paymentCount: (paymentsByFeeId.get(record.id) ?? []).length,
-      }))
+      .map((record) => {
+        const ledger = summarizeFeeLedger(record.amount, record.paidAmount, record.dueDate);
+        const remainingBalance = record.remainingBalance;
+        const status = remainingBalance <= 0 ? "Paid" : ledger.status;
+        return {
+          ...record,
+          ...ledger,
+          remainingBalance,
+          status,
+          totalDiscount: record.totalDiscount ?? 0,
+          lineItems: Array.isArray(record.lineItems) && record.lineItems.length > 0
+            ? record.lineItems
+            : normalizeFeeLineItems(record.amount, record.description),
+          student: userMap.get(record.studentId),
+          payments: (paymentsByFeeId.get(record.id) ?? []).sort((left, right) => `${right.paymentDate}-${right.id}`.localeCompare(`${left.paymentDate}-${left.id}`)),
+          adjustments: (adjustmentsByFeeId.get(record.id) ?? []).sort((left, right) => `${right.createdAt}`.localeCompare(`${left.createdAt}`)),
+          paymentCount: (paymentsByFeeId.get(record.id) ?? []).length,
+        };
+      })
       .sort((left, right) => `${right.billingMonth}-${right.id}`.localeCompare(`${left.billingMonth}-${left.id}`));
   }
 
@@ -1537,6 +1550,7 @@ export class DatabaseStorage implements IStorage {
     const billingPeriod = record.billingPeriod?.trim() || formatBillingPeriod(record.billingMonth);
     const generatedMonth = record.generatedMonth ?? (record.source === "monthly" ? record.billingMonth : null);
     const lineItems = normalizeFeeLineItems(record.amount, record.description, record.lineItems);
+    const upfrontDiscount = record.discount ?? 0;  // Upfront discount provided during invoice creation
     const ledger = summarizeFeeLedger(record.amount, 0, record.dueDate);
 
     if (generatedMonth) {
@@ -1548,15 +1562,19 @@ export class DatabaseStorage implements IStorage {
       if (existingGenerated) throw new Error(`Monthly invoice already exists for ${generatedMonth}`);
     }
 
+    // Calculate remaining balance after applying upfront discount
+    const remainingBalanceAfterDiscount = Math.max(0, ledger.remainingBalance - upfrontDiscount);
+
     const [created] = await executor
       .insert(fees)
       .values({
         studentId: record.studentId,
         amount: record.amount,
         paidAmount: ledger.paidAmount,
-        remainingBalance: ledger.remainingBalance,
+        totalDiscount: upfrontDiscount,  // Store upfront discount in totalDiscount field
+        remainingBalance: remainingBalanceAfterDiscount,
         dueDate: record.dueDate,
-        status: ledger.status,
+        status: upfrontDiscount >= record.amount ? "Paid" : ledger.status,  // If discount covers full amount, mark as Paid
         invoiceNumber: null,
         billingMonth: record.billingMonth,
         billingPeriod,
@@ -1631,17 +1649,25 @@ export class DatabaseStorage implements IStorage {
     if (!student || student.role !== "student") throw new Error("Student not found");
 
     const publicSettings = await this.getPublicSchoolSettings();
+    
+    // Validate discount is not greater than amount
+    const discount = record.discount ?? 0;
+    if (discount > record.amount) {
+      throw new Error("Discount cannot exceed invoice amount");
+    }
+
     const created = await db.transaction((tx) =>
       this.createFeeRecord(tx, record, publicSettings.financialSettings.invoicePrefix || "INV"),
     );
 
     // Log ledger entry for invoice creation
+    const discountText = discount > 0 ? ` with discount of ${(discount / 100).toFixed(2)}` : "";
     await this.createLedgerEntry(record.studentId, "invoice", {
       feeId: created.id,
       debit: created.amount,
-      credit: 0,
+      credit: discount,
       referenceId: created.invoiceNumber ?? `FEE-${created.id}`,
-      description: `Invoice created: ${created.description}`,
+      description: `Invoice created: ${created.description}${discountText}`,
       createdBy: undefined,
     });
 
@@ -1739,10 +1765,14 @@ export class DatabaseStorage implements IStorage {
       // Validate payment amount is positive
       if (payment.amount <= 0) throw new Error("Payment amount must be greater than 0");
 
-      // Validate discount separately - cannot exceed remaining balance
+      // Validate discount separately - cannot exceed effective remaining balance
       const discount = payment.discount ?? 0;
       if (discount < 0) throw new Error("Discount cannot be negative");
-      if (discount > feeRecord.remainingBalance) throw new Error("Discount cannot exceed the remaining invoice balance");
+      const priorPayments = await tx.select().from(feePayments).where(eq(feePayments.feeId, feeRecord.id));
+      const priorPaymentDiscounts = priorPayments.reduce((sum, p) => sum + (p.discount || 0), 0);
+      // effectiveRemaining already accounts for upfront invoice discount (baked into feeRecord.remainingBalance)
+      const effectiveRemaining = Math.max(0, feeRecord.remainingBalance - priorPaymentDiscounts);
+      if (discount > effectiveRemaining) throw new Error("Discount cannot exceed the remaining invoice balance");
       
       // Allow overpayment: payment can exceed remaining balance
       // This enables valid scenarios like: balance 1250, pay 1200 + discount 250 = full coverage
@@ -1779,9 +1809,8 @@ export class DatabaseStorage implements IStorage {
       const newPaidAmount = feeRecord.paidAmount + payment.amount;
       const ledger = summarizeFeeLedger(feeRecord.amount, newPaidAmount, feeRecord.dueDate);
       
-      // Account for all discounts applied to this fee (from all payments)
-      const allPayments = await tx.select().from(feePayments).where(eq(feePayments.feeId, feeRecord.id));
-      const totalDiscounts = allPayments.reduce((sum, p) => sum + (p.discount || 0), 0);
+      // totalDiscounts = upfront invoice discount + all payment-level discounts (prior + current)
+      const totalDiscounts = (feeRecord.totalDiscount ?? 0) + priorPaymentDiscounts + discount;
       const adjustedRemainingBalance = Math.max(0, ledger.remainingBalance - totalDiscounts);
       
       await tx
@@ -1789,6 +1818,7 @@ export class DatabaseStorage implements IStorage {
         .set({
           paidAmount: newPaidAmount,
           remainingBalance: adjustedRemainingBalance,
+          totalDiscount: totalDiscounts,
           status: adjustedRemainingBalance === 0 ? "Paid" : ledger.status,
           updatedAt: timestamp,
         })

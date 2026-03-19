@@ -29,6 +29,8 @@ export const createFeeInputSchema = z.object({
   feeType: z.string().trim().min(2).max(60).default("Monthly Fee"),
   lineItems: z.array(feeLineItemSchema).min(1).optional(),
   notes: z.string().trim().max(300).optional().nullable(),
+  discount: z.coerce.number().int().nonnegative("Discount must be non-negative").optional().nullable(),
+  discountReason: z.string().trim().max(200).optional().nullable(),
   source: invoiceSourceSchema.optional(),
   generatedMonth: billingMonthSchema.optional(),
 });
@@ -124,8 +126,8 @@ export type FinancePaymentSnapshot = {
   feeId: number;
   studentId: number;
   amount: number;
-  discount?: number | null;
-  discountReason?: string | null;
+  discount: number | null;
+  discountReason: string | null;
   paymentDate: string;
   method: PaymentMethod;
   receiptNumber?: string | null;

@@ -163,12 +163,12 @@ export function buildPaymentReceiptPrintHtml(fee: FeeRecord, payment: FeePayment
   for (const entry of paymentsAscending) {
     if (entry.id === payment.id) {
       balanceBeforePayment = Math.max(fee.amount - runningPaid, 0);
-      runningPaid += entry.amount;
+      runningPaid += entry.amount + (entry.discount || 0);
       balanceAfterPayment = Math.max(fee.amount - runningPaid, 0);
       break;
     }
 
-    runningPaid += entry.amount;
+    runningPaid += entry.amount + (entry.discount || 0);
   }
 
   return `
