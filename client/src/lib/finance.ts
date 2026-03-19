@@ -43,6 +43,13 @@ export function getFeeStatusClassName(status: FeeRecord["status"]) {
 export function buildInvoicePrintHtml(fee: FeeRecord) {
   const lineItems = fee.lineItems.length ? fee.lineItems : [{ label: fee.description, amount: fee.amount }];
   const payments = getSortedFeePayments(fee);
+  const adjustments = fee.adjustments ?? [];
+  
+  // Calculate totals
+  const totalDiscount = payments.reduce((sum: number, p: any) => sum + (p.discount || 0), 0);
+  const totalLateFees = adjustments.filter((adj: any) => adj.type === "fine").reduce((sum: number, adj: any) => sum + adj.amount, 0);
+  const totalAdjustments = adjustments.filter((adj: any) => adj.type !== "fine").reduce((sum: number, adj: any) => sum + adj.amount, 0);
+  const netAmount = fee.amount - totalDiscount + totalLateFees - totalAdjustments;
 
   return `
     <div class="section">
@@ -64,9 +71,11 @@ export function buildInvoicePrintHtml(fee: FeeRecord) {
         </div>
         <div class="card">
           <strong>Balance summary</strong>
-          <p>Total: ${escapeHtml(formatCurrency(fee.amount))}</p>
+          <p>Original: ${escapeHtml(formatCurrency(fee.amount))}</p>
+          ${totalDiscount > 0 ? `<p>Discount: -${escapeHtml(formatCurrency(totalDiscount))}</p>` : ""}
+          ${totalLateFees > 0 ? `<p>Late Fee: +${escapeHtml(formatCurrency(totalLateFees))}</p>` : ""}
           <p>Paid: ${escapeHtml(formatCurrency(fee.paidAmount))}</p>
-          <p>Balance: ${escapeHtml(formatCurrency(fee.remainingBalance))}</p>
+          <p><strong>Balance: ${escapeHtml(formatCurrency(fee.remainingBalance))}</strong></p>
         </div>
       </div>
     </div>
@@ -96,6 +105,19 @@ export function buildInvoicePrintHtml(fee: FeeRecord) {
       ${fee.notes ? `<p><strong>Notes:</strong> ${escapeHtml(fee.notes)}</p>` : ""}
     </div>
 
+    ${totalDiscount > 0 || totalLateFees > 0 || totalAdjustments > 0 ? `
+    <div class="section">
+      <h2>Amount Adjustments</h2>
+      <table>
+        <tbody>
+          ${totalDiscount > 0 ? `<tr><th>Discounts applied</th><td style="color: #b45309">-${escapeHtml(formatCurrency(totalDiscount))}</td></tr>` : ""}
+          ${totalLateFees > 0 ? `<tr><th>Late fees</th><td style="color: #dc2626">+${escapeHtml(formatCurrency(totalLateFees))}</td></tr>` : ""}
+          ${totalAdjustments > 0 ? `<tr><th>Other adjustments</th><td>+${escapeHtml(formatCurrency(totalAdjustments))}</td></tr>` : ""}
+          ${(totalDiscount > 0 || totalLateFees > 0 || totalAdjustments > 0) ? `<tr><th><strong>Net amount due</strong></th><td><strong>${escapeHtml(formatCurrency(netAmount))}</strong></td></tr>` : ""}
+        </tbody>
+      </table>
+    </div>` : ""}
+
     <div class="section">
       <h2>Payment History</h2>
       ${payments.length === 0
@@ -108,6 +130,7 @@ export function buildInvoicePrintHtml(fee: FeeRecord) {
                 <th>Method</th>
                 <th>Reference</th>
                 <th>Receipt</th>
+                <th>Discount</th>
                 <th>Amount</th>
               </tr>
             </thead>
@@ -120,6 +143,7 @@ export function buildInvoicePrintHtml(fee: FeeRecord) {
                       <td>${escapeHtml(payment.method)}</td>
                       <td>${escapeHtml(payment.reference ?? "-")}</td>
                       <td>${escapeHtml(payment.receiptNumber ?? "Pending")}</td>
+                      <td>${payment.discount ? `-${escapeHtml(formatCurrency(payment.discount))}` : "-"}</td>
                       <td>${escapeHtml(formatCurrency(payment.amount))}</td>
                     </tr>`,
         )
@@ -189,6 +213,16 @@ export function buildPaymentReceiptPrintHtml(fee: FeeRecord, payment: FeePayment
             <th>Amount paid</th>
             <td>${escapeHtml(formatCurrency(payment.amount))}</td>
           </tr>
+          ${payment.discount ? `
+          <tr style="background-color: #fffbeb; border-bottom: 2px solid #b45309">
+            <th style="color: #b45309"><strong>💳 Discount Applied</strong></th>
+            <td style="color: #b45309"><strong>-${escapeHtml(formatCurrency(payment.discount))}</strong></td>
+          </tr>
+          <tr style="background-color: #fef3c7; border-bottom: 2px solid #d97706">
+            <th style="color: #92400e"><strong>Total Invoice Coverage</strong></th>
+            <td style="color: #92400e"><strong>${escapeHtml(formatCurrency(payment.amount + payment.discount))}</strong></td>
+          </tr>
+          ` : ""}
           <tr>
             <th>Remaining balance</th>
             <td>${escapeHtml(formatCurrency(balanceAfterPayment))}</td>
@@ -204,6 +238,7 @@ export function buildPaymentReceiptPrintHtml(fee: FeeRecord, payment: FeePayment
         </tbody>
       </table>
       <p class="muted">This receipt confirms the payment applied to ${escapeHtml(fee.invoiceNumber ?? `invoice ${fee.id}`)}.</p>
+      ${payment.discountReason ? `<p><strong>Discount reason:</strong> ${escapeHtml(payment.discountReason)}</p>` : ""}
       ${payment.notes ? `<p><strong>Notes:</strong> ${escapeHtml(payment.notes)}</p>` : ""}
       ${fee.notes ? `<p><strong>Invoice notes:</strong> ${escapeHtml(fee.notes)}</p>` : ""}
     </div>

@@ -21,22 +21,23 @@ import {
 } from "@/hooks/use-fees";
 import { FeeAdjustmentDialog } from "./finance/FeeAdjustmentDialog";
 import { GenerateSingleStudentFeeDialog } from "./finance/GenerateSingleStudentFeeDialog";
+import { ApplyLateFeeDialog } from "./finance/ApplyLateFeeDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Banknote, CalendarDays, CreditCard, Download, Eye, FilePlus2, Loader2, Pencil, Printer, ReceiptText, RefreshCcw, Search, Settings2, Trash2, Users, Zap, Gift } from "lucide-react";
+import { Banknote, CalendarDays, Clock, CreditCard, Download, Eye, FilePlus2, Loader2, Pencil, Printer, ReceiptText, RefreshCcw, Search, Settings2, Trash2, Users, Zap, Gift } from "lucide-react";
 import { buildInvoicePrintHtml, buildPaymentReceiptPrintHtml, type FeePaymentRecord, type FeeRecord, getCurrentBillingMonth, getFeeStatusClassName, getLatestRecordedPayment } from "@/lib/finance";
 import { downloadCsv, formatCurrency, formatDate, getErrorMessage, openPrintWindow, paginateItems } from "@/lib/utils";
 
 const PAGE_SIZE = 8;
 type InvoiceFormState = { studentId: string; amount: string; billingMonth: string; dueDate: string; description: string; feeType: string; notes: string };
-type PaymentFormState = { amount: string; paymentDate: string; method: "Cash" | "Bank Transfer" | "Card" | "Mobile Money" | "Cheque" | "Other"; reference: string; notes: string };
+type PaymentFormState = { amount: string; paymentDate: string; method: "Cash" | "Bank Transfer" | "Card" | "Mobile Money" | "Cheque" | "Other"; reference: string; notes: string; discount: string; discountReason: string };
 type BillingProfileFormState = { studentId: string; monthlyAmount: string; dueDay: string; isActive: boolean; notes: string };
 type GenerationFormState = { billingMonth: string; dueDayOverride: string };
 
@@ -45,7 +46,7 @@ function createDefaultInvoiceForm(studentId = ""): InvoiceFormState {
   return { studentId, amount: "", billingMonth, dueDate: buildDueDateForBillingMonth(billingMonth, 5), description: "Monthly tuition fee", feeType: "Monthly Fee", notes: "" };
 }
 function createDefaultPaymentForm(balance = 0): PaymentFormState {
-  return { amount: balance > 0 ? String(balance) : "", paymentDate: new Date().toISOString().slice(0, 10), method: "Cash", reference: "", notes: "" };
+  return { amount: balance > 0 ? String(balance) : "", paymentDate: new Date().toISOString().slice(0, 10), method: "Cash", reference: "", notes: "", discount: "", discountReason: "" };
 }
 function createDefaultBillingProfileForm(studentId = ""): BillingProfileFormState {
   return { studentId, monthlyAmount: "", dueDay: "5", isActive: true, notes: "" };
@@ -78,6 +79,7 @@ export default function Finance() {
   const [editingProfileStudentId, setEditingProfileStudentId] = useState<number | null>(null);
   const [generationDialogOpen, setGenerationDialogOpen] = useState(false);
   const [adjustmentDialogOpen, setAdjustmentDialogOpen] = useState(false);
+  const [lateFeeDialogOpen, setLateFeeDialogOpen] = useState(false);
   const [singleStudentFeeDialogOpen, setSingleStudentFeeDialogOpen] = useState(false);
   const [lastGenerationResult, setLastGenerationResult] = useState<MonthlyGenerationResult | null>(null);
   const [invoiceForm, setInvoiceForm] = useState<InvoiceFormState>(() => createDefaultInvoiceForm());
@@ -229,8 +231,24 @@ export default function Finance() {
 
     try {
       const amount = Number(paymentForm.amount);
+      // Discount is in the same currency unit as amount, not cents
+      const discount = paymentForm.discount ? Number(paymentForm.discount) : null;
+
+      if (!amount || amount <= 0) {
+        throw new Error("Payment amount must be greater than 0");
+      }
+
+      // Discount cannot exceed the remaining balance
+      if (discount && discount > paymentInvoice.remainingBalance) {
+        throw new Error("Discount cannot exceed the remaining invoice balance");
+      }
+
+      // Calculate net balance after discount
+      const balanceAfterDiscount = paymentInvoice.remainingBalance - (discount || 0);
+      
+      // Payment amount alone should not exceed original balance (but can exceed balance-after-discount for overpayment)
       if (amount > paymentInvoice.remainingBalance) {
-        throw new Error("Payment amount cannot exceed the remaining invoice balance");
+        throw new Error(`Payment cannot exceed remaining balance of ${formatCurrency(paymentInvoice.remainingBalance)}`);
       }
 
       const updatedInvoice = await recordPayment.mutateAsync({
@@ -240,12 +258,15 @@ export default function Finance() {
         method: paymentForm.method,
         reference: paymentForm.reference.trim() || null,
         notes: paymentForm.notes.trim() || null,
+        discount: discount || null,
+        discountReason: (discount && paymentForm.discountReason.trim()) || null,
       });
       const recordedPayment = getLatestRecordedPayment(updatedInvoice);
 
+      const discountText = discount ? ` + ${formatCurrency(discount)} discount` : "";
       toast({
         title: "Payment recorded",
-        description: `${formatCurrency(amount)} has been applied to ${paymentInvoice.invoiceNumber ?? `invoice ${paymentInvoice.id}`}.`,
+        description: `${formatCurrency(amount)}${discountText} has been applied to ${paymentInvoice.invoiceNumber ?? `invoice ${paymentInvoice.id}`}.`,
       });
       setPaymentDialogOpen(false);
       setPaymentInvoiceId(null);
@@ -324,6 +345,7 @@ export default function Finance() {
             <Button variant="outline" onClick={() => setGenerationDialogOpen(true)}><RefreshCcw className="mr-2 h-4 w-4" />Generate monthly fees</Button>
             <Button variant="outline" onClick={() => setSingleStudentFeeDialogOpen(true)}><Zap className="mr-2 h-4 w-4" />Single student fee</Button>
             <Button variant="outline" onClick={() => setAdjustmentDialogOpen(true)}><Gift className="mr-2 h-4 w-4" />Fee adjustment</Button>
+            <Button variant="outline" onClick={() => setLateFeeDialogOpen(true)}><Clock className="mr-2 h-4 w-4" />Apply late fee</Button>
             <Button variant="outline" onClick={() => openProfileDialog()}><Settings2 className="mr-2 h-4 w-4" />Billing profiles</Button>
             <Button variant="outline" onClick={handleExportInvoices} disabled={filteredInvoices.length === 0}><Download className="mr-2 h-4 w-4" />Export invoices</Button>
             <Button onClick={openCreateInvoiceDialog}><FilePlus2 className="mr-2 h-4 w-4" />Create invoice</Button>
@@ -358,12 +380,13 @@ export default function Finance() {
           <Card className="overflow-hidden bg-white/80">
             <CardHeader className="gap-4 border-b pb-4"><div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle>Invoices</CardTitle><CardDescription>Detailed invoice ledger with clear billing, payment, balance, due-date, and status visibility.</CardDescription></div><div className="grid gap-2 sm:grid-cols-2"><div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Matching invoices</p><p className="mt-1 text-lg font-semibold text-slate-900">{filteredInvoices.length}</p></div><div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 px-4 py-3"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Outstanding</p><p className="mt-1 text-lg font-semibold text-slate-900">{formatCurrency(filteredInvoices.reduce((sum, invoice) => sum + invoice.remainingBalance, 0))}</p></div></div></div></CardHeader>
             <CardContent className="p-0">
-              <div className="hidden border-b bg-slate-50/70 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 lg:grid lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1.05fr)_minmax(96px,0.5fr)_minmax(96px,0.5fr)_minmax(110px,0.55fr)_minmax(110px,0.65fr)_auto] lg:gap-4">
+              <div className="hidden border-b bg-slate-50/70 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 lg:grid lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1.05fr)_minmax(96px,0.5fr)_minmax(96px,0.5fr)_minmax(110px,0.55fr)_minmax(100px,0.5fr)_minmax(110px,0.65fr)_auto] lg:gap-4">
                 <span>Student</span>
                 <span>Invoice</span>
                 <span>Total</span>
                 <span>Paid</span>
                 <span>Balance</span>
+                <span>Discount</span>
                 <span>Status</span>
                 <span className="text-right">Actions</span>
               </div>
@@ -375,7 +398,7 @@ export default function Finance() {
               ) : (
                 paginated.pageItems.map((invoice) => (
                   <div key={invoice.id} className="border-b border-slate-200/70 px-5 py-4 last:border-b-0">
-                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1.05fr)_minmax(96px,0.5fr)_minmax(96px,0.5fr)_minmax(110px,0.55fr)_minmax(110px,0.65fr)_auto] lg:items-center">
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1.05fr)_minmax(96px,0.5fr)_minmax(96px,0.5fr)_minmax(110px,0.55fr)_minmax(100px,0.5fr)_minmax(110px,0.65fr)_auto] lg:items-center">
                       <div className="min-w-0">
                         <p className="truncate text-base font-semibold text-slate-900">{invoice.student?.name ?? `Student #${invoice.studentId}`}</p>
                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
@@ -406,6 +429,26 @@ export default function Finance() {
                       <div className="rounded-2xl bg-slate-50/80 p-3 lg:bg-transparent lg:p-0">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 lg:hidden">Balance</p>
                         <p className="mt-1 text-sm font-semibold text-slate-900 lg:mt-0">{formatCurrency(invoice.remainingBalance)}</p>
+                      </div>
+
+                      <div className="rounded-2xl bg-amber-50/80 p-3 lg:bg-transparent lg:p-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 lg:hidden">Discount</p>
+                        <p className="mt-1 text-sm font-semibold text-amber-700 lg:mt-0">
+                          {(() => {
+                            const totalDiscount = (invoice.payments ?? []).reduce((sum: number, p: any) => sum + (p.discount || 0), 0);
+                            return totalDiscount > 0 ? formatCurrency(totalDiscount) : "—";
+                          })()}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl bg-rose-50/80 p-3 lg:bg-transparent lg:p-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 lg:hidden">Late Fee</p>
+                        <p className="mt-1 text-sm font-semibold text-rose-700 lg:mt-0">
+                          {(() => {
+                            const lateFees = (invoice.adjustments ?? []).filter((adj: any) => adj.type === "fine").reduce((sum: number, adj: any) => sum + adj.amount, 0);
+                            return lateFees > 0 ? formatCurrency(lateFees) : "—";
+                          })()}
+                        </p>
                       </div>
 
                       <div className="rounded-2xl bg-slate-50/80 p-3 lg:bg-transparent lg:p-0">
@@ -456,7 +499,116 @@ export default function Finance() {
         </Dialog>
 
         <Dialog open={paymentDialogOpen} onOpenChange={(open) => { setPaymentDialogOpen(open); if (!open) { setPaymentInvoiceId(null); setPaymentForm(createDefaultPaymentForm()); } }}>
-          <DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>Record payment</DialogTitle></DialogHeader><div className="space-y-4 pt-2"><div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4"><p className="font-semibold text-slate-900">{paymentInvoice?.invoiceNumber ?? (paymentInvoice ? `Invoice ${paymentInvoice.id}` : "Invoice")}</p><p className="text-sm text-slate-500">{paymentInvoice?.student?.name ?? "Select an invoice"}</p><div className="mt-3 grid gap-3 sm:grid-cols-3"><div><p className="text-xs uppercase tracking-[0.16em] text-slate-500">Total</p><p className="font-semibold text-slate-900">{formatCurrency(paymentInvoice?.amount ?? 0)}</p></div><div><p className="text-xs uppercase tracking-[0.16em] text-slate-500">Paid</p><p className="font-semibold text-slate-900">{formatCurrency(paymentInvoice?.paidAmount ?? 0)}</p></div><div><p className="text-xs uppercase tracking-[0.16em] text-slate-500">Balance</p><p className="font-semibold text-slate-900">{formatCurrency(paymentInvoice?.remainingBalance ?? 0)}</p></div></div></div><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><label className="text-sm font-medium">Amount</label><Input type="number" min="1" value={paymentForm.amount} onChange={(event) => setPaymentForm((current) => ({ ...current, amount: event.target.value }))} /></div><div className="space-y-2"><label className="text-sm font-medium">Payment date</label><Input type="date" value={paymentForm.paymentDate} onChange={(event) => setPaymentForm((current) => ({ ...current, paymentDate: event.target.value }))} /></div><div className="space-y-2"><label className="text-sm font-medium">Payment method</label><Select value={paymentForm.method} onValueChange={(value) => setPaymentForm((current) => ({ ...current, method: value as PaymentFormState["method"] }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Cash", "Bank Transfer", "Card", "Mobile Money", "Cheque", "Other"].map((method) => <SelectItem key={method} value={method}>{method}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><label className="text-sm font-medium">Reference</label><Input value={paymentForm.reference} onChange={(event) => setPaymentForm((current) => ({ ...current, reference: event.target.value }))} placeholder="Transaction reference" /></div><div className="space-y-2 md:col-span-2"><label className="text-sm font-medium">Notes</label><Textarea value={paymentForm.notes} onChange={(event) => setPaymentForm((current) => ({ ...current, notes: event.target.value }))} rows={4} /></div></div></div><div className="flex justify-end gap-3 pt-2"><Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>Cancel</Button><Button onClick={handlePaymentSubmit} disabled={recordPayment.isPending || !paymentInvoice}>{recordPayment.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Record payment"}</Button></div></DialogContent>
+          <DialogContent className="sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Record payment</DialogTitle>
+              <DialogDescription>Record payment and optionally apply a discount to the invoice.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              {/* Invoice Details */}
+              <div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4">
+                <p className="font-semibold text-slate-900">{paymentInvoice?.invoiceNumber ?? (paymentInvoice ? `Invoice ${paymentInvoice.id}` : "Invoice")}</p>
+                <p className="text-sm text-slate-500">{paymentInvoice?.student?.name ?? "Select an invoice"}</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Total</p>
+                    <p className="font-semibold text-slate-900">{formatCurrency(paymentInvoice?.amount ?? 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Paid</p>
+                    <p className="font-semibold text-slate-900">{formatCurrency(paymentInvoice?.paidAmount ?? 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Balance</p>
+                    <p className="font-semibold text-slate-900">{formatCurrency(paymentInvoice?.remainingBalance ?? 0)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Fields */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    💵 Amount *
+                  </label>
+                  <div className="relative">
+                    <Input type="number" min="0" step="0.01" value={paymentForm.amount} onChange={(event) => setPaymentForm((current) => ({ ...current, amount: event.target.value }))} placeholder="0.00" />
+                    {paymentForm.amount && <p className="mt-1 text-xs text-slate-600">Payment: {formatCurrency(Number(paymentForm.amount))}</p>}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Payment date *</label>
+                  <Input type="date" value={paymentForm.paymentDate} onChange={(event) => setPaymentForm((current) => ({ ...current, paymentDate: event.target.value }))} />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Payment method *</label>
+                  <Select value={paymentForm.method} onValueChange={(value) => setPaymentForm((current) => ({ ...current, method: value as PaymentFormState["method"] }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{["Cash", "Bank Transfer", "Card", "Mobile Money", "Cheque", "Other"].map((method) => <SelectItem key={method} value={method}>{method}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Reference</label>
+                  <Input value={paymentForm.reference} onChange={(event) => setPaymentForm((current) => ({ ...current, reference: event.target.value }))} placeholder="Transaction reference" />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    🎁 Discount (Optional)
+                  </label>
+                  <div className="relative">
+                    <Input type="number" min="0" step="0.01" value={paymentForm.discount} onChange={(event) => setPaymentForm((current) => ({ ...current, discount: event.target.value }))} placeholder="0.00" />
+                    {paymentForm.discount && <p className="mt-1 text-xs text-emerald-600">Discount: {formatCurrency(Number(paymentForm.discount))}</p>}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Discount reason</label>
+                  <Input value={paymentForm.discountReason} onChange={(event) => setPaymentForm((current) => ({ ...current, discountReason: event.target.value }))} placeholder="e.g., Merit award, early payment discount" maxLength={200} disabled={!paymentForm.discount} />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-sm font-medium">Notes</label>
+                  <Textarea value={paymentForm.notes} onChange={(event) => setPaymentForm((current) => ({ ...current, notes: event.target.value }))} rows={3} placeholder="Additional payment details or instructions..." />
+                </div>
+              </div>
+
+              {/* Summary */}
+              {(paymentForm.amount || paymentForm.discount) && (
+                <div className="rounded-2xl border-2 border-blue-100 bg-blue-50/50 p-4">
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-600">Payment amount:</span>
+                      <span className="font-semibold text-slate-900">{formatCurrency(Number(paymentForm.amount) || 0)}</span>
+                    </div>
+                    {paymentForm.discount && (
+                      <div className="flex items-center justify-between border-t border-blue-200 pt-2">
+                        <span className="text-slate-600">Discount:</span>
+                        <span className="font-semibold text-emerald-700">{formatCurrency(Number(paymentForm.discount))}</span>
+                      </div>
+                    )}
+                    {(Number(paymentForm.amount) || 0) + (Number(paymentForm.discount) || 0) > 0 && (
+                      <div className="flex items-center justify-between border-t border-blue-200 pt-2">
+                        <span className="font-medium text-slate-900">Total adjustment:</span>
+                        <span className="text-lg font-bold text-blue-600">{formatCurrency((Number(paymentForm.amount) || 0) + (Number(paymentForm.discount) || 0))}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handlePaymentSubmit} disabled={recordPayment.isPending || !paymentInvoice || !paymentForm.amount}>
+                {recordPayment.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ReceiptText className="mr-2 h-4 w-4" />}
+                Record payment
+              </Button>
+            </div>
+          </DialogContent>
         </Dialog>
 
         <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
@@ -468,7 +620,226 @@ export default function Finance() {
         </Dialog>
 
         <Dialog open={!!selectedInvoice} onOpenChange={(open) => !open && setDetailInvoiceId(null)}>
-          <DialogContent className="sm:max-w-3xl"><DialogHeader><DialogTitle>{selectedInvoice?.invoiceNumber ?? (selectedInvoice ? `Invoice ${selectedInvoice.id}` : "Invoice details")}</DialogTitle></DialogHeader>{selectedInvoice && <div className="space-y-6 pt-2"><div className="grid gap-4 md:grid-cols-4">{[{ label: "Student", value: selectedInvoice.student?.name ?? `Student #${selectedInvoice.studentId}` }, { label: "Billing period", value: selectedInvoice.billingPeriod }, { label: "Due date", value: formatDate(selectedInvoice.dueDate, "MMMM dd, yyyy") }, { label: "Status", value: selectedInvoice.status }].map((item) => <div key={item.label} className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4"><p className="text-xs uppercase tracking-[0.16em] text-slate-500">{item.label}</p><p className="mt-2 font-semibold text-slate-900">{item.value}</p></div>)}</div><div className="grid gap-6 lg:grid-cols-2"><div className="space-y-3"><h3 className="font-semibold text-slate-900">Invoice items</h3>{(selectedInvoice.lineItems.length ? selectedInvoice.lineItems : [{ label: selectedInvoice.description, amount: selectedInvoice.amount }]).map((item, index) => <div key={`${item.label}-${index}`} className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4"><div><p className="font-medium text-slate-900">{item.label}</p><p className="text-xs text-slate-500">{selectedInvoice.description}</p></div><p className="font-semibold text-slate-900">{formatCurrency(item.amount)}</p></div>)}{selectedInvoice.notes && <div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4 text-sm text-slate-600"><span className="font-medium text-slate-900">Notes:</span> {selectedInvoice.notes}</div>}</div><div className="space-y-3"><h3 className="font-semibold text-slate-900">Payments</h3>{(selectedInvoice.payments ?? []).length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500">No payments recorded yet for this invoice.</div> : (selectedInvoice.payments ?? []).map((payment) => <div key={payment.id} className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4"><div className="flex items-center justify-between gap-3"><div><p className="font-medium text-slate-900">{formatDate(payment.paymentDate, "MMM dd, yyyy")}</p><p className="text-xs text-slate-500">{payment.method} • {payment.receiptNumber ?? "Receipt pending"}</p></div><div className="flex items-center gap-3"><p className="font-semibold text-slate-900">{formatCurrency(payment.amount)}</p><Button size="sm" variant="outline" onClick={() => handlePrintReceipt(selectedInvoice, payment)}><Printer className="mr-1.5 h-3.5 w-3.5" />Receipt</Button></div></div>{(payment.reference || payment.notes) && <p className="mt-2 text-xs text-slate-500">{payment.reference ?? payment.notes}</p>}</div>)}</div></div><div className="flex flex-wrap justify-end gap-3">{selectedInvoice.remainingBalance > 0 && <Button variant="outline" onClick={() => openPaymentDialog(selectedInvoice)}><ReceiptText className="mr-2 h-4 w-4" />Record payment</Button>}<Button variant="outline" onClick={() => handlePrintInvoice(selectedInvoice)}><Printer className="mr-2 h-4 w-4" />Print invoice / Save PDF</Button></div></div>}</DialogContent>
+          <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{selectedInvoice?.invoiceNumber ?? (selectedInvoice ? `Invoice ${selectedInvoice.id}` : "Invoice details")}</DialogTitle>
+            </DialogHeader>
+            
+            {selectedInvoice && (
+              <div className="space-y-6 pt-4">
+                {/* Header Info */}
+                <div className="grid gap-4 md:grid-cols-4">
+                  {(() => {
+                    // Calculate actual status based on remaining balance (accounting for discounts)
+                    const totalDiscount = (selectedInvoice.payments ?? []).reduce((sum: number, p: any) => sum + (p.discount || 0), 0);
+                    const actualRemainingBalance = Math.max(0, selectedInvoice.remainingBalance - totalDiscount);
+                    const actualStatus = actualRemainingBalance === 0 && selectedInvoice.paidAmount > 0 ? "Paid" : selectedInvoice.status;
+                    
+                    const headerItems = [
+                      { label: "Student", value: selectedInvoice.student?.name ?? `Student #${selectedInvoice.studentId}` },
+                      { label: "Billing period", value: selectedInvoice.billingPeriod },
+                      { label: "Due date", value: formatDate(selectedInvoice.dueDate, "MMMM dd, yyyy") },
+                      { label: "Status", value: actualStatus },
+                    ];
+                    
+                    return headerItems.map((item) => (
+                      <div key={item.label} className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4">
+                        <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{item.label}</p>
+                        <p className="mt-2 font-semibold text-slate-900">{item.value}</p>
+                      </div>
+                    ));
+                  })()}
+                </div>
+
+                {/* Amount Summary */}
+                {(() => {
+                  const totalDiscount = (selectedInvoice.payments ?? []).reduce((sum: number, p: any) => sum + (p.discount || 0), 0);
+                  const totalLateFee = selectedInvoice.adjustments?.filter(adj => adj.type === "fine").reduce((sum: number, adj: any) => sum + adj.amount, 0) ?? 0;
+                  const netAmount = selectedInvoice.amount - totalDiscount + totalLateFee;
+                  
+                  return (
+                    <div className="grid gap-4 sm:grid-cols-5">
+                      <div className="rounded-2xl border border-slate-200/70 bg-blue-50/50 p-4">
+                        <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Original Amount</p>
+                        <p className="mt-2 text-lg font-bold text-blue-900">{formatCurrency(selectedInvoice.amount)}</p>
+                      </div>
+                      {totalDiscount > 0 && (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                          <p className="text-xs uppercase tracking-[0.16em] text-amber-700 font-semibold">Total Discount</p>
+                          <p className="mt-2 text-lg font-bold text-amber-900">-{formatCurrency(totalDiscount)}</p>
+                        </div>
+                      )}
+                      {totalLateFee > 0 && (
+                        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                          <p className="text-xs uppercase tracking-[0.16em] text-rose-700 font-semibold">Late Fee</p>
+                          <p className="mt-2 text-lg font-bold text-rose-900">+{formatCurrency(totalLateFee)}</p>
+                        </div>
+                      )}
+                      <div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4">
+                        <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Paid</p>
+                        <p className="mt-2 text-lg font-bold text-emerald-700">{formatCurrency(selectedInvoice.paidAmount)}</p>
+                      </div>
+                      <div className="rounded-2xl border border-slate-300 bg-slate-100 p-4">
+                        <p className="text-xs uppercase tracking-[0.16em] text-slate-700 font-semibold">Remaining</p>
+                        <p className="mt-2 text-lg font-bold text-slate-900">{formatCurrency(selectedInvoice.remainingBalance)}</p>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Invoice Items and Adjustments */}
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-slate-900">Invoice items</h3>
+                    {(selectedInvoice.lineItems.length ? selectedInvoice.lineItems : [{ label: selectedInvoice.description, amount: selectedInvoice.amount }]).map((item, index) => (
+                      <div key={`${item.label}-${index}`} className="flex items-center justify-between rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4">
+                        <div>
+                          <p className="font-medium text-slate-900">{item.label}</p>
+                          <p className="text-xs text-slate-500">{selectedInvoice.description}</p>
+                        </div>
+                        <p className="font-semibold text-slate-900">{formatCurrency(item.amount)}</p>
+                      </div>
+                    ))}
+                    {selectedInvoice.notes && (
+                      <div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4 text-sm text-slate-600">
+                        <span className="font-medium text-slate-900">Notes:</span> {selectedInvoice.notes}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-slate-900">Adjustments & Fees</h3>
+                    {(() => {
+                      // Collect all adjustments: regular adjustments + payment discounts
+                      const adjustmentItems = [
+                        // Regular adjustments from adjustments array
+                        ...(selectedInvoice.adjustments ?? []),
+                        // Virtual discount adjustments from payments
+                        ...(selectedInvoice.payments ?? [])
+                          .filter((p: any) => p.discount && p.discount > 0)
+                          .map((p: any) => ({
+                            id: `discount-${p.id}`,
+                            type: "discount",
+                            reason: p.discountReason || "Payment discount",
+                            amount: p.discount,
+                            notes: `Applied on ${formatDate(p.paymentDate, "MMM dd, yyyy")}`,
+                          })),
+                      ];
+
+                      return adjustmentItems.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500">
+                          No adjustments or discounts applied to this invoice.
+                        </div>
+                      ) : (
+                        adjustmentItems.map((adj: any) => {
+                          const isLateFee = adj.type === "fine";
+                          const isDiscount = adj.type === "discount";
+                          const isScholarship = adj.type === "scholarship";
+                          
+                          return (
+                            <div key={adj.id} className={`rounded-2xl border p-4 ${
+                              isLateFee ? "border-rose-200 bg-rose-50/50" : 
+                              isDiscount ? "border-amber-200 bg-amber-50/50" :
+                              "border-blue-200 bg-blue-50/50"
+                            }`}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className={`text-sm font-semibold ${
+                                    isLateFee ? "text-rose-900" :
+                                    isDiscount ? "text-amber-900" :
+                                    "text-blue-900"
+                                  }`}>
+                                    {isLateFee ? "🕐 Late Fee" : isDiscount ? "🎁 Discount" : "🎓 Scholarship"}
+                                  </p>
+                                  <p className={`text-xs ${
+                                    isLateFee ? "text-rose-700" :
+                                    isDiscount ? "text-amber-700" :
+                                    "text-blue-700"
+                                  }`}>
+                                    {adj.reason}
+                                  </p>
+                                </div>
+                                <p className={`text-sm font-bold whitespace-nowrap ${
+                                  isLateFee ? "text-rose-900" :
+                                  isDiscount ? "text-amber-900" :
+                                  "text-blue-900"
+                                }`}>
+                                  {isDiscount || isLateFee ? (isDiscount ? "-" : "+") : "+"}{formatCurrency(adj.amount)}
+                                </p>
+                              </div>
+                              {adj.notes && <p className="mt-2 text-xs text-slate-600">{adj.notes}</p>}
+                            </div>
+                          );
+                        })
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Payments */}
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-slate-900">Payments</h3>
+                  {(selectedInvoice.payments ?? []).length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500">
+                      No payments recorded yet for this invoice.
+                    </div>
+                  ) : (
+                    (selectedInvoice.payments ?? []).map((payment: any) => {
+                      const discountAmount = payment.discount || 0;
+                      return (
+                        <div key={payment.id} className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-slate-900">{formatDate(payment.paymentDate, "MMM dd, yyyy")}</p>
+                              <p className="text-xs text-slate-500">{payment.method} • {payment.receiptNumber ?? "Receipt pending"}</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <p className="font-semibold text-slate-900">{formatCurrency(payment.amount)}</p>
+                                {discountAmount > 0 && (
+                                  <p className="text-xs text-amber-600">-{formatCurrency(discountAmount)} discount</p>
+                                )}
+                              </div>
+                              <Button size="sm" variant="outline" onClick={() => handlePrintReceipt(selectedInvoice, payment)}>
+                                <Printer className="mr-1.5 h-3.5 w-3.5" />
+                                Receipt
+                              </Button>
+                            </div>
+                          </div>
+                          {discountAmount > 0 && (
+                            <div className="mt-3 rounded-xl bg-amber-50/50 border border-amber-100 p-3">
+                              <div className="flex justify-between items-center gap-2">
+                                <div>
+                                  <p className="text-xs text-amber-700 font-medium">Discount Applied</p>
+                                  <p className="text-xs text-amber-600">{payment.discountReason || "No reason specified"}</p>
+                                </div>
+                                <p className="font-semibold text-amber-700">{formatCurrency(discountAmount)}</p>
+                              </div>
+                            </div>
+                          )}
+                          {(payment.reference || payment.notes) && <p className="mt-2 text-xs text-slate-500">{payment.reference ?? payment.notes}</p>}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-wrap justify-end gap-3">
+                  {selectedInvoice.remainingBalance > 0 && (
+                    <Button variant="outline" onClick={() => openPaymentDialog(selectedInvoice)}>
+                      <ReceiptText className="mr-2 h-4 w-4" />
+                      Record payment
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={() => handlePrintInvoice(selectedInvoice)}>
+                    <Printer className="mr-2 h-4 w-4" />
+                    Print invoice / Save PDF
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
         </Dialog>
 
         <AlertDialog open={!!deletingInvoice} onOpenChange={(open) => !open && setDeleteInvoiceId(null)}>
@@ -479,6 +850,13 @@ export default function Finance() {
         <FeeAdjustmentDialog
           open={adjustmentDialogOpen}
           onOpenChange={setAdjustmentDialogOpen}
+          selectedStudent={studentFilter === "all" ? undefined : { id: Number(studentFilter), name: studentDirectory.get(Number(studentFilter))?.name ?? "" }}
+        />
+
+        {/* Apply Late Fee Dialog */}
+        <ApplyLateFeeDialog
+          open={lateFeeDialogOpen}
+          onOpenChange={setLateFeeDialogOpen}
           selectedStudent={studentFilter === "all" ? undefined : { id: Number(studentFilter), name: studentDirectory.get(Number(studentFilter))?.name ?? "" }}
         />
 

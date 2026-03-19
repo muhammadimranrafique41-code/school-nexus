@@ -28,6 +28,8 @@ export function GenerateSingleStudentFeeDialog({ open, onOpenChange }: GenerateS
   const [billingMonth, setBillingMonth] = useState(getCurrentBillingMonth());
   const [dueDay, setDueDay] = useState("5");
   const [amount, setAmount] = useState("");
+  const [discount, setDiscount] = useState("");
+  const [discountReason, setDiscountReason] = useState("");
   const [description, setDescription] = useState("Monthly tuition fee");
   const [feeType, setFeeType] = useState("Monthly Fee");
   const [notes, setNotes] = useState("");
@@ -56,6 +58,8 @@ export function GenerateSingleStudentFeeDialog({ open, onOpenChange }: GenerateS
         return;
       }
 
+      const discountAmount = discount ? Math.round(Number(discount) * 100) / 100 : 0;
+      
       const payload = {
         studentId: Number(studentId),
         amount: feeAmount,
@@ -65,6 +69,8 @@ export function GenerateSingleStudentFeeDialog({ open, onOpenChange }: GenerateS
         description: description.trim(),
         feeType: feeType.trim() || "Monthly Fee",
         notes: notes.trim() || null,
+        discount: discountAmount > 0 ? discountAmount : 0,
+        discountReason: (discountAmount > 0 && discountReason.trim()) ? discountReason.trim() : null,
         lineItems: [{ label: description.trim(), amount: feeAmount }],
         source: "manual" as const,
       };
@@ -81,6 +87,8 @@ export function GenerateSingleStudentFeeDialog({ open, onOpenChange }: GenerateS
       setBillingMonth(getCurrentBillingMonth());
       setDueDay("5");
       setAmount("");
+      setDiscount("");
+      setDiscountReason("");
       setDescription("Monthly tuition fee");
       setFeeType("Monthly Fee");
       setNotes("");
@@ -205,6 +213,39 @@ export function GenerateSingleStudentFeeDialog({ open, onOpenChange }: GenerateS
             </div>
           </div>
 
+          {/* Discount Fields (Optional) */}
+          <div className="grid gap-4 sm:grid-cols-2 rounded-2xl border-2 border-amber-100 bg-amber-50/50 p-4">
+            <div className="space-y-2">
+              <Label htmlFor="discount" className="text-sm font-medium flex items-center gap-2">
+                🎁 Discount (Optional)
+              </Label>
+              <Input
+                id="discount"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value)}
+              />
+              {discount && <p className="text-xs text-amber-700">Discount: {formatCurrency(Number(discount))}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="discount-reason" className="text-sm font-medium">
+                Discount Reason
+              </Label>
+              <Input
+                id="discount-reason"
+                placeholder="e.g., Merit award, scholarship"
+                value={discountReason}
+                onChange={(e) => setDiscountReason(e.target.value)}
+                maxLength={200}
+                disabled={!discount}
+              />
+            </div>
+          </div>
+
           {/* Description */}
           <div className="space-y-2">
             <Label htmlFor="description" className="text-sm font-medium flex items-center gap-2">
@@ -240,7 +281,7 @@ export function GenerateSingleStudentFeeDialog({ open, onOpenChange }: GenerateS
 
           {/* Preview Card */}
           {selectedStudent && amount && (
-            <Card className="border-slate-200 bg-slate-50/50">
+            <Card className="border-blue-200 bg-blue-50/50">
               <CardContent className="space-y-3 pt-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-600">Bill to:</span>
@@ -250,11 +291,23 @@ export function GenerateSingleStudentFeeDialog({ open, onOpenChange }: GenerateS
                   <span className="text-sm text-slate-600">Description:</span>
                   <span className="font-semibold text-slate-900">{description || "—"}</span>
                 </div>
-                <div className="border-t border-slate-200 pt-3">
+                <div className="border-t border-blue-200 pt-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-slate-900">Total Amount:</span>
-                    <span className="text-xl font-bold text-slate-900">{formatCurrency(Number(amount) || 0)}</span>
+                    <span className="text-sm font-medium text-slate-900">Invoice Amount:</span>
+                    <span className="text-lg font-bold text-slate-900">{formatCurrency(Number(amount) || 0)}</span>
                   </div>
+                  {discount && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-slate-900">Discount:</span>
+                      <span className="text-lg font-bold text-amber-600">-{formatCurrency(Number(discount))}</span>
+                    </div>
+                  )}
+                  {(Number(amount) || 0) + (Number(discount) || 0) > 0 && (
+                    <div className="flex items-center justify-between border-t border-blue-200 pt-2">
+                      <span className="text-sm font-bold text-blue-700">Net Amount:</span>
+                      <span className="text-xl font-bold text-blue-700">{formatCurrency((Number(amount) || 0) - (Number(discount) || 0))}</span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

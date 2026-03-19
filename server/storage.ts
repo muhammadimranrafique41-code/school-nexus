@@ -1735,7 +1735,17 @@ export class DatabaseStorage implements IStorage {
     const saved = await db.transaction(async (tx) => {
       const [feeRecord] = await tx.select().from(fees).where(eq(fees.id, id)).limit(1);
       if (!feeRecord) return undefined;
-      if (payment.amount > feeRecord.remainingBalance) throw new Error("Payment amount cannot exceed the remaining balance");
+      
+      // Validate payment amount is positive
+      if (payment.amount <= 0) throw new Error("Payment amount must be greater than 0");
+
+      // Validate discount separately - cannot exceed remaining balance
+      const discount = payment.discount ?? 0;
+      if (discount < 0) throw new Error("Discount cannot be negative");
+      if (discount > feeRecord.remainingBalance) throw new Error("Discount cannot exceed the remaining invoice balance");
+      
+      // Allow overpayment: payment can exceed remaining balance
+      // This enables valid scenarios like: balance 1250, pay 1200 + discount 250 = full coverage
 
       const timestamp = new Date().toISOString();
       const [createdPayment] = await tx
@@ -1744,6 +1754,8 @@ export class DatabaseStorage implements IStorage {
           feeId: feeRecord.id,
           studentId: feeRecord.studentId,
           amount: payment.amount,
+          discount: discount,
+          discountReason: payment.discountReason ?? null,
           paymentDate: payment.paymentDate,
           method: payment.method,
           receiptNumber: null,
@@ -1763,13 +1775,21 @@ export class DatabaseStorage implements IStorage {
       );
       await tx.update(feePayments).set({ receiptNumber }).where(eq(feePayments.id, createdPayment.id));
 
-      const ledger = summarizeFeeLedger(feeRecord.amount, feeRecord.paidAmount + payment.amount, feeRecord.dueDate);
+      // Update fee: payment reduces remaining and discount also reduces remaining
+      const newPaidAmount = feeRecord.paidAmount + payment.amount;
+      const ledger = summarizeFeeLedger(feeRecord.amount, newPaidAmount, feeRecord.dueDate);
+      
+      // Account for all discounts applied to this fee (from all payments)
+      const allPayments = await tx.select().from(feePayments).where(eq(feePayments.feeId, feeRecord.id));
+      const totalDiscounts = allPayments.reduce((sum, p) => sum + (p.discount || 0), 0);
+      const adjustedRemainingBalance = Math.max(0, ledger.remainingBalance - totalDiscounts);
+      
       await tx
         .update(fees)
         .set({
-          paidAmount: ledger.paidAmount,
-          remainingBalance: ledger.remainingBalance,
-          status: ledger.status,
+          paidAmount: newPaidAmount,
+          remainingBalance: adjustedRemainingBalance,
+          status: adjustedRemainingBalance === 0 ? "Paid" : ledger.status,
           updatedAt: timestamp,
         })
         .where(eq(fees.id, feeRecord.id));
@@ -1782,12 +1802,16 @@ export class DatabaseStorage implements IStorage {
     // Log ledger entry for payment
     const feeRecord = await this.getFee(saved);
     if (feeRecord) {
+      const discountAmount = payment.discount ?? 0;
+      const discountText = discountAmount > 0 ? ` with discount of ${(discountAmount / 100).toFixed(2)}` : "";
+      const ledgerDescription = `Payment of ${(payment.amount / 100).toFixed(2)} received via ${payment.method}${discountText}`;
+      
       await this.createLedgerEntry(feeRecord.studentId, "payment", {
         feeId: saved,
         debit: 0,
-        credit: payment.amount,
+        credit: payment.amount + discountAmount, // Credit both payment and discount
         referenceId: `PAY-${saved}`,
-        description: `Payment received via ${payment.method}`,
+        description: ledgerDescription,
         createdBy,
       });
     }

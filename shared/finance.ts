@@ -43,6 +43,8 @@ export const recordFeePaymentInputSchema = z.object({
   method: paymentMethodSchema,
   reference: z.string().trim().max(120).optional().nullable(),
   notes: z.string().trim().max(300).optional().nullable(),
+  discount: z.coerce.number().int().nonnegative("Discount must be non-negative").optional().nullable(),
+  discountReason: z.string().trim().max(200).optional().nullable(),
   idempotencyKey: z.string().trim().min(1).max(255).optional().nullable(),
 });
 
@@ -122,6 +124,8 @@ export type FinancePaymentSnapshot = {
   feeId: number;
   studentId: number;
   amount: number;
+  discount?: number | null;
+  discountReason?: string | null;
   paymentDate: string;
   method: PaymentMethod;
   receiptNumber?: string | null;

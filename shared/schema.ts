@@ -261,6 +261,8 @@ export const feePayments = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     amount: integer("amount").notNull(),
+    discount: integer("discount").default(0).notNull(),
+    discountReason: text("discount_reason"),
     paymentDate: text("payment_date").notNull(),
     method: text("method").$type<PaymentMethod>().notNull(),
     receiptNumber: text("receipt_number"),
