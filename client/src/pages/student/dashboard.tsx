@@ -83,9 +83,23 @@ export default function StudentDashboard() {
               <h1 className="text-xl font-bold tracking-tight text-slate-900">
                 Hello, {user?.name?.split(" ")[0]} 👋
               </h1>
-              <p className="text-[12px] text-slate-400">
-                Your attendance, results, timetable and fees — all in one place.
-              </p>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                {(user as any)?.rollNumber && (
+                   <span className="inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-bold tracking-wide text-indigo-700">
+                     ROLL: {(user as any).rollNumber}
+                   </span>
+                )}
+                {(user as any)?.className && (
+                   <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold tracking-wide text-slate-600">
+                     CLASS: {(user as any).className}
+                   </span>
+                )}
+                {(user as any)?.studentStatus === "active" && (
+                   <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 border border-emerald-200">
+                     Active
+                   </span>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex gap-2 self-start sm:self-auto">

@@ -51,6 +51,13 @@ export const users = pgTable("users", {
   className: text("class_name"), // For students
   fatherName: text("father_name"), // For students
   studentPhotoUrl: text("student_photo_url"), // For students
+  rollNumber: text("roll_number"), // SCH-2025-0001
+  dateOfBirth: text("date_of_birth"),
+  gender: text("gender"), // 'male', 'female', 'other'
+  admissionDate: text("admission_date"),
+  studentStatus: text("student_status").default("active"), // 'active', 'inactive', 'graduated', 'suspended'
+  phone: text("phone"),
+  address: text("address"),
 });
 
 export const sessions = pgTable("session", {
@@ -736,6 +743,13 @@ export const insertUserSchema = createInsertSchema(users)
     className: optionalUserTextFieldSchema,
     fatherName: optionalUserTextFieldSchema,
     studentPhotoUrl: optionalStudentPhotoUrlSchema,
+    rollNumber: optionalUserTextFieldSchema,
+    dateOfBirth: optionalUserTextFieldSchema,
+    gender: z.enum(["male", "female", "other"]).nullable().optional(),
+    admissionDate: optionalUserTextFieldSchema,
+    studentStatus: z.enum(["active", "inactive", "graduated", "suspended"]).nullable().optional().default("active"),
+    phone: optionalUserTextFieldSchema,
+    address: optionalUserTextFieldSchema,
   });
 export const insertStudentSchema = createInsertSchema(students);
 export const insertTeacherSchema = createInsertSchema(teachers);

@@ -21,6 +21,7 @@ import AdminClassDetail from "./pages/admin/class-detail";
 import AdminTimetable from "./pages/admin/timetable";
 import AdminHomeworkDiary from "./pages/admin/homework-diary";
 import AdminDailyDiary from "./pages/admin/daily-diary";
+import AdminStudentProfile from "./pages/admin/student-profile";
 
 import TeacherDashboard from "./pages/teacher/dashboard";
 import TeacherAttendance from "./pages/teacher/attendance";
@@ -54,6 +55,9 @@ function Router() {
       </Route>
       <Route path="/admin/students/create">
         <ProtectedRoute allowedRoles={['admin']}><CreateStudent /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/students/:id">
+        <ProtectedRoute allowedRoles={['admin']}><AdminStudentProfile /></ProtectedRoute>
       </Route>
       <Route path="/admin/students">
         <ProtectedRoute allowedRoles={['admin']}><AdminUsers roleFilter="student" /></ProtectedRoute>
