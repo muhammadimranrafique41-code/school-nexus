@@ -24,6 +24,8 @@ type ListedUser = {
   subject?: string | null; designation?: string | null; department?: string | null;
   employeeId?: string | null; teacherPhotoUrl?: string | null; className?: string | null;
   fatherName?: string | null; studentPhotoUrl?: string | null;
+  rollNumber?: string | null; dateOfBirth?: string | null; gender?: string | null;
+  admissionDate?: string | null; studentStatus?: string | null; phone?: string | null; address?: string | null;
 };
 
 const optionalUrlField = z.union([z.string().trim().url("Enter a valid photo URL"), z.literal("")]).optional();
@@ -33,6 +35,9 @@ const userSchema = z.object({
   subject: z.string().optional(), designation: z.string().optional(), department: z.string().optional(),
   employeeId: z.string().optional(), teacherPhotoUrl: optionalUrlField,
   className: z.string().optional(), fatherName: z.string().optional(), studentPhotoUrl: optionalUrlField,
+  rollNumber: z.string().optional(), dateOfBirth: z.string().optional(), gender: z.string().optional(),
+  admissionDate: z.string().optional(), studentStatus: z.string().optional().default("active"),
+  phone: z.string().optional(), address: z.string().optional(),
 }).superRefine((data, ctx) => {
   if (data.password && data.password.length < 6) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["password"], message: "Password must be at least 6 characters" });
   if (data.role === "teacher" && !data.subject?.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["subject"], message: "Subject is required for teachers" });
@@ -87,7 +92,7 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
   const defaultRole = roleFilter ?? "student";
   const form = useForm<z.infer<typeof userSchema>>({
     resolver: zodResolver(userSchema),
-    defaultValues: { name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "" },
+    defaultValues: { name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "", rollNumber: "", dateOfBirth: "", gender: "male", admissionDate: "", studentStatus: "active", phone: "", address: "" },
   });
   const watchRole = form.watch("role");
   const mutationPending = createUser.isPending || updateUser.isPending;
@@ -106,13 +111,13 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
 
   const openCreateDialog = () => {
     setEditingUser(null);
-    form.reset({ name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "" });
+    form.reset({ name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "", rollNumber: "", dateOfBirth: "", gender: "male", admissionDate: "", studentStatus: "active", phone: "", address: "" });
     setIsOpen(true);
   };
 
   const openEditDialog = (user: ListedUser) => {
     setEditingUser(user);
-    form.reset({ name: user.name, email: user.email, password: "", role: roleFilter ?? (user.role === "admin" || user.role === "teacher" ? user.role : "student"), subject: user.subject ?? "", designation: user.designation ?? "", department: user.department ?? "", employeeId: user.employeeId ?? "", teacherPhotoUrl: user.teacherPhotoUrl ?? "", className: user.className ?? "", fatherName: user.fatherName ?? "", studentPhotoUrl: user.studentPhotoUrl ?? "" });
+    form.reset({ name: user.name, email: user.email, password: "", role: roleFilter ?? (user.role === "admin" || user.role === "teacher" ? user.role : "student"), subject: user.subject ?? "", designation: user.designation ?? "", department: user.department ?? "", employeeId: user.employeeId ?? "", teacherPhotoUrl: user.teacherPhotoUrl ?? "", className: user.className ?? "", fatherName: user.fatherName ?? "", studentPhotoUrl: user.studentPhotoUrl ?? "", rollNumber: user.rollNumber ?? "", dateOfBirth: user.dateOfBirth ?? "", gender: user.gender ?? "male", admissionDate: user.admissionDate ?? "", studentStatus: user.studentStatus ?? "active", phone: user.phone ?? "", address: user.address ?? "" });
     setIsOpen(true);
   };
 
@@ -129,6 +134,13 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
       className: role === "student" ? values.className?.trim() || undefined : undefined,
       fatherName: role === "student" ? values.fatherName?.trim() || undefined : undefined,
       studentPhotoUrl: role === "student" ? values.studentPhotoUrl?.trim() || undefined : undefined,
+      rollNumber: role === "student" ? values.rollNumber?.trim() || undefined : undefined,
+      dateOfBirth: role === "student" ? values.dateOfBirth?.trim() || undefined : undefined,
+      gender: role === "student" ? values.gender || undefined : undefined,
+      admissionDate: role === "student" ? values.admissionDate?.trim() || undefined : undefined,
+      studentStatus: role === "student" ? values.studentStatus || undefined : undefined,
+      phone: role === "student" ? values.phone?.trim() || undefined : undefined,
+      address: role === "student" ? values.address?.trim() || undefined : undefined,
     };
     if (!editingUser && !payload.password) return form.setError("password", { message: "Temporary password is required" });
     try {
@@ -136,7 +148,7 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
       else await createUser.mutateAsync({ ...payload, password: payload.password! });
       toast({ title: editingUser ? "User updated" : "User created", description: `${payload.name} has been saved successfully.` });
       setIsOpen(false); setEditingUser(null);
-      form.reset({ name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "" });
+      form.reset({ name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "", rollNumber: "", dateOfBirth: "", gender: "male", admissionDate: "", studentStatus: "active", phone: "", address: "" });
     } catch (error) { toast({ title: "Unable to save user", description: getErrorMessage(error), variant: "destructive" }); }
   };
 
@@ -371,7 +383,7 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
 
         {/* ── Create / Edit Dialog ─────────────────────────────────────── */}
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-base font-semibold">
                 {editingUser ? "Edit user" : "Add new user"}
@@ -457,15 +469,61 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
                   <div className="space-y-3 rounded-lg border border-sky-100 bg-sky-50/40 p-3">
                     <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-600">Student details</p>
                     <div className="grid gap-3 sm:grid-cols-2">
+                      <FormField control={form.control} name="rollNumber" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs font-medium text-slate-700">Roll Number</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="SCH-2025-001" {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                      )} />
                       <FormField control={form.control} name="className" render={({ field }) => (
                         <FormItem><FormLabel className="text-xs font-medium text-slate-700">Class *</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="Grade 10-A" {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
                       )} />
-                      <FormField control={form.control} name="fatherName" render={({ field }) => (
-                        <FormItem><FormLabel className="text-xs font-medium text-slate-700">Father's name</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="Muhammad Aslam" {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                       <FormField control={form.control} name="fatherName" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs font-medium text-slate-700">Father's Name</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="Guardian Name" {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                      )} />
+                      <FormField control={form.control} name="dateOfBirth" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs font-medium text-slate-700">Date of Birth</FormLabel><FormControl><Input type="date" className="h-8 text-sm" {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                      )} />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <FormField control={form.control} name="gender" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs font-medium text-slate-700">Gender</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl><SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger></FormControl>
+                            <SelectContent>
+                              <SelectItem value="male">Male</SelectItem>
+                              <SelectItem value="female">Female</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        <FormMessage className="text-[11px]" /></FormItem>
+                      )} />
+                      <FormField control={form.control} name="studentStatus" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs font-medium text-slate-700">Status</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl><SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger></FormControl>
+                            <SelectContent>
+                              <SelectItem value="active">Active</SelectItem>
+                              <SelectItem value="inactive">Inactive</SelectItem>
+                              <SelectItem value="graduated">Graduated</SelectItem>
+                              <SelectItem value="suspended">Suspended</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        <FormMessage className="text-[11px]" /></FormItem>
+                      )} />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <FormField control={form.control} name="admissionDate" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs font-medium text-slate-700">Admission Date</FormLabel><FormControl><Input type="date" className="h-8 text-sm" {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                      )} />
+                       <FormField control={form.control} name="phone" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs font-medium text-slate-700">Contact Number</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="+1234..." {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
                       )} />
                     </div>
                     <FormField control={form.control} name="studentPhotoUrl" render={({ field }) => (
                       <FormItem><FormLabel className="text-xs font-medium text-slate-700">Photo URL</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="https://…" {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                    )} />
+                    <FormField control={form.control} name="address" render={({ field }) => (
+                      <FormItem><FormLabel className="text-xs font-medium text-slate-700">Address / Location</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="Current address..." {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
                     )} />
                   </div>
                 )}
