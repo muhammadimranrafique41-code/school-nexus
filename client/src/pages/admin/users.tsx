@@ -4,7 +4,6 @@ import { useUsers, useCreateUser, useDeleteUser, useUpdateUser } from "@/hooks/u
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,34 +14,61 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Badge } from "@/components/ui/badge";
-import { Download, Loader2, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
+import { Download, GraduationCap, Loader2, Pencil, Plus, Search, ShieldCheck, Trash2, Users } from "lucide-react";
 import { downloadCsv, getErrorMessage, paginateItems } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 type UsersManagementProps = { roleFilter?: "admin" | "teacher" | "student" };
 type ListedUser = {
-  id: number;
-  name: string;
-  email: string;
-  role: string;
-  subject?: string | null;
-  designation?: string | null;
-  department?: string | null;
-  employeeId?: string | null;
-  teacherPhotoUrl?: string | null;
-  className?: string | null;
-  fatherName?: string | null;
-  studentPhotoUrl?: string | null;
+  id: number; name: string; email: string; role: string;
+  subject?: string | null; designation?: string | null; department?: string | null;
+  employeeId?: string | null; teacherPhotoUrl?: string | null; className?: string | null;
+  fatherName?: string | null; studentPhotoUrl?: string | null;
 };
 
 const optionalUrlField = z.union([z.string().trim().url("Enter a valid photo URL"), z.literal("")]).optional();
-
 const userSchema = z.object({
-  name: z.string().min(1, "Name is required"), email: z.string().email("Invalid email"), password: z.string().optional(), role: z.enum(["admin", "teacher", "student"]), subject: z.string().optional(), designation: z.string().optional(), department: z.string().optional(), employeeId: z.string().optional(), teacherPhotoUrl: optionalUrlField, className: z.string().optional(), fatherName: z.string().optional(), studentPhotoUrl: optionalUrlField,
+  name: z.string().min(1, "Name is required"), email: z.string().email("Invalid email"),
+  password: z.string().optional(), role: z.enum(["admin", "teacher", "student"]),
+  subject: z.string().optional(), designation: z.string().optional(), department: z.string().optional(),
+  employeeId: z.string().optional(), teacherPhotoUrl: optionalUrlField,
+  className: z.string().optional(), fatherName: z.string().optional(), studentPhotoUrl: optionalUrlField,
 }).superRefine((data, ctx) => {
   if (data.password && data.password.length < 6) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["password"], message: "Password must be at least 6 characters" });
   if (data.role === "teacher" && !data.subject?.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["subject"], message: "Subject is required for teachers" });
   if (data.role === "student" && !data.className?.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["className"], message: "Class is required for students" });
 });
+
+const PAGE_SIZE = 10;
+
+// ── Role badge ────────────────────────────────────────────────────────────
+function RoleBadge({ role }: { role: string }) {
+  const map: Record<string, string> = {
+    admin: "border-violet-200 bg-violet-50 text-violet-700",
+    teacher: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    student: "border-sky-200 bg-sky-50 text-sky-700",
+  };
+  return (
+    <span className={cn("inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", map[role] ?? "border-slate-200 bg-slate-50 text-slate-500")}>
+      {role}
+    </span>
+  );
+}
+
+// ── Avatar initials ───────────────────────────────────────────────────────
+function Avatar({ name, photoUrl, role }: { name: string; photoUrl?: string | null; role: string }) {
+  const colors: Record<string, string> = {
+    admin: "bg-violet-100 text-violet-700",
+    teacher: "bg-emerald-100 text-emerald-700",
+    student: "bg-sky-100 text-sky-700",
+  };
+  const initials = name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
+  return (
+    <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold", colors[role] ?? "bg-slate-100 text-slate-600")}>
+      {photoUrl ? <img src={photoUrl} alt={name} className="h-full w-full rounded-full object-cover" /> : initials}
+    </div>
+  );
+}
 
 export default function UsersManagement({ roleFilter }: UsersManagementProps) {
   const { data: users, isLoading } = useUsers();
@@ -50,34 +76,50 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
   const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
   const { toast } = useToast();
+
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeRole, setActiveRole] = useState<"all" | "admin" | "teacher" | "student">(roleFilter ?? "all");
   const [currentPage, setCurrentPage] = useState(1);
   const [editingUser, setEditingUser] = useState<ListedUser | null>(null);
   const [userToDelete, setUserToDelete] = useState<ListedUser | null>(null);
+
   const defaultRole = roleFilter ?? "student";
-  const form = useForm<z.infer<typeof userSchema>>({ resolver: zodResolver(userSchema), defaultValues: { name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "" } });
+  const form = useForm<z.infer<typeof userSchema>>({
+    resolver: zodResolver(userSchema),
+    defaultValues: { name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "" },
+  });
   const watchRole = form.watch("role");
   const mutationPending = createUser.isPending || updateUser.isPending;
 
   useEffect(() => setActiveRole(roleFilter ?? "all"), [roleFilter]);
   useEffect(() => setCurrentPage(1), [activeRole, searchTerm]);
-  const filteredUsers = useMemo(() => (users ?? []).filter((user) => {
-    const matchesRole = activeRole === "all" ? true : user.role === activeRole;
-    const query = searchTerm.toLowerCase();
-    const haystack = `${user.name} ${user.email} ${user.className ?? ""} ${user.subject ?? ""} ${user.fatherName ?? ""} ${user.designation ?? ""} ${user.department ?? ""} ${user.employeeId ?? ""}`.toLowerCase();
-    return matchesRole && haystack.includes(query);
-  }), [activeRole, searchTerm, users]);
-  const paginated = paginateItems(filteredUsers, currentPage, 8);
 
-  const openCreateDialog = () => { setEditingUser(null); form.reset({ name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "" }); setIsOpen(true); };
-  const openEditDialog = (user: ListedUser) => { setEditingUser(user); form.reset({ name: user.name, email: user.email, password: "", role: roleFilter ?? (user.role === "admin" || user.role === "teacher" ? user.role : "student"), subject: user.subject ?? "", designation: user.designation ?? "", department: user.department ?? "", employeeId: user.employeeId ?? "", teacherPhotoUrl: user.teacherPhotoUrl ?? "", className: user.className ?? "", fatherName: user.fatherName ?? "", studentPhotoUrl: user.studentPhotoUrl ?? "" }); setIsOpen(true); };
+  const filteredUsers = useMemo(() => (users ?? []).filter((user) => {
+    const matchesRole = activeRole === "all" || user.role === activeRole;
+    const query = searchTerm.toLowerCase();
+    const hay = `${user.name} ${user.email} ${user.className ?? ""} ${user.subject ?? ""} ${user.fatherName ?? ""} ${user.designation ?? ""} ${user.department ?? ""} ${user.employeeId ?? ""}`.toLowerCase();
+    return matchesRole && hay.includes(query);
+  }), [activeRole, searchTerm, users]);
+
+  const paginated = paginateItems(filteredUsers, currentPage, PAGE_SIZE);
+
+  const openCreateDialog = () => {
+    setEditingUser(null);
+    form.reset({ name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "" });
+    setIsOpen(true);
+  };
+
+  const openEditDialog = (user: ListedUser) => {
+    setEditingUser(user);
+    form.reset({ name: user.name, email: user.email, password: "", role: roleFilter ?? (user.role === "admin" || user.role === "teacher" ? user.role : "student"), subject: user.subject ?? "", designation: user.designation ?? "", department: user.department ?? "", employeeId: user.employeeId ?? "", teacherPhotoUrl: user.teacherPhotoUrl ?? "", className: user.className ?? "", fatherName: user.fatherName ?? "", studentPhotoUrl: user.studentPhotoUrl ?? "" });
+    setIsOpen(true);
+  };
+
   const onSubmit = async (values: z.infer<typeof userSchema>) => {
     const role = roleFilter ?? values.role;
     const payload = {
-      ...values,
-      role,
+      ...values, role,
       password: values.password?.trim() || undefined,
       subject: role === "teacher" ? values.subject?.trim() || undefined : undefined,
       designation: role === "teacher" ? values.designation?.trim() || undefined : undefined,
@@ -90,218 +132,368 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
     };
     if (!editingUser && !payload.password) return form.setError("password", { message: "Temporary password is required" });
     try {
-      if (editingUser) await updateUser.mutateAsync({ id: editingUser.id, ...payload }); else await createUser.mutateAsync({ ...payload, password: payload.password! });
+      if (editingUser) await updateUser.mutateAsync({ id: editingUser.id, ...payload });
+      else await createUser.mutateAsync({ ...payload, password: payload.password! });
       toast({ title: editingUser ? "User updated" : "User created", description: `${payload.name} has been saved successfully.` });
-      setIsOpen(false); setEditingUser(null); form.reset({ name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "" });
+      setIsOpen(false); setEditingUser(null);
+      form.reset({ name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "" });
     } catch (error) { toast({ title: "Unable to save user", description: getErrorMessage(error), variant: "destructive" }); }
   };
+
   const handleDelete = async () => {
     if (!userToDelete) return;
-    try { await deleteUser.mutateAsync(userToDelete.id); toast({ title: "User deleted", description: `${userToDelete.name} has been removed.` }); setUserToDelete(null); }
-    catch (error) { toast({ title: "Unable to delete user", description: getErrorMessage(error), variant: "destructive" }); }
+    try {
+      await deleteUser.mutateAsync(userToDelete.id);
+      toast({ title: "User deleted", description: `${userToDelete.name} has been removed.` });
+      setUserToDelete(null);
+    } catch (error) { toast({ title: "Unable to delete user", description: getErrorMessage(error), variant: "destructive" }); }
   };
-  const summary = { total: users?.length ?? 0, students: users?.filter((u) => u.role === "student").length ?? 0, teachers: users?.filter((u) => u.role === "teacher").length ?? 0, admins: users?.filter((u) => u.role === "admin").length ?? 0 };
+
+  const summary = {
+    total: users?.length ?? 0,
+    students: users?.filter((u) => u.role === "student").length ?? 0,
+    teachers: users?.filter((u) => u.role === "teacher").length ?? 0,
+    admins: users?.filter((u) => u.role === "admin").length ?? 0,
+  };
+
   const exportUsers = () => downloadCsv(`${roleFilter ?? "users"}-export.csv`, filteredUsers.map((user) => ({ Name: user.name, Email: user.email, Role: user.role, Subject: user.subject ?? "", Designation: user.designation ?? "", Department: user.department ?? "", "Employee ID": user.employeeId ?? "", Class: user.className ?? "", "Father Name": user.fatherName ?? "", "Teacher Photo URL": user.teacherPhotoUrl ?? "", "Student Photo URL": user.studentPhotoUrl ?? "" })));
 
   return (
     <Layout>
-      <div className="space-y-8 pb-8">
-        <section className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
-          <div className="relative overflow-hidden rounded-[1.9rem] border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-8 text-white shadow-[0_28px_80px_-32px_rgba(15,23,42,0.75)]">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(129,140,248,0.22),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(236,72,153,0.18),_transparent_26%)]" />
-            <div className="relative space-y-5">
-              <Badge variant="outline" className="border-white/15 bg-white/10 text-white">Directory workspace</Badge>
-              <div className="space-y-3">
-                <h1 className="text-4xl font-display font-bold tracking-tight md:text-5xl">
-                  {roleFilter ? `${roleFilter[0].toUpperCase()}${roleFilter.slice(1)} Directory` : "User Management"}
-                </h1>
-                <p className="max-w-2xl text-base leading-7 text-slate-300 md:text-lg">
-                  {roleFilter ? `Manage all ${roleFilter}s in the system with premium search, filters, and role-aware editing.` : "Manage admins, teachers, and students from one unified directory experience."}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Button variant="secondary" className="border-none bg-white text-slate-900 hover:bg-slate-100" onClick={openCreateDialog}>
-                  <Plus className="mr-2 h-4 w-4" /> Add User
-                </Button>
-                <Button variant="outline" className="border-white/15 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white" onClick={exportUsers} disabled={filteredUsers.length === 0}>
-                  <Download className="mr-2 h-4 w-4" /> Export CSV
-                </Button>
-              </div>
+      <div className="space-y-5 pb-8">
+
+        {/* ── Page header ─────────────────────────────────────────────── */}
+        <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          {/* Left: title + accent bar */}
+          <div className="flex items-center gap-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+              <Users className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">
+                {roleFilter ? `${roleFilter[0].toUpperCase()}${roleFilter.slice(1)} Directory` : "User Management"}
+              </h1>
+              <p className="mt-0.5 text-[12px] text-slate-400">
+                {roleFilter
+                  ? `Manage all ${roleFilter}s — search, filter, and edit with role-aware forms.`
+                  : "Unified directory for admins, teachers, and students."}
+              </p>
             </div>
           </div>
-
-          <Card className="bg-white/75">
-            <CardContent className="grid gap-4 p-6 sm:grid-cols-2">
-              {[
-                { label: "All users", value: summary.total, accent: "from-violet-500/15 to-fuchsia-500/15", iconClass: "text-violet-600" },
-                { label: "Students", value: summary.students, accent: "from-sky-500/15 to-indigo-500/15", iconClass: "text-sky-600" },
-                { label: "Teachers", value: summary.teachers, accent: "from-emerald-500/15 to-teal-500/15", iconClass: "text-emerald-600" },
-                { label: "Admins", value: summary.admins, accent: "from-amber-500/15 to-orange-500/15", iconClass: "text-amber-600" },
-              ].map((item) => (
-                <div key={item.label} className="flex items-center justify-between rounded-[1.25rem] border border-slate-200/70 bg-slate-50/80 p-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
-                    <p className="mt-3 text-3xl font-display font-bold text-slate-900">{item.value}</p>
-                  </div>
-                  <div className={`rounded-2xl bg-gradient-to-br ${item.accent} p-3 ${item.iconClass}`}>
-                    <Users className="h-5 w-5" />
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          {/* Right: actions */}
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={exportUsers} disabled={filteredUsers.length === 0}>
+              <Download className="mr-1.5 h-3.5 w-3.5" />Export CSV
+            </Button>
+            <Button size="sm" onClick={openCreateDialog}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" />Add User
+            </Button>
+          </div>
         </section>
 
+        {/* ── KPI strip ───────────────────────────────────────────────── */}
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {[
+            { label: "Total users", value: summary.total, icon: Users, color: "text-indigo-600 bg-indigo-50", border: "border-indigo-100" },
+            { label: "Students", value: summary.students, icon: GraduationCap, color: "text-sky-600 bg-sky-50", border: "border-sky-100" },
+            { label: "Teachers", value: summary.teachers, icon: Users, color: "text-emerald-600 bg-emerald-50", border: "border-emerald-100" },
+            { label: "Admins", value: summary.admins, icon: ShieldCheck, color: "text-violet-600 bg-violet-50", border: "border-violet-100" },
+          ].map((item) => (
+            <Card key={item.label} className={cn("border bg-white shadow-none", item.border)}>
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", item.color)}>
+                  <item.icon className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{item.label}</p>
+                  <p className="mt-0.5 text-2xl font-bold leading-tight text-slate-900">{item.value}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </section>
+
+        {/* ── Table card ──────────────────────────────────────────────── */}
+        <Card className="overflow-hidden border-slate-200/80 bg-white shadow-none">
+
+          {/* Toolbar */}
+          <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Input
+                placeholder="Search name, email, class, subject…"
+                className="h-8 pl-8 text-sm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            {!roleFilter && (
+              <Select value={activeRole} onValueChange={(v: "all" | "admin" | "teacher" | "student") => setActiveRole(v)}>
+                <SelectTrigger className="h-8 w-full text-sm sm:w-[160px]">
+                  <SelectValue placeholder="All roles" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All roles</SelectItem>
+                  <SelectItem value="admin">Admins</SelectItem>
+                  <SelectItem value="teacher">Teachers</SelectItem>
+                  <SelectItem value="student">Students</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Table */}
+          <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50">
+                  <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">User</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Email</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Role</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Details</th>
+                  <th className="px-4 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={5} className="py-14 text-center">
+                      <Loader2 className="mx-auto h-5 w-5 animate-spin text-indigo-500" />
+                    </td>
+                  </tr>
+                ) : filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-14 text-center text-[13px] text-slate-400">
+                      No users found matching your search.
+                    </td>
+                  </tr>
+                ) : (
+                  paginated.pageItems.map((user, idx) => {
+                    const details = user.role === "teacher"
+                      ? [user.subject, user.designation, user.department, user.employeeId].filter(Boolean).join(" · ") || "—"
+                      : [user.className, user.fatherName].filter(Boolean).join(" · ") || "—";
+                    return (
+                      <tr
+                        key={user.id}
+                        className={cn(
+                          "group border-b border-slate-100 last:border-b-0 transition-colors duration-100 hover:bg-indigo-50/40",
+                          idx % 2 === 1 && "bg-slate-50/30",
+                        )}
+                      >
+                        {/* User — avatar + name */}
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <Avatar
+                              name={user.name}
+                              photoUrl={user.role === "teacher" ? user.teacherPhotoUrl : user.studentPhotoUrl}
+                              role={user.role}
+                            />
+                            <span className="text-[13px] font-semibold text-slate-900">{user.name}</span>
+                          </div>
+                        </td>
+
+                        {/* Email */}
+                        <td className="px-3 py-2.5">
+                          <span className="text-[12px] text-slate-500">{user.email}</span>
+                        </td>
+
+                        {/* Role badge */}
+                        <td className="px-3 py-2.5">
+                          <RoleBadge role={user.role} />
+                        </td>
+
+                        {/* Details */}
+                        <td className="px-3 py-2.5">
+                          <span className="max-w-[200px] truncate text-[12px] text-slate-400">{details}</span>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-4 py-2.5 text-right">
+                          <div className="flex items-center justify-end gap-1 opacity-50 transition-opacity group-hover:opacity-100">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 rounded-lg text-slate-500 hover:bg-indigo-50 hover:text-indigo-600"
+                              title="Edit user"
+                              onClick={() => openEditDialog(user)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                              title="Delete user"
+                              onClick={() => setUserToDelete(user)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {filteredUsers.length > 0 && (
+            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2.5">
+              <p className="text-[11px] text-slate-400">
+                {(paginated.currentPage - 1) * PAGE_SIZE + 1}–{Math.min(paginated.currentPage * PAGE_SIZE, filteredUsers.length)} of {filteredUsers.length} users
+              </p>
+              <Pagination className="mx-0 w-auto justify-end">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#"
+                      className={cn("h-7 text-xs", paginated.currentPage === 1 && "pointer-events-none opacity-40")}
+                      onClick={(e) => { e.preventDefault(); setCurrentPage((p) => Math.max(1, p - 1)); }}
+                    />
+                  </PaginationItem>
+                  <PaginationItem>
+                    <span className="px-3 text-[11px] text-slate-400">Page {paginated.currentPage} / {paginated.totalPages}</span>
+                  </PaginationItem>
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#"
+                      className={cn("h-7 text-xs", paginated.currentPage === paginated.totalPages && "pointer-events-none opacity-40")}
+                      onClick={(e) => { e.preventDefault(); setCurrentPage((p) => Math.min(paginated.totalPages, p + 1)); }}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
+        </Card>
+
+        {/* ── Create / Edit Dialog ─────────────────────────────────────── */}
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogContent className="sm:max-w-[520px]">
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>{editingUser ? "Edit User" : "Create New User"}</DialogTitle>
+              <DialogTitle className="text-base font-semibold">
+                {editingUser ? "Edit user" : "Add new user"}
+              </DialogTitle>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-                <FormField control={form.control} name="name" render={({ field }) => <FormItem><FormLabel>Full Name</FormLabel><FormControl><Input placeholder="John Doe" {...field} /></FormControl><FormMessage /></FormItem>} />
-                <FormField control={form.control} name="email" render={({ field }) => <FormItem><FormLabel>Email</FormLabel><FormControl><Input type="email" placeholder="john@school.edu" {...field} /></FormControl><FormMessage /></FormItem>} />
-                <FormField control={form.control} name="password" render={({ field }) => <FormItem><FormLabel>{editingUser ? "New Password (optional)" : "Temporary Password"}</FormLabel><FormControl><Input type="password" placeholder="••••••••" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
-                <FormField control={form.control} name="role" render={({ field }) => <FormItem><FormLabel>Role</FormLabel><Select onValueChange={field.onChange} value={field.value} disabled={!!roleFilter}><FormControl><SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger></FormControl><SelectContent><SelectItem value="admin">Admin</SelectItem><SelectItem value="teacher">Teacher</SelectItem><SelectItem value="student">Student</SelectItem></SelectContent></Select><FormMessage /></FormItem>} />
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3 pt-2">
+
+                {/* Core fields */}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormField control={form.control} name="name" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium text-slate-700">Full name</FormLabel>
+                      <FormControl><Input className="h-8 text-sm" placeholder="John Doe" {...field} /></FormControl>
+                      <FormMessage className="text-[11px]" />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="email" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium text-slate-700">Email</FormLabel>
+                      <FormControl><Input type="email" className="h-8 text-sm" placeholder="john@school.edu" {...field} /></FormControl>
+                      <FormMessage className="text-[11px]" />
+                    </FormItem>
+                  )} />
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormField control={form.control} name="password" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium text-slate-700">{editingUser ? "New password (optional)" : "Temporary password"}</FormLabel>
+                      <FormControl><Input type="password" className="h-8 text-sm" placeholder="••••••••" {...field} value={field.value ?? ""} /></FormControl>
+                      <FormMessage className="text-[11px]" />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="role" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium text-slate-700">Role</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={!!roleFilter}>
+                        <FormControl><SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select role" /></SelectTrigger></FormControl>
+                        <SelectContent>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="teacher">Teacher</SelectItem>
+                          <SelectItem value="student">Student</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage className="text-[11px]" />
+                    </FormItem>
+                  )} />
+                </div>
+
+                {/* Teacher-specific fields */}
                 {watchRole === "teacher" && (
-                  <>
-                    <FormField control={form.control} name="subject" render={({ field }) => <FormItem><FormLabel>Subject</FormLabel><FormControl><Input placeholder="Mathematics" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <FormField control={form.control} name="designation" render={({ field }) => <FormItem><FormLabel>Designation</FormLabel><FormControl><Input placeholder="Senior Teacher" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
-                      <FormField control={form.control} name="department" render={({ field }) => <FormItem><FormLabel>Department</FormLabel><FormControl><Input placeholder="Science Department" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
+                  <div className="space-y-3 rounded-lg border border-emerald-100 bg-emerald-50/40 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-600">Teacher details</p>
+                    <FormField control={form.control} name="subject" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium text-slate-700">Subject *</FormLabel>
+                        <FormControl><Input className="h-8 text-sm" placeholder="Mathematics" {...field} value={field.value ?? ""} /></FormControl>
+                        <FormMessage className="text-[11px]" />
+                      </FormItem>
+                    )} />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <FormField control={form.control} name="designation" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs font-medium text-slate-700">Designation</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="Senior Teacher" {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                      )} />
+                      <FormField control={form.control} name="department" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs font-medium text-slate-700">Department</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="Science Dept." {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                      )} />
                     </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <FormField control={form.control} name="employeeId" render={({ field }) => <FormItem><FormLabel>Employee ID</FormLabel><FormControl><Input placeholder="SNX-T-001" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
-                      <FormField control={form.control} name="teacherPhotoUrl" render={({ field }) => <FormItem><FormLabel>Teacher Photo URL</FormLabel><FormControl><Input placeholder="https://example.com/teacher-photo.jpg" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <FormField control={form.control} name="employeeId" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs font-medium text-slate-700">Employee ID</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="SNX-T-001" {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                      )} />
+                      <FormField control={form.control} name="teacherPhotoUrl" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs font-medium text-slate-700">Photo URL</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="https://…" {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                      )} />
                     </div>
-                  </>
+                  </div>
                 )}
+
+                {/* Student-specific fields */}
                 {watchRole === "student" && (
-                  <>
-                    <FormField control={form.control} name="className" render={({ field }) => <FormItem><FormLabel>Class</FormLabel><FormControl><Input placeholder="Grade 10-A" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
-                    <FormField control={form.control} name="fatherName" render={({ field }) => <FormItem><FormLabel>Father&apos;s Name</FormLabel><FormControl><Input placeholder="Muhammad Aslam" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
-                    <FormField control={form.control} name="studentPhotoUrl" render={({ field }) => <FormItem><FormLabel>Student Photo URL</FormLabel><FormControl><Input placeholder="https://example.com/student-photo.jpg" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>} />
-                  </>
+                  <div className="space-y-3 rounded-lg border border-sky-100 bg-sky-50/40 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-600">Student details</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <FormField control={form.control} name="className" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs font-medium text-slate-700">Class *</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="Grade 10-A" {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                      )} />
+                      <FormField control={form.control} name="fatherName" render={({ field }) => (
+                        <FormItem><FormLabel className="text-xs font-medium text-slate-700">Father's name</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="Muhammad Aslam" {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                      )} />
+                    </div>
+                    <FormField control={form.control} name="studentPhotoUrl" render={({ field }) => (
+                      <FormItem><FormLabel className="text-xs font-medium text-slate-700">Photo URL</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="https://…" {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                    )} />
+                  </div>
                 )}
-                <Button type="submit" className="mt-4 w-full" disabled={mutationPending}>
-                  {mutationPending ? <Loader2 className="h-4 w-4 animate-spin" /> : editingUser ? "Save Changes" : "Create User"}
-                </Button>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setIsOpen(false)}>Cancel</Button>
+                  <Button type="submit" size="sm" disabled={mutationPending}>
+                    {mutationPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : editingUser ? "Save changes" : "Create user"}
+                  </Button>
+                </div>
               </form>
             </Form>
           </DialogContent>
         </Dialog>
 
-        <Card className="overflow-hidden bg-white/80">
-          <CardContent className="p-0">
-            <div className="flex flex-col gap-4 border-b border-slate-200/70 p-5 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-1 items-center gap-3 rounded-[1.25rem] border border-slate-200/70 bg-slate-50/80 px-4 py-3">
-                <Search className="h-4 w-4 text-slate-400" />
-                <Input
-                  placeholder="Search users, classes, subjects, departments, designations, employee IDs, or father names..."
-                  className="h-auto max-w-sm border-0 bg-transparent px-0 py-0 shadow-none focus-visible:ring-0"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-
-              {!roleFilter && (
-                <Select value={activeRole} onValueChange={(value: "all" | "admin" | "teacher" | "student") => setActiveRole(value)}>
-                  <SelectTrigger className="w-full lg:w-[200px]">
-                    <SelectValue placeholder="Filter by role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All roles</SelectItem>
-                    <SelectItem value="admin">Admins</SelectItem>
-                    <SelectItem value="teacher">Teachers</SelectItem>
-                    <SelectItem value="student">Students</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Details</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="py-12 text-center">
-                        <Loader2 className="mx-auto h-6 w-6 animate-spin text-violet-600" />
-                      </TableCell>
-                    </TableRow>
-                  ) : filteredUsers.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="py-12 text-center text-slate-500">No users found.</TableCell>
-                    </TableRow>
-                  ) : (
-                    paginated.pageItems.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-semibold text-slate-900">{user.name}</TableCell>
-                        <TableCell className="text-slate-500">{user.email}</TableCell>
-                        <TableCell>
-                          <Badge variant={user.role === "admin" ? "default" : user.role === "teacher" ? "secondary" : "outline"} className="capitalize">
-                            {user.role}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-slate-500">{user.role === "teacher" ? [user.subject, user.designation, user.department, user.employeeId].filter(Boolean).join(" • ") || "—" : [user.className, user.fatherName].filter(Boolean).join(" • ") || "—"}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => openEditDialog(user)}>
-                              <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit
-                            </Button>
-                            <Button variant="outline" size="sm" className="text-rose-600 hover:text-rose-700" onClick={() => setUserToDelete(user)}>
-                              <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-
-            {filteredUsers.length > 0 && (
-              <div className="flex flex-col gap-3 border-t border-slate-200/70 p-4 md:flex-row md:items-center md:justify-between">
-                <p className="text-sm text-slate-500">
-                  Showing {(paginated.currentPage - 1) * 8 + 1}-{Math.min(paginated.currentPage * 8, filteredUsers.length)} of {filteredUsers.length} users
-                </p>
-                <Pagination className="mx-0 w-auto justify-end">
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious href="#" className={paginated.currentPage === 1 ? "pointer-events-none opacity-50" : ""} onClick={(e) => { e.preventDefault(); setCurrentPage((page) => Math.max(1, page - 1)); }} />
-                    </PaginationItem>
-                    <PaginationItem>
-                      <span className="px-4 text-sm text-slate-500">Page {paginated.currentPage} of {paginated.totalPages}</span>
-                    </PaginationItem>
-                    <PaginationItem>
-                      <PaginationNext href="#" className={paginated.currentPage === paginated.totalPages ? "pointer-events-none opacity-50" : ""} onClick={(e) => { e.preventDefault(); setCurrentPage((page) => Math.min(paginated.totalPages, page + 1)); }} />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
+        {/* ── Delete confirm ───────────────────────────────────────────── */}
         <AlertDialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete user?</AlertDialogTitle>
-              <AlertDialogDescription>This will permanently remove {userToDelete?.name} and their linked role profile.</AlertDialogDescription>
+              <AlertDialogDescription className="text-sm">
+                This will permanently remove <strong>{userToDelete?.name}</strong> and their linked role profile.
+              </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={handleDelete}>
-                {deleteUser.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete"}
+              <AlertDialogCancel className="h-8 text-sm">Cancel</AlertDialogCancel>
+              <AlertDialogAction className="h-8 bg-rose-600 text-sm hover:bg-rose-700" onClick={handleDelete}>
+                {deleteUser.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Delete"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
