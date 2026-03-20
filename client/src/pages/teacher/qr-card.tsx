@@ -44,6 +44,7 @@ export default function TeacherQrCard() {
   const department = teacher?.department?.trim() || teacher?.subject?.trim() || "Academic Affairs";
   const subject = teacher?.subject?.trim() || "General Studies";
   const employeeId = teacher?.employeeId?.trim() || (data ? data.profile.publicId.toUpperCase() : "Not assigned");
+  const fatherName = (teacher as { fatherName?: string | null } | undefined)?.fatherName?.trim() || undefined;
   const qrImageUrl = data ? buildQrImageUrl(data.token, 320) : "";
   const portraitUrl = useTeacherPortraitUrl(teacher?.teacherPhotoUrl ?? null);
   const contactLine = getContactLine(publicSettings);
@@ -56,7 +57,7 @@ export default function TeacherQrCard() {
     ? {
       schoolName, shortName, motto,
       logoUrl: publicSettings?.branding.logoUrl || undefined,
-      teacherName, designation, department, subject, employeeId,
+      teacherName, fatherName, designation, department, subject, employeeId,
       publicId: data.profile.publicId,
       qrUrl: qrImageUrl,
       portraitUrl, isActive: data.profile.isActive,
