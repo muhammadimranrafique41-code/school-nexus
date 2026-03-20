@@ -1,30 +1,48 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { format, formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow, isPast } from "date-fns";
 import { Layout } from "@/components/layout";
-import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useCancelHomework, useTeacherHomework, useTeacherHomeworkClasses } from "@/hooks/use-homework";
-import { HomeworkStatCard } from "@/components/homework/stat-card";
+import { HomeworkEmptyState } from "@/components/homework/empty-state";
 import { PriorityBadge } from "@/components/homework/priority-badge";
 import { SubjectChip } from "@/components/homework/subject-chip";
 import { StatusBadge } from "@/components/homework/status-badge";
-import { HomeworkEmptyState } from "@/components/homework/empty-state";
-import { BookOpen, CalendarDays, Clock, TrendingUp, Star, Eye, Pencil, XCircle, Plus, X } from "lucide-react";
+import {
+  BookOpen, CalendarDays, ChevronLeft, ChevronRight,
+  Clock, Eye, Pencil, Plus, Star, TrendingUp,
+  X, XCircle, ClipboardList, Loader2,
+} from "lucide-react";
 
-const statusTabs = [
+/* ─── status tab config ──────────────────────────────────────────── */
+const STATUS_TABS = [
   { value: "all", label: "All" },
   { value: "active", label: "Active" },
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
 ] as const;
 
+/* ─── submission progress bar ───────────────────────────────────── */
+function SubmissionBar({ submitted, total }: { submitted: number; total: number }) {
+  const pct = total > 0 ? Math.min(100, Math.round((submitted / total) * 100)) : 0;
+  const color = pct >= 80 ? "bg-emerald-400" : pct >= 50 ? "bg-amber-400" : "bg-rose-400";
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold text-slate-500">{submitted}/{total} submitted</span>
+        <span className="text-[10px] font-black text-slate-600">{pct}%</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/* ─── component ──────────────────────────────────────────────────── */
 export default function TeacherHomeworkDashboard() {
   const [selectedClass, setSelectedClass] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("active");
@@ -52,188 +70,248 @@ export default function TeacherHomeworkDashboard() {
   const filteredHomework = useMemo(() => {
     if (!dueDateFilter) return homework;
     const target = format(dueDateFilter, "yyyy-MM-dd");
-    return homework.filter((item) => format(new Date(item.dueDate), "yyyy-MM-dd") === target);
+    return homework.filter(item => format(new Date(item.dueDate), "yyyy-MM-dd") === target);
   }, [dueDateFilter, homework]);
 
   const stats = useMemo(() => {
-    const active = filteredHomework.filter((item) => item.status === "active");
-    const totalSubmissions = active.reduce((sum, item) => sum + item.submissionCount, 0);
-    const totalCapacity = active.reduce((sum, item) => sum + item.classSize, 0);
-    const averageMarks = filteredHomework
-      .map((item) => item.averageMarks)
-      .filter((value): value is number => typeof value === "number");
-
+    const active = filteredHomework.filter(item => item.status === "active");
+    const totalSubs = active.reduce((s, i) => s + i.submissionCount, 0);
+    const totalCap = active.reduce((s, i) => s + i.classSize, 0);
+    const avgMarksArr = filteredHomework
+      .map(i => i.averageMarks)
+      .filter((v): v is number => typeof v === "number");
     return {
       activeCount: active.length,
-      pendingSubmissions: active.reduce((sum, item) => sum + Math.max(item.classSize - item.submissionCount, 0), 0),
-      submissionRate: totalCapacity ? Math.round((totalSubmissions / totalCapacity) * 100) : 0,
-      classAverageMarks: averageMarks.length ? Math.round(averageMarks.reduce((sum, mark) => sum + mark, 0) / averageMarks.length) : null,
+      pendingSubmissions: active.reduce((s, i) => s + Math.max(i.classSize - i.submissionCount, 0), 0),
+      submissionRate: totalCap ? Math.round((totalSubs / totalCap) * 100) : 0,
+      avgMarks: avgMarksArr.length
+        ? Math.round(avgMarksArr.reduce((s, m) => s + m, 0) / avgMarksArr.length)
+        : null,
     };
   }, [filteredHomework]);
 
+  /* ═══════════════════════════════════════════════════════════════ */
   return (
     <Layout>
-      <div className="space-y-8">
-        <div className="rounded-[2.5rem] border border-white/60 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-8 shadow-[0_24px_60px_-35px_rgba(15,23,42,0.35)]">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-500">Teacher-only workspace</p>
-              <h1 className="mt-3 text-3xl font-display font-bold text-slate-900">Homework Diary</h1>
-              <p className="mt-2 text-sm text-slate-500">Organize assignments, track submissions, and keep every class aligned.</p>
-            </div>
-            <Button asChild className="h-11 rounded-full px-6">
+      <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-screen-xl px-4 py-6 space-y-5">
+
+          {/* ── Hero header ── */}
+          <div className="relative overflow-hidden rounded-2xl bg-amber-500 px-5 py-5 text-white shadow-lg shadow-amber-100">
+            <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/5" />
+            <div className="absolute right-14 top-16 h-20 w-20 rounded-full bg-white/5" />
+            <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/20">
+                    <ClipboardList className="h-4 w-4 text-white" />
+                  </div>
+                  <span className="text-xs font-semibold uppercase tracking-widest text-amber-100">
+                    Teacher Workspace
+                  </span>
+                </div>
+                <h1 className="text-2xl font-bold tracking-tight leading-tight">Homework Diary</h1>
+                <p className="text-sm text-amber-100">Manage assignments, track submissions, keep classes aligned.</p>
+              </div>
               <Link href="/teacher/homework/new">
-                <Plus className="mr-2 h-4 w-4" /> New Assignment
+                <button className="flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-amber-600 shadow-sm hover:bg-amber-50 transition-colors">
+                  <Plus className="h-4 w-4" /> New Assignment
+                </button>
               </Link>
-            </Button>
+            </div>
+
+            {/* stat pills row */}
+            <div className="relative z-10 mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                { icon: BookOpen, label: "Active", value: stats.activeCount },
+                { icon: Clock, label: "Pending Subs", value: stats.pendingSubmissions },
+                { icon: TrendingUp, label: "Submit Rate", value: `${stats.submissionRate}%` },
+                { icon: Star, label: "Avg Marks", value: stats.avgMarks === null ? "N/A" : `${stats.avgMarks}%` },
+              ].map(s => (
+                <div key={s.label} className="flex items-center gap-2.5 rounded-xl bg-white/15 border border-white/20 px-3 py-2.5">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/20">
+                    <s.icon className="h-3.5 w-3.5 text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-amber-200 truncate">{s.label}</p>
+                    <p className="text-sm font-black text-white leading-tight">{s.value}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <HomeworkStatCard
-              title="Active assignments"
-              value={stats.activeCount}
-              icon={BookOpen}
-              gradient="from-blue-500 to-indigo-500"
-              iconClass=""
-            />
-            <HomeworkStatCard
-              title="Pending submissions"
-              value={stats.pendingSubmissions}
-              icon={Clock}
-              gradient="from-violet-500 to-purple-500"
-              iconClass=""
-            />
-            <HomeworkStatCard
-              title="Submission rate"
-              value={`${stats.submissionRate}%`}
-              icon={TrendingUp}
-              gradient="from-emerald-500 to-green-500"
-              iconClass=""
-            />
-            <HomeworkStatCard
-              title="Class average marks"
-              value={stats.classAverageMarks === null ? "N/A" : `${stats.classAverageMarks}%`}
-              icon={Star}
-              gradient="from-amber-500 to-orange-500"
-              iconClass=""
-            />
-          </div>
-        </div>
+          {/* ── Filter bar ── */}
+          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm p-4 space-y-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Filters</p>
 
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900">Assignments</h2>
-            <p className="text-sm text-slate-500">Filter homework by class, status, and due date.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Select value={selectedClass} onValueChange={(value) => { setSelectedClass(value); setPage(1); }}>
-              <SelectTrigger className="w-[220px] bg-white/80">
-                <SelectValue placeholder="Select class" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All classes</SelectItem>
-                {classes.map((item) => (
-                  <SelectItem key={item.id} value={String(item.id)}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="gap-2 bg-white/80">
-                  <CalendarDays className="h-4 w-4 text-slate-500" />
-                  {dueDateFilter ? format(dueDateFilter, "dd-MMM-yyyy") : "All dates"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="center">
-                <Calendar
-                  mode="single"
-                  selected={dueDateFilter}
-                  onSelect={(date) => { setDueDateFilter(date ?? undefined); setPage(1); }}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
-            {dueDateFilter ? (
-              <Button variant="ghost" className="gap-2 text-slate-500" onClick={() => setDueDateFilter(undefined)}>
-                <X className="h-4 w-4" /> Clear date
-              </Button>
-            ) : null}
-            <Tabs value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setPage(1); }}>
-              <TabsList className="bg-white/80">
-                {statusTabs.map((tab) => (
-                  <TabsTrigger key={tab.value} value={tab.value} className="capitalize">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Class */}
+              <Select value={selectedClass} onValueChange={v => { setSelectedClass(v); setPage(1); }}>
+                <SelectTrigger className="h-8 w-auto min-w-[140px] rounded-xl border-slate-200 bg-slate-50 text-xs font-semibold">
+                  <SelectValue placeholder="All classes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs">All classes</SelectItem>
+                  {classes.map(c => (
+                    <SelectItem key={c.id} value={String(c.id)} className="text-xs">{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Due date picker */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className={`flex h-8 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition-colors
+                    ${dueDateFilter
+                      ? "border-amber-300 bg-amber-50 text-amber-700"
+                      : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                    }`}>
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {dueDateFilter ? format(dueDateFilter, "dd MMM yyyy") : "All dates"}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dueDateFilter}
+                    onSelect={d => { setDueDateFilter(d ?? undefined); setPage(1); }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+
+              {dueDateFilter && (
+                <button onClick={() => setDueDateFilter(undefined)}
+                  className="flex h-8 items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-100">
+                  <X className="h-3 w-3" /> Clear
+                </button>
+              )}
+
+              {/* Spacer */}
+              <div className="flex-1" />
+
+              {/* Status tabs */}
+              <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1 gap-0.5">
+                {STATUS_TABS.map(tab => (
+                  <button
+                    key={tab.value}
+                    onClick={() => { setStatusFilter(tab.value); setPage(1); }}
+                    className={`rounded-lg px-3 py-1 text-xs font-bold transition-all
+                      ${statusFilter === tab.value
+                        ? "bg-amber-500 text-white shadow-sm"
+                        : "text-slate-500 hover:bg-white hover:text-slate-700"
+                      }`}
+                  >
                     {tab.label}
-                  </TabsTrigger>
+                  </button>
                 ))}
-              </TabsList>
-            </Tabs>
+              </div>
+            </div>
           </div>
-        </div>
 
-        <Card className="border-white/60 bg-white/80">
-          <div className="space-y-4 p-4 md:p-6">
+          {/* ── Assignment list ── */}
+          <div className="space-y-2.5">
+            {/* list header */}
+            <div className="flex items-center justify-between px-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Assignments
+              </p>
+              {!isLoading && (
+                <span className="rounded-full bg-amber-50 border border-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-600">
+                  {filteredHomework.length} shown
+                </span>
+              )}
+            </div>
+
             {isLoading ? (
-              <div className="space-y-4">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <Skeleton key={index} className="h-28 w-full rounded-2xl" />
+              <div className="space-y-2.5">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-28 w-full rounded-2xl" />
                 ))}
               </div>
             ) : filteredHomework.length === 0 ? (
-              <HomeworkEmptyState ctaHref="/teacher/homework/new" />
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6">
+                <HomeworkEmptyState ctaHref="/teacher/homework/new" />
+              </div>
             ) : (
-              filteredHomework.map((item) => {
-                const progressValue = item.classSize ? Math.round((item.submissionCount / item.classSize) * 100) : 0;
+              filteredHomework.map(item => {
                 const dueLabel = formatDistanceToNow(new Date(item.dueDate), { addSuffix: true });
+                const isOverdue = isPast(new Date(item.dueDate)) && item.status === "active";
+
                 return (
-                  <div key={item.id} className="group rounded-2xl border border-slate-200/70 bg-white/70 p-4 transition-all duration-300 hover:-translate-y-1 hover:border-indigo-200">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="space-y-3">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <PriorityBadge priority={item.priority} />
-                          <SubjectChip subject={item.subject} />
-                          <StatusBadge status={item.status} />
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-semibold text-slate-900">{item.title}</h3>
-                          <p className="mt-1 line-clamp-2 text-sm text-slate-500">{item.description || "No instructions provided yet."}</p>
-                        </div>
-                        <p className="text-sm text-slate-500">
-                          {item.classLabel} - Due {dueLabel}
-                        </p>
-                      </div>
+                  <div key={item.id}
+                    className="rounded-2xl border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-amber-200 transition-all overflow-hidden">
 
-                      <div className="flex flex-col gap-4 lg:w-[280px]">
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-xs font-medium text-slate-500">
-                            <span>{item.submissionCount} submitted</span>
-                            <span>{item.classSize} total</span>
+                    {/* left accent bar */}
+                    <div className="flex">
+                      <div className={`w-1 shrink-0 ${item.status === "active" ? isOverdue ? "bg-rose-400" : "bg-amber-400"
+                        : item.status === "completed" ? "bg-emerald-400"
+                          : "bg-slate-200"
+                        }`} />
+
+                      <div className="flex-1 p-4 space-y-3">
+                        {/* top row: badges + due */}
+                        <div className="flex flex-wrap items-center gap-2 justify-between">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <PriorityBadge priority={item.priority} />
+                            <SubjectChip subject={item.subject} />
+                            <StatusBadge status={item.status} />
+                            {isOverdue && (
+                              <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600">
+                                Overdue
+                              </span>
+                            )}
                           </div>
-                          <Progress value={progressValue} className="h-2" />
+                          <div className="flex items-center gap-1 text-[10px] text-slate-400 shrink-0">
+                            <CalendarDays className="h-3 w-3" />
+                            <span className={isOverdue ? "text-rose-500 font-semibold" : ""}>{dueLabel}</span>
+                          </div>
                         </div>
 
-                        <div className="flex items-center gap-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                          <Button asChild variant="outline" size="sm" className="flex-1">
+                        {/* title + description */}
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-900 leading-tight">{item.title}</h3>
+                          {item.description && (
+                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{item.description}</p>
+                          )}
+                          <p className="text-[10px] text-slate-400 mt-0.5 font-medium">{item.classLabel}</p>
+                        </div>
+
+                        {/* bottom: progress + actions */}
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                          {/* submission bar */}
+                          <div className="sm:w-48">
+                            <SubmissionBar
+                              submitted={item.submissionCount}
+                              total={item.classSize}
+                            />
+                          </div>
+
+                          {/* action buttons — always visible */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <Link href={`/teacher/homework/${item.id}/submissions`}>
-                              <Eye className="mr-2 h-4 w-4" /> Submissions
+                              <button className="flex items-center gap-1 rounded-xl border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[10px] font-bold text-sky-600 hover:bg-sky-100 transition-colors">
+                                <Eye className="h-3 w-3" /> Submissions
+                              </button>
                             </Link>
-                          </Button>
-                          <Button asChild variant="outline" size="sm" className="flex-1">
                             <Link href={`/teacher/homework/${item.id}/edit`}>
-                              <Pencil className="mr-2 h-4 w-4" /> Edit
+                              <button className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+                                <Pencil className="h-3 w-3" /> Edit
+                              </button>
                             </Link>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 text-rose-600 hover:text-rose-700"
-                            onClick={() => cancelHomework.mutate(item.id)}
-                            disabled={cancelHomework.isPending}
-                            aria-label="Cancel assignment"
-                          >
-                            <XCircle className="mr-2 h-4 w-4" /> Cancel
-                          </Button>
+                            {item.status === "active" && (
+                              <button
+                                onClick={() => cancelHomework.mutate(item.id)}
+                                disabled={cancelHomework.isPending}
+                                className="flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[10px] font-bold text-rose-600 hover:bg-rose-100 transition-colors disabled:opacity-40">
+                                {cancelHomework.isPending
+                                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                                  : <XCircle className="h-3 w-3" />}
+                                Cancel
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -242,20 +320,48 @@ export default function TeacherHomeworkDashboard() {
               })
             )}
           </div>
-        </Card>
 
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-slate-500">
-            Page {page} of {totalPages}
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((prev) => Math.max(prev - 1, 1))}>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))}>
-              Next
-            </Button>
-          </div>
+          {/* ── Pagination ── */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-5 py-3 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500">
+                Page <strong className="text-slate-800">{page}</strong> of <strong className="text-slate-800">{totalPages}</strong>
+              </p>
+              <div className="flex gap-2">
+                <button
+                  disabled={page === 1}
+                  onClick={() => setPage(p => Math.max(p - 1, 1))}
+                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 transition-colors disabled:opacity-30">
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+
+                {/* page number pills */}
+                <div className="hidden sm:flex gap-1">
+                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                    const p = i + 1;
+                    return (
+                      <button key={p} onClick={() => setPage(p)}
+                        className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold transition-all
+                          ${page === p
+                            ? "bg-amber-500 text-white shadow-sm shadow-amber-200"
+                            : "border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                          }`}>
+                        {p}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(p => Math.min(p + 1, totalPages))}
+                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 transition-colors disabled:opacity-30">
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </Layout>

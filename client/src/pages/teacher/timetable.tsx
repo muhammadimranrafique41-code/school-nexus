@@ -1,16 +1,13 @@
-import { useMemo } from "react";
-import { format } from "date-fns";
+import { useMemo, useState } from "react";
 import { Layout } from "@/components/layout";
 import { useTeacherTimetable } from "@/hooks/use-timetable";
 import { useUser } from "@/hooks/use-auth";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BookOpen, CalendarDays, Clock, Loader2, MapPin, School } from "lucide-react";
+import { BookOpen, CalendarDays, ChevronLeft, ChevronRight, Clock, MapPin, School } from "lucide-react";
 import { cn } from "@/lib/utils";
-
 import { useLiveSettingsFull, computePeriodTimeline } from "@/lib/timetable-settings-bus";
 
+/* ─── constants ──────────────────────────────────────────────────── */
 const ALL_DAYS: Record<number, { label: string; short: string; num: number }> = {
   1: { label: "Monday", short: "Mon", num: 1 },
   2: { label: "Tuesday", short: "Tue", num: 2 },
@@ -20,14 +17,13 @@ const ALL_DAYS: Record<number, { label: string; short: string; num: number }> = 
   6: { label: "Saturday", short: "Sat", num: 6 },
 };
 
-// Assign a consistent color accent per unique className
 const CLASS_COLORS = [
-  { bg: "bg-violet-50", border: "border-violet-200", text: "text-violet-700", dot: "bg-violet-400" },
-  { bg: "bg-sky-50", border: "border-sky-200", text: "text-sky-700", dot: "bg-sky-400" },
-  { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", dot: "bg-emerald-400" },
-  { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", dot: "bg-amber-400" },
-  { bg: "bg-pink-50", border: "border-pink-200", text: "text-pink-700", dot: "bg-pink-400" },
-  { bg: "bg-teal-50", border: "border-teal-200", text: "text-teal-700", dot: "bg-teal-400" },
+  { bg: "bg-violet-50", border: "border-violet-200", text: "text-violet-700", dot: "bg-violet-400", bar: "bg-violet-400" },
+  { bg: "bg-sky-50", border: "border-sky-200", text: "text-sky-700", dot: "bg-sky-400", bar: "bg-sky-400" },
+  { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", dot: "bg-emerald-400", bar: "bg-emerald-400" },
+  { bg: "bg-rose-50", border: "border-rose-200", text: "text-rose-700", dot: "bg-rose-400", bar: "bg-rose-400" },
+  { bg: "bg-cyan-50", border: "border-cyan-200", text: "text-cyan-700", dot: "bg-cyan-400", bar: "bg-cyan-400" },
+  { bg: "bg-fuchsia-50", border: "border-fuchsia-200", text: "text-fuchsia-700", dot: "bg-fuchsia-400", bar: "bg-fuchsia-400" },
 ];
 
 function getClassColor(className: string, colorMap: Map<string, number>) {
@@ -35,192 +31,403 @@ function getClassColor(className: string, colorMap: Map<string, number>) {
   return CLASS_COLORS[colorMap.get(className)!];
 }
 
+/* ─── component ──────────────────────────────────────────────────── */
 export default function TeacherTimetable() {
   const { data: user } = useUser();
   const { data: periods, isLoading } = useTeacherTimetable();
+  const { settings, isLoading: isSettingsLoading } = useLiveSettingsFull();
 
-  const todayNum = new Date().getDay(); // 0=Sun 1=Mon … 6=Sat
-  const todayDayNum = todayNum === 0 ? 7 : todayNum; // map Sun to 7 (unused); Sat=6
+  const todayNum = new Date().getDay();
+  const todayDayNum = todayNum === 0 ? 7 : todayNum;
 
-  const { settings, isLoading: isSettingsLoading, isError: isSettingsError } = useLiveSettingsFull();
-  
-  const activeDays = settings ? settings.workingDays.map((d: number) => ALL_DAYS[d]) : [];
-  const timeline = settings ? computePeriodTimeline(settings) : [];
+  const activeDays = useMemo(
+    () => settings ? settings.workingDays.map((d: number) => ALL_DAYS[d]).filter(Boolean) : [],
+    [settings],
+  );
+  const timeline = useMemo(
+    () => settings ? computePeriodTimeline(settings) : [],
+    [settings],
+  );
 
   const colorMap = useMemo(() => new Map<string, number>(), [periods]);
 
+  /* mobile day tab state — default to today if in working days */
+  const [activeDay, setActiveDay] = useState<number>(() => {
+    return todayDayNum;
+  });
+  const activeDayIdx = activeDays.findIndex((d: { num: number }) => d.num === activeDay);
+  const safeDayIdx = activeDayIdx >= 0 ? activeDayIdx : 0;
+
   const byDay = useMemo(() => {
     const map: Record<number, any[]> = {};
-    activeDays.forEach((d: {num: number}) => (map[d.num] = []));
+    activeDays.forEach((d: { num: number }) => (map[d.num] = []));
     for (const p of periods ?? []) {
-      if (map[p.dayOfWeek]) map[p.dayOfWeek].push(p);
+      if (map[p.dayOfWeek] !== undefined) map[p.dayOfWeek].push(p);
     }
-    for (const d of activeDays) map[d.num].sort((a: any, b: any) => a.period - b.period);
+    for (const d of activeDays) map[d.num]?.sort((a: any, b: any) => a.period - b.period);
     return map;
   }, [periods, activeDays]);
 
   const stats = useMemo(() => {
     const all = periods ?? [];
     const classes = new Set(all.map((p: any) => p.className));
-    const periodsPerDay = activeDays.map((d: {num: number}) => byDay[d.num]?.length ?? 0);
-    const busiestDay = activeDays[periodsPerDay.indexOf(Math.max(...periodsPerDay))]?.label ?? "—";
+    const pPerDay = activeDays.map((d: { num: number }) => byDay[d.num]?.length ?? 0);
+    const maxPd = Math.max(...pPerDay, 0);
+    const busiestDay = activeDays[pPerDay.indexOf(maxPd)]?.label ?? "—";
+    const uniqueSubjects = new Set(all.map((p: any) => p.subject));
     return {
       totalPeriods: all.length,
       classes: classes.size,
+      subjects: uniqueSubjects.size,
       busiestDay,
     };
   }, [periods, byDay, activeDays]);
 
-  // We removed the isSettingsError block here to allow the fallback settings to work gracefully.
-  // The user will see console warnings but the app will remain functional.
-
+  /* ── loading ── */
   if (isLoading || isSettingsLoading || !settings) {
     return (
       <Layout>
-        <div className="space-y-6 pb-8">
-          <Skeleton className="h-44 rounded-[1.9rem]" />
-          <div className="grid gap-4 md:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28 rounded-[1.5rem]" />)}
+        <div className="min-h-screen bg-slate-50 p-4 space-y-4">
+          <Skeleton className="h-40 rounded-2xl" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}
           </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-48 rounded-[1.5rem]" />)}
+          <Skeleton className="h-12 rounded-2xl" />
+          <div className="space-y-2.5">
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}
           </div>
         </div>
       </Layout>
     );
   }
 
+  /* ═══════════════════════════════════════════════════════════════ */
   return (
     <Layout>
-      <div className="space-y-8 pb-8">
-        {/* Hero */}
-        <div className="relative overflow-hidden rounded-[1.9rem] border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-violet-900 p-8 text-white shadow-[0_28px_80px_-32px_rgba(15,23,42,0.75)]">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(139,92,246,0.3),_transparent_30%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.15),_transparent_26%)]" />
-          <div className="relative space-y-3">
-            <Badge variant="outline" className="border-white/15 bg-white/10 text-white">
-              <CalendarDays className="mr-1.5 h-3 w-3" /> My Weekly Schedule
-            </Badge>
-            <h1 className="text-4xl font-display font-bold tracking-tight md:text-5xl">
-              My Timetable
-            </h1>
-            <p className="max-w-xl text-slate-300">
-              Welcome, {user?.name}. Your teaching schedule across all assigned classes — updated automatically when admin publishes.
-            </p>
-          </div>
-        </div>
+      <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-screen-xl px-4 py-6 space-y-5">
 
-        {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-3">
-          {[
-            { label: "Periods / week", value: stats.totalPeriods, icon: BookOpen, accent: "from-violet-500/15 to-fuchsia-500/15", iconClass: "text-violet-600" },
-            { label: "Classes taught", value: stats.classes, icon: School, accent: "from-sky-500/15 to-indigo-500/15", iconClass: "text-sky-600" },
-            { label: "Busiest day", value: stats.busiestDay, icon: CalendarDays, accent: "from-amber-500/15 to-orange-500/15", iconClass: "text-amber-600" },
-          ].map((s) => (
-            <Card key={s.label} className="bg-white/80 transition-all duration-300 hover:-translate-y-1">
-              <CardContent className="flex items-center justify-between p-5">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{s.label}</p>
-                  <p className="mt-2 text-3xl font-display font-bold text-slate-900">{s.value}</p>
+          {/* ── Hero header ── */}
+          <div className="relative overflow-hidden rounded-2xl bg-amber-500 px-5 py-5 text-white shadow-lg shadow-amber-100">
+            <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/5" />
+            <div className="absolute right-14 top-16 h-20 w-20 rounded-full bg-white/5" />
+            <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/20">
+                    <CalendarDays className="h-4 w-4 text-white" />
+                  </div>
+                  <span className="text-xs font-semibold uppercase tracking-widest text-amber-100">
+                    Teacher Workspace
+                  </span>
                 </div>
-                <div className={`rounded-2xl bg-gradient-to-br ${s.accent} p-3 ${s.iconClass}`}>
-                  <s.icon className="h-5 w-5" />
+                <h1 className="text-2xl font-bold tracking-tight leading-tight">My Timetable</h1>
+                <p className="text-sm text-amber-100 font-medium">
+                  {user?.name} · Weekly teaching schedule
+                </p>
+              </div>
+              {/* today indicator */}
+              {activeDays.some((d: { num: number }) => d.num === todayDayNum) && (
+                <div className="rounded-xl bg-white/15 border border-white/20 px-3.5 py-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-200">Today</p>
+                  <p className="text-base font-black text-white leading-tight">
+                    {ALL_DAYS[todayDayNum]?.label ?? "—"}
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              )}
+            </div>
 
-        {/* Empty state */}
-        {(periods ?? []).length === 0 && (
-          <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 p-12 text-center text-slate-500">
-            <CalendarDays className="mx-auto mb-3 h-10 w-10 text-slate-300" />
-            <p className="font-medium">No timetable assigned yet.</p>
-            <p className="mt-1 text-sm">Ask admin to publish a timetable that includes you.</p>
+            {/* stat pills */}
+            <div className="relative z-10 mt-4 flex flex-wrap gap-2">
+              {[
+                { icon: BookOpen, label: "Periods/Week", value: stats.totalPeriods },
+                { icon: School, label: "Classes", value: stats.classes },
+                { icon: CalendarDays, label: "Subjects", value: stats.subjects },
+                { icon: Clock, label: "Busiest Day", value: stats.busiestDay },
+              ].map(s => (
+                <div key={s.label} className="flex items-center gap-2 rounded-xl bg-white/15 border border-white/20 px-3 py-2">
+                  <s.icon className="h-3.5 w-3.5 text-amber-200 shrink-0" />
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-amber-200">{s.label}</p>
+                    <p className="text-sm font-black text-white leading-none mt-0.5">{s.value}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        )}
 
-        {/* Day columns */}
-        {(periods ?? []).length > 0 && (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {activeDays.map((day: {num: number, label: string}) => {
-              const dayPeriods = byDay[day.num] ?? [];
-              const isToday = day.num === todayDayNum;
-              return (
-                <Card
-                  key={day.num}
-                  className={cn(
-                    "overflow-hidden transition-all duration-200",
-                    isToday ? "ring-2 ring-indigo-400 ring-offset-2 shadow-lg" : "bg-white/80 shadow-sm",
-                  )}
-                >
-                  <CardHeader className={cn("pb-3", isToday && "bg-gradient-to-r from-indigo-50 to-violet-50")}>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className={cn("text-base font-display", isToday && "text-indigo-700")}>
-                        {day.label}
-                        {isToday && (
-                          <span className="ml-2 text-xs font-normal text-indigo-500">Today</span>
-                        )}
-                      </CardTitle>
-                      <Badge variant={dayPeriods.length > 0 ? "secondary" : "outline"} className="text-xs">
-                        {dayPeriods.length} period{dayPeriods.length !== 1 ? "s" : ""}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-2 pt-0">
-                    {dayPeriods.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">
-                        No classes
-                      </div>
-                    ) : (
-                      dayPeriods.map((p: any) => {
-                        const color = getClassColor(p.className, colorMap);
-                        return (
-                          <div
-                            key={p.id}
-                            className={cn(
-                              "rounded-xl border p-3 transition-all duration-150 hover:shadow-sm",
-                              color.bg,
-                              color.border,
-                            )}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5">
-                                  <div className={cn("h-2 w-2 rounded-full flex-shrink-0", color.dot)} />
-                                  <p className={cn("truncate text-sm font-semibold", color.text)}>
-                                    {p.subject ?? "—"}
-                                  </p>
-                                </div>
-                                <p className="mt-0.5 text-xs text-slate-500">{p.className}</p>
-                              </div>
-                              <span className="flex-shrink-0 rounded-md bg-white/60 px-1.5 py-0.5 text-xs font-medium text-slate-600">
-                                P{p.period}
-                              </span>
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" /> 
-                                {(() => {
-                                  const slot = timeline.find((t: any) => t.periodNumber === p.period);
-                                  return slot ? `${slot.startTime} – ${slot.endTime}` : `Period ${p.period}`;
-                                })()}
-                              </span>
-                              {p.room && (
-                                <span className="flex items-center gap-1">
-                                  <MapPin className="h-3 w-3" /> {p.room}
-                                </span>
+          {/* ── Empty state ── */}
+          {(periods ?? []).length === 0 && (
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-center shadow-sm">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
+                <CalendarDays className="h-6 w-6 text-slate-300" />
+              </div>
+              <p className="font-bold text-slate-700">No timetable assigned yet</p>
+              <p className="text-xs text-slate-400 max-w-xs">Ask your admin to publish a timetable that includes your account.</p>
+            </div>
+          )}
+
+          {(periods ?? []).length > 0 && (
+            <>
+              {/* ── DESKTOP: full matrix grid ─────────────────────── */}
+              <div className="hidden lg:block">
+                <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-100">
+                          {/* Period col */}
+                          <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 min-w-[110px] border-r border-slate-100">
+                            Period
+                          </th>
+                          {activeDays.map((day: { num: number, label: string, short: string }) => (
+                            <th key={day.num}
+                              className={cn(
+                                "px-3 py-3 text-center text-xs font-bold uppercase tracking-wider min-w-[150px]",
+                                day.num === todayDayNum
+                                  ? "bg-amber-500 text-white"
+                                  : "bg-slate-50 text-slate-500"
+                              )}>
+                              <div>{day.short}</div>
+                              {day.num === todayDayNum && (
+                                <div className="text-[10px] font-normal opacity-80 mt-0.5">Today</div>
                               )}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {timeline.map((slot: any) => {
+                          if (slot.isBreak) {
+                            return (
+                              <tr key={`break-${slot.startTime}`} className="bg-slate-50/60">
+                                <td className="sticky left-0 z-10 bg-slate-50/60 border-r border-slate-100 px-4 py-2">
+                                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400 italic">
+                                    <Clock className="h-3 w-3" />
+                                    <span>Break · {slot.startTime}–{slot.endTime}</span>
+                                  </div>
+                                </td>
+                                {activeDays.map((day: { num: number }) => (
+                                  <td key={day.num}
+                                    className={cn("px-3 py-2", day.num === todayDayNum && "bg-amber-50/30")}>
+                                    <div className="h-0.5 w-full rounded bg-slate-100" />
+                                  </td>
+                                ))}
+                              </tr>
+                            );
+                          }
+
+                          return (
+                            <tr key={`p-${slot.periodNumber}`}
+                              className="hover:bg-slate-50/50 transition-colors">
+                              {/* Period label */}
+                              <td className="sticky left-0 z-10 bg-white border-r border-slate-100 px-4 py-2.5">
+                                <p className="text-xs font-bold text-slate-700">P{slot.periodNumber}</p>
+                                <p className="text-[10px] text-slate-400 mt-0.5">
+                                  {slot.startTime}–{slot.endTime}
+                                </p>
+                              </td>
+                              {/* Day cells */}
+                              {activeDays.map((day: { num: number }) => {
+                                const p = byDay[day.num]?.find((x: any) => x.period === slot.periodNumber);
+                                const isToday = day.num === todayDayNum;
+                                if (!p) return (
+                                  <td key={day.num}
+                                    className={cn("px-2 py-2", isToday && "bg-amber-50/30")}>
+                                    <div className="flex items-center justify-center">
+                                      <span className="text-slate-200 text-xs">—</span>
+                                    </div>
+                                  </td>
+                                );
+                                const color = getClassColor(p.className, colorMap);
+                                return (
+                                  <td key={day.num}
+                                    className={cn("px-2 py-2", isToday && "bg-amber-50/20")}>
+                                    <div className={cn(
+                                      "rounded-xl border px-2.5 py-2 hover:shadow-sm transition-all cursor-default",
+                                      color.bg, color.border
+                                    )}>
+                                      <div className="flex items-center gap-1.5 mb-1">
+                                        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", color.dot)} />
+                                        <p className={cn("text-xs font-bold truncate leading-tight", color.text)}>
+                                          {p.subject ?? "—"}
+                                        </p>
+                                      </div>
+                                      <p className="text-[10px] text-slate-500 truncate">{p.className}</p>
+                                      {p.room && (
+                                        <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-400">
+                                          <MapPin className="h-2.5 w-2.5 shrink-0" />
+                                          <span className="truncate">{p.room}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── MOBILE / TABLET: day-by-day view ──────────────── */}
+              <div className="lg:hidden space-y-3">
+                {/* Day tab strip */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const prev = activeDays[Math.max(0, safeDayIdx - 1)];
+                      if (prev) setActiveDay(prev.num);
+                    }}
+                    disabled={safeDayIdx === 0}
+                    className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500 disabled:opacity-30 shadow-sm">
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+
+                  <div className="flex flex-1 gap-1 overflow-x-auto scrollbar-none rounded-2xl border border-slate-100 bg-white p-1 shadow-sm">
+                    {activeDays.map((day: { num: number, short: string, label: string }) => {
+                      const dayPeriods = byDay[day.num] ?? [];
+                      const isActive = activeDay === day.num;
+                      const isToday = day.num === todayDayNum;
+                      return (
+                        <button
+                          key={day.num}
+                          onClick={() => setActiveDay(day.num)}
+                          className={cn(
+                            "flex-1 min-w-[44px] rounded-xl py-1.5 transition-all text-xs font-bold",
+                            isActive
+                              ? "bg-amber-500 text-white shadow-sm"
+                              : isToday
+                                ? "text-amber-600 bg-amber-50"
+                                : "text-slate-500 hover:bg-slate-50"
+                          )}>
+                          {day.short}
+                          {/* period count dot */}
+                          {dayPeriods.length > 0 && !isActive && (
+                            <span className={cn(
+                              "block w-1 h-1 rounded-full mx-auto mt-0.5",
+                              isToday ? "bg-amber-400" : "bg-slate-300"
+                            )} />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      const next = activeDays[Math.min(activeDays.length - 1, safeDayIdx + 1)];
+                      if (next) setActiveDay(next.num);
+                    }}
+                    disabled={safeDayIdx >= activeDays.length - 1}
+                    className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500 disabled:opacity-30 shadow-sm">
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* Day header */}
+                <div className="flex items-center gap-2 px-1">
+                  <h2 className="font-bold text-slate-800 text-base">
+                    {activeDays.find((d: { num: number }) => d.num === activeDay)?.label ?? "—"}
+                  </h2>
+                  {activeDay === todayDayNum && (
+                    <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                      Today
+                    </span>
+                  )}
+                  <span className="ml-auto text-xs text-slate-400">
+                    {byDay[activeDay]?.length ?? 0} period(s)
+                  </span>
+                </div>
+
+                {/* Period cards */}
+                <div className="space-y-2">
+                  {timeline.map((slot: any) => {
+                    if (slot.isBreak) {
+                      return (
+                        <div key={`break-${slot.startTime}`}
+                          className="flex items-center gap-3 px-2 py-1">
+                          <div className="h-px flex-1 bg-slate-100" />
+                          <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+                            Break · {slot.startTime}–{slot.endTime}
+                          </span>
+                          <div className="h-px flex-1 bg-slate-100" />
+                        </div>
+                      );
+                    }
+
+                    const p = byDay[activeDay]?.find((x: any) => x.period === slot.periodNumber);
+                    const color = p ? getClassColor(p.className, colorMap) : null;
+
+                    return (
+                      <div key={`p-${slot.periodNumber}`}
+                        className="flex gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+                        {/* time strip */}
+                        <div className="flex flex-col items-center gap-1 pt-0.5 w-12 shrink-0">
+                          <p className="text-[10px] font-black text-slate-500">P{slot.periodNumber}</p>
+                          <p className="text-[9px] text-slate-400 text-center leading-tight">
+                            {slot.startTime}<br />{slot.endTime}
+                          </p>
+                        </div>
+
+                        {/* colour bar */}
+                        <div className={cn(
+                          "w-0.5 rounded-full shrink-0",
+                          color ? color.bar : "bg-slate-100"
+                        )} />
+
+                        {/* content */}
+                        {p && color ? (
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className={cn("font-bold text-sm", color.text)}>{p.subject ?? "—"}</p>
                             </div>
+                            <p className="text-xs text-slate-600 font-medium">{p.className}</p>
+                            {p.room && (
+                              <div className="flex items-center gap-1 mt-1.5 text-[10px] text-slate-400">
+                                <MapPin className="h-3 w-3" /> {p.room}
+                              </div>
+                            )}
                           </div>
-                        );
-                      })
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
+                        ) : (
+                          <div className="flex-1 flex items-center">
+                            <span className="text-xs text-slate-300">Free period</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ── Class colour legend ─────────────────────────── */}
+              {colorMap.size > 0 && (
+                <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                  <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Classes</p>
+                  <div className="flex flex-wrap gap-2">
+                    {Array.from(colorMap.entries()).map(([className, idx]) => {
+                      const c = CLASS_COLORS[idx % CLASS_COLORS.length];
+                      return (
+                        <span key={className}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold",
+                            c.bg, c.border, c.text
+                          )}>
+                          <span className={cn("h-1.5 w-1.5 rounded-full", c.dot)} />
+                          {className}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+        </div>
       </div>
     </Layout>
   );
