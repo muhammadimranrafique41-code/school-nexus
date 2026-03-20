@@ -9,12 +9,14 @@ import { useStudentTimetable } from "@/hooks/use-timetable";
 import { useUser } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFeeStatusClassName } from "@/lib/finance";
 import DailyDiaryCard from "@/components/daily-diary-card";
-import { Award, Banknote, BookOpen, CalendarDays, FileText, GraduationCap, Percent, XCircle, ArrowRight } from "lucide-react";
+import {
+  Award, Banknote, BookOpen, CalendarDays, FileText,
+  GraduationCap, Percent, ArrowRight, CheckCircle2, XCircle, TrendingUp,
+} from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
 export default function StudentDashboard() {
@@ -31,75 +33,37 @@ export default function StudentDashboard() {
     [resultsOverview],
   );
   const myRecentAttendance = useMemo(
-    () => [...attendance].sort((a, b) => +new Date(b.date) - +new Date(a.date)).slice(0, 5),
+    () => [...attendance].sort((a, b) => +new Date(b.date) - +new Date(a.date)).slice(0, 6),
     [attendance],
   );
   const openInvoices = useMemo(
-    () => [...(fees ?? [])].filter((item) => item.studentId === user?.id && item.remainingBalance > 0).sort((a, b) => +new Date(a.dueDate) - +new Date(b.dueDate)),
+    () => [...(fees ?? [])].filter((i) => i.studentId === user?.id && i.remainingBalance > 0)
+      .sort((a, b) => +new Date(a.dueDate) - +new Date(b.dueDate)),
     [fees, user?.id],
   );
-
-  const overdueInvoices = useMemo(
-    () => openInvoices.filter((item) => item.status === "Overdue"),
-    [openInvoices],
-  );
-
-  const outstandingBalance = openInvoices.reduce((sum, fee) => sum + fee.remainingBalance, 0);
+  const overdueInvoices = useMemo(() => openInvoices.filter((i) => i.status === "Overdue"), [openInvoices]);
+  const outstandingBalance = openInvoices.reduce((s, f) => s + f.remainingBalance, 0);
   const nextDueFee = openInvoices[0];
   const timetableItems = timetable?.items ?? [];
-  const quickAccessCards = [
-    {
-      title: "My Attendance",
-      description: "Open filters, attendance trends, and your calendar-style record view.",
-      value: `${attendanceSummary?.attendanceRate ?? stats?.attendanceRate ?? 0}%`,
-      hint: `${attendanceSummary?.currentStreak ?? 0} session streak`,
-      href: "/student/attendance",
-      cta: "Open attendance",
-      icon: CalendarDays,
-    },
-    {
-      title: "My Timetable",
-      description: "Review your weekly periods, teachers, rooms, and class times.",
-      value: timetableItems.length,
-      hint: `${timetable?.className ?? user?.className ?? "Unassigned class"}`,
-      href: "/student/timetable",
-      cta: "Open timetable",
-      icon: BookOpen,
-    },
-    {
-      title: "My Results",
-      description: "See exam-wise performance, GPA insights, charts, and printable reports.",
-      value: resultsOverview?.overview.currentGpa ?? 0,
-      hint: `${resultsOverview?.overview.totalExams ?? 0} published exam(s)`,
-      href: "/student/results",
-      cta: "Open results",
-      icon: GraduationCap,
-    },
-  ] as const;
+  const attendanceRate = attendanceSummary?.attendanceRate ?? stats?.attendanceRate ?? 0;
 
+  // ── Loading skeleton ────────────────────────────────────────────────────
   if (statsLoading || attendanceLoading || attendanceSummaryLoading || resultsLoading || timetableLoading || feesLoading) {
     return (
       <Layout>
-        <div className="space-y-6 pb-8">
-          <div className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
-            <Skeleton className="h-60 rounded-[1.9rem]" />
-            <Skeleton className="h-60 rounded-[1.9rem]" />
+        <div className="space-y-4 pb-8">
+          <Skeleton className="h-14 rounded-xl" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
           </div>
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={index} className="h-36 rounded-[1.75rem]" />
-            ))}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-36 rounded-xl" />)}
           </div>
-          <div className="grid gap-6 lg:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <Skeleton key={index} className="h-64 rounded-[1.75rem]" />
-            ))}
+          <div className="grid gap-4 lg:grid-cols-7">
+            <Skeleton className="h-64 rounded-xl lg:col-span-4" />
+            <Skeleton className="h-64 rounded-xl lg:col-span-3" />
           </div>
-          <div className="grid gap-6 lg:grid-cols-7">
-            <Skeleton className="h-[28rem] rounded-[1.75rem] lg:col-span-4" />
-            <Skeleton className="h-[28rem] rounded-[1.75rem] lg:col-span-3" />
-          </div>
-          <Skeleton className="h-72 rounded-[1.75rem]" />
+          <Skeleton className="h-48 rounded-xl" />
         </div>
       </Layout>
     );
@@ -107,242 +71,350 @@ export default function StudentDashboard() {
 
   return (
     <Layout>
-      <div className="space-y-8 pb-8">
-        <section className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
-          <div className="relative overflow-hidden rounded-[1.9rem] border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-8 text-white shadow-[0_28px_80px_-32px_rgba(15,23,42,0.75)]">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(129,140,248,0.22),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(236,72,153,0.18),_transparent_26%)]" />
-            <div className="relative space-y-5">
-              <Badge variant="outline" className="border-white/15 bg-white/10 text-white">Student workspace</Badge>
-              <div className="space-y-3">
-                <h1 className="text-4xl font-display font-bold tracking-tight md:text-5xl">Student Dashboard</h1>
-                <p className="max-w-2xl text-base leading-7 text-slate-300 md:text-lg">
-                  Hello, {user?.name}. Your attendance, timetable, results, and fee progress now live together in one streamlined dashboard.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Button asChild variant="secondary" className="border-none bg-white text-slate-900 hover:bg-slate-100">
-                  <Link href="/student/results">View results</Link>
-                </Button>
-                <Button
-                  asChild
-                  variant="outline"
-                  className="border-white/15 bg-white/10 text-white hover:border-white/25 hover:bg-white/15 hover:text-white"
-                >
-                  <Link href="/student/timetable">Open timetable</Link>
-                </Button>
-              </div>
+      <div className="space-y-4 pb-8">
+
+        {/* ── Page header ─────────────────────────────────────────────── */}
+        <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+              <GraduationCap className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">
+                Hello, {user?.name?.split(" ")[0]} 👋
+              </h1>
+              <p className="text-[12px] text-slate-400">
+                Your attendance, results, timetable and fees — all in one place.
+              </p>
             </div>
           </div>
-
-          <Card className="bg-white/75">
-            <CardHeader>
-              <CardTitle>Academic pulse</CardTitle>
-              <CardDescription>Quick insight into your attendance, invoices, and recent academic performance.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2">
-              {[
-                { label: "Attendance streak", value: attendanceSummary?.currentStreak ?? 0 },
-                { label: "Upcoming classes", value: timetableItems.length },
-                { label: "Published exams", value: resultsOverview?.overview.totalExams ?? 0 },
-                { label: "Open invoices", value: stats?.openInvoices ?? openInvoices.length },
-              ].map((item) => (
-                <div key={item.label} className="rounded-[1.25rem] border border-slate-200/70 bg-slate-50/80 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
-                  <p className="mt-3 text-3xl font-display font-bold text-slate-900">{item.value}</p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          <div className="flex gap-2 self-start sm:self-auto">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/student/timetable">Timetable</Link>
+            </Button>
+            <Button asChild size="sm">
+              <Link href="/student/results">My Results</Link>
+            </Button>
+          </div>
         </section>
 
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+        {/* ── KPI strip ───────────────────────────────────────────────── */}
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { label: "Attendance rate", value: `${attendanceSummary?.attendanceRate ?? stats?.attendanceRate ?? 0}%`, icon: Percent, hint: "Current term average", accent: "from-violet-500/15 to-fuchsia-500/15", iconClass: "text-violet-600" },
-            { label: "Outstanding balance", value: formatCurrency(outstandingBalance || stats?.unpaidFees || 0), icon: Banknote, hint: nextDueFee ? `Next due ${formatDate(nextDueFee.dueDate, "MMM dd")}` : "No open invoices", accent: "from-amber-500/15 to-orange-500/15", iconClass: "text-amber-600" },
-            { label: "Open invoices", value: stats?.openInvoices ?? openInvoices.length, icon: FileText, hint: openInvoices.length ? `${stats?.overdueInvoices ?? overdueInvoices.length} overdue invoice(s)` : "All invoices cleared", accent: "from-rose-500/15 to-pink-500/15", iconClass: "text-rose-600" },
-            { label: "Latest grade", value: myRecentResults[0]?.grade || "N/A", icon: Award, hint: myRecentResults[0]?.subject || "No recent results", accent: "from-emerald-500/15 to-teal-500/15", iconClass: "text-emerald-600" },
+            {
+              label: "Attendance",
+              value: `${attendanceRate}%`,
+              hint: `${attendanceSummary?.currentStreak ?? 0} session streak`,
+              icon: Percent,
+              color: "text-violet-600 bg-violet-50",
+              border: "border-violet-100",
+            },
+            {
+              label: "Outstanding",
+              value: formatCurrency(outstandingBalance || stats?.unpaidFees || 0),
+              hint: nextDueFee ? `Due ${formatDate(nextDueFee.dueDate, "MMM dd")}` : "All clear",
+              icon: Banknote,
+              color: "text-amber-600 bg-amber-50",
+              border: "border-amber-100",
+            },
+            {
+              label: "Open invoices",
+              value: stats?.openInvoices ?? openInvoices.length,
+              hint: overdueInvoices.length ? `${overdueInvoices.length} overdue` : "None overdue",
+              icon: FileText,
+              color: overdueInvoices.length > 0 ? "text-rose-600 bg-rose-50" : "text-emerald-600 bg-emerald-50",
+              border: overdueInvoices.length > 0 ? "border-rose-100" : "border-emerald-100",
+            },
+            {
+              label: "Latest grade",
+              value: myRecentResults[0]?.grade || "—",
+              hint: myRecentResults[0]?.subject || "No results yet",
+              icon: Award,
+              color: "text-emerald-600 bg-emerald-50",
+              border: "border-emerald-100",
+            },
           ].map((item) => (
-            <Card key={item.label} className="bg-white/80 transition-all duration-300 hover:-translate-y-1">
-              <CardContent className="flex items-center justify-between p-5">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
-                  <p className="mt-2 text-3xl font-display font-bold text-slate-900">{item.value}</p>
-                  <p className="mt-2 text-xs font-medium text-slate-500">{item.hint}</p>
+            <div
+              key={item.label}
+              className={cn(
+                "flex flex-col items-center justify-center gap-2 rounded-xl border bg-white px-3 py-4 text-center shadow-none transition-shadow hover:shadow-sm",
+                item.border,
+              )}
+            >
+              <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg", item.color)}>
+                <item.icon className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold leading-none text-slate-900">{item.value}</p>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{item.label}</p>
+                <p className="mt-0.5 text-[11px] text-slate-400">{item.hint}</p>
+              </div>
+            </div>
+          ))}
+        </section>
+
+        {/* ── Quick access cards ───────────────────────────────────────── */}
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            {
+              title: "My Attendance",
+              description: "Filters, trends, and calendar-style record view.",
+              value: `${attendanceRate}%`,
+              hint: `${attendanceSummary?.currentStreak ?? 0} session streak`,
+              href: "/student/attendance",
+              icon: CalendarDays,
+              accent: "border-violet-100 bg-violet-50",
+              iconColor: "text-violet-600",
+            },
+            {
+              title: "My Timetable",
+              description: "Weekly periods, teachers, rooms, and timings.",
+              value: timetableItems.length,
+              hint: timetable?.className ?? user?.className ?? "Unassigned class",
+              href: "/student/timetable",
+              icon: BookOpen,
+              accent: "border-blue-100 bg-blue-50",
+              iconColor: "text-blue-600",
+            },
+            {
+              title: "My Results",
+              description: "Exam-wise performance, GPA, and printable reports.",
+              value: resultsOverview?.overview.currentGpa ?? 0,
+              hint: `${resultsOverview?.overview.totalExams ?? 0} published exam(s)`,
+              href: "/student/results",
+              icon: GraduationCap,
+              accent: "border-emerald-100 bg-emerald-50",
+              iconColor: "text-emerald-600",
+            },
+          ].map((item) => (
+            <Card key={item.title} className="border-slate-200/80 bg-white shadow-none transition-shadow hover:shadow-sm">
+              <CardContent className="p-4">
+                {/* Icon + title */}
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg border", item.accent, item.iconColor)}>
+                    <item.icon className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-bold text-slate-900">{item.title}</p>
+                    <p className="text-[11px] text-slate-400 leading-tight">{item.description}</p>
+                  </div>
                 </div>
-                <div className={`rounded-2xl bg-gradient-to-br ${item.accent} p-3 ${item.iconClass}`}>
-                  <item.icon className="h-5 w-5" />
+                {/* Value */}
+                <div className="mb-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
+                  <p className="text-2xl font-bold text-slate-900 leading-none">{item.value}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">{item.hint}</p>
                 </div>
+                {/* CTA */}
+                <Button asChild variant="outline" size="sm" className="w-full justify-between h-8 text-[12px]">
+                  <Link href={item.href}>
+                    <span>Open</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </Button>
               </CardContent>
             </Card>
           ))}
-        </div>
 
-        <div className="space-y-4">
-          <div>
-            <h2 className="text-2xl font-display font-semibold tracking-tight">Academic Quick Access</h2>
-            <p className="text-sm text-slate-500">Your new attendance, timetable, and results pages are available directly from the dashboard and sidebar.</p>
-          </div>
-          <div className="grid gap-6 lg:grid-cols-4">
-            {quickAccessCards.map((item) => (
-              <Card key={item.title} className="bg-white/80 transition-all duration-300 hover:-translate-y-1">
-                <CardHeader className="space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="rounded-2xl bg-gradient-to-br from-violet-500/15 to-fuchsia-500/15 p-3 text-violet-600">
-                      <item.icon className="h-5 w-5" />
-                    </div>
-                    <Badge variant="secondary">Available now</Badge>
-                  </div>
-                  <div>
-                    <CardTitle>{item.title}</CardTitle>
-                    <CardDescription className="mt-1">{item.description}</CardDescription>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <p className="text-3xl font-display font-bold">{item.value}</p>
-                    <p className="mt-2 text-sm text-muted-foreground">{item.hint}</p>
-                  </div>
-                  <Button asChild variant="outline" className="w-full justify-between">
-                    <Link href={item.href}>
-                      <span>{item.cta}</span>
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-            <DailyDiaryCard />
-          </div>
-        </div>
+          {/* Daily diary card */}
+          <DailyDiaryCard />
+        </section>
 
-        <div className="grid gap-6 lg:grid-cols-7">
-          <Card className="bg-white/80 lg:col-span-4">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CalendarDays className="h-5 w-5 text-violet-600" /> Recent Attendance
-              </CardTitle>
-              <CardDescription>Your latest marked attendance sessions.</CardDescription>
+        {/* ── Attendance + Fees ────────────────────────────────────────── */}
+        <div className="grid gap-4 lg:grid-cols-7">
+
+          {/* Recent attendance */}
+          <Card className="overflow-hidden border-slate-200/80 bg-white shadow-none lg:col-span-4">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-50">
+                  <CalendarDays className="h-3.5 w-3.5 text-violet-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-sm font-semibold text-slate-900">Recent Attendance</CardTitle>
+                  <CardDescription className="text-[11px]">Your latest marked sessions.</CardDescription>
+                </div>
+              </div>
+              <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-indigo-600 hover:bg-indigo-50">
+                <Link href="/student/attendance">
+                  View all <ArrowRight className="ml-1 h-3 w-3" />
+                </Link>
+              </Button>
             </CardHeader>
             <CardContent className="p-0">
-              <Table>
-                <TableHeader className="bg-muted/40">
-                  <TableRow>
-                    <TableHead className="pl-6">Date</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {myRecentAttendance.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={2} className="py-10 text-center text-slate-500">No attendance records found.</TableCell>
-                    </TableRow>
-                  ) : (
-                    myRecentAttendance.map((record) => (
-                      <TableRow key={record.id}>
-                        <TableCell className="pl-6 font-medium">{formatDate(record.date, "MMMM dd, yyyy")}</TableCell>
-                        <TableCell>
-                          <Badge variant={record.status === "Present" ? "secondary" : "destructive"}>{record.status}</Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-              <div className="border-t border-slate-200/70 p-4">
-                <Button asChild variant="ghost" className="w-full">
-                  <Link href="/student/attendance">View full attendance report</Link>
-                </Button>
-              </div>
+              {myRecentAttendance.length === 0 ? (
+                <p className="px-4 py-10 text-center text-[13px] text-slate-400">No attendance records found.</p>
+              ) : (
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50">
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Date</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Day</th>
+                      <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {myRecentAttendance.map((record, idx) => (
+                      <tr key={record.id} className={cn(
+                        "border-b border-slate-100 last:border-b-0 transition-colors hover:bg-slate-50/60",
+                        idx % 2 === 1 && "bg-slate-50/30",
+                      )}>
+                        <td className="px-4 py-2.5 text-[13px] font-semibold text-slate-900">
+                          {formatDate(record.date, "MMM dd, yyyy")}
+                        </td>
+                        <td className="px-4 py-2.5 text-[12px] text-slate-400">
+                          {formatDate(record.date, "EEEE")}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {record.status === "Present" ? (
+                            <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700">
+                              <CheckCircle2 className="h-2.5 w-2.5" />Present
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-700">
+                              <XCircle className="h-2.5 w-2.5" />Absent
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </CardContent>
           </Card>
 
-          <Card className="bg-white/80 lg:col-span-3">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Banknote className="h-5 w-5 text-amber-600" /> Fee Invoice Summary
-              </CardTitle>
-              <CardDescription>Real open invoices linked to your account.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="rounded-[1.25rem] border border-slate-200/70 bg-slate-50/80 p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-slate-500">Outstanding balance</span>
-                  <Badge variant="secondary">Current term</Badge>
+          {/* Fee invoice summary */}
+          <Card className="border-slate-200/80 bg-white shadow-none lg:col-span-3">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50">
+                  <Banknote className="h-3.5 w-3.5 text-amber-600" />
                 </div>
-                <div className="mt-3 text-4xl font-display font-bold text-slate-900">{formatCurrency(outstandingBalance || stats?.unpaidFees || 0)}</div>
-                <p className="mt-2 flex items-center gap-1 text-xs text-slate-500">
-                  <XCircle className="h-3 w-3" />
-                  {nextDueFee ? `Next payment due ${formatDate(nextDueFee.dueDate, "MMMM dd, yyyy")}` : "No outstanding payments"}
+                <div>
+                  <CardTitle className="text-sm font-semibold text-slate-900">Fee Summary</CardTitle>
+                  <CardDescription className="text-[11px]">Open invoices on your account.</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 space-y-3">
+
+              {/* Balance tile */}
+              <div className={cn(
+                "rounded-lg border px-4 py-3",
+                outstandingBalance > 0
+                  ? "border-amber-100 bg-amber-50/60"
+                  : "border-emerald-100 bg-emerald-50/60",
+              )}>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Outstanding balance</p>
+                <p className={cn("mt-1 text-2xl font-bold leading-none",
+                  outstandingBalance > 0 ? "text-amber-800" : "text-emerald-700",
+                )}>
+                  {formatCurrency(outstandingBalance || stats?.unpaidFees || 0)}
+                </p>
+                <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
+                  {nextDueFee
+                    ? <><XCircle className="h-3 w-3 text-rose-400" />Due {formatDate(nextDueFee.dueDate, "MMMM dd, yyyy")}</>
+                    : <><CheckCircle2 className="h-3 w-3 text-emerald-500" />No outstanding payments</>}
                 </p>
               </div>
 
-              <div className="space-y-3">
-                {openInvoices.length === 0 ? (
-                  <div className="rounded-[1.25rem] border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500">
-                    You have no open invoices right now.
-                  </div>
-                ) : (
-                  openInvoices.slice(0, 4).map((fee) => (
-                    <div key={fee.id} className="flex items-center justify-between gap-3 rounded-[1.25rem] border border-slate-200/70 bg-slate-50/75 p-4">
-                      <div>
-                        <p className="font-semibold text-slate-900">{fee.invoiceNumber ?? `INV-${fee.id}`}</p>
-                        <p className="text-sm text-slate-500">{fee.billingPeriod} • Due {formatDate(fee.dueDate, "MMM dd, yyyy")}</p>
+              {/* Invoice list */}
+              {openInvoices.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-[12px] text-slate-400">
+                  You have no open invoices right now.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {openInvoices.slice(0, 4).map((fee) => (
+                    <div key={fee.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-semibold text-slate-900 font-mono">
+                          {fee.invoiceNumber ?? `INV-${fee.id}`}
+                        </p>
+                        <p className="text-[10px] text-slate-400">
+                          {fee.billingPeriod} · Due {formatDate(fee.dueDate, "MMM dd")}
+                        </p>
                       </div>
-                      <div className="text-right">
-                        <Badge variant="outline" className={cn("mb-2 border", getFeeStatusClassName(fee.status))}>{fee.status}</Badge>
-                        <p className="font-semibold text-slate-900">{formatCurrency(fee.remainingBalance)}</p>
+                      <div className="text-right shrink-0">
+                        <span className={cn("inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide", getFeeStatusClassName(fee.status))}>
+                          {fee.status}
+                        </span>
+                        <p className="mt-0.5 text-[12px] font-bold text-slate-900">{formatCurrency(fee.remainingBalance)}</p>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
 
-              <Button asChild className="w-full justify-between">
+              <Button asChild size="sm" className="w-full justify-between bg-indigo-600 hover:bg-indigo-700 text-white">
                 <Link href="/student/fees">
                   <span>Proceed to payment</span>
-                  <ArrowRight className="h-4 w-4" />
+                  <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </Button>
             </CardContent>
           </Card>
         </div>
 
-        <Card className="bg-white/80">
-          <CardHeader>
-            <CardTitle>Recent Results</CardTitle>
-            <CardDescription>Your latest published grades with a direct path to the full results experience.</CardDescription>
+        {/* ── Recent results ───────────────────────────────────────────── */}
+        <Card className="border-slate-200/80 bg-white shadow-none">
+          <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50">
+                <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
+              </div>
+              <div>
+                <CardTitle className="text-sm font-semibold text-slate-900">Recent Results</CardTitle>
+                <CardDescription className="text-[11px]">Your latest published grades.</CardDescription>
+              </div>
+            </div>
+            <Button asChild variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-indigo-600 hover:bg-indigo-50">
+              <Link href="/student/results">
+                Full analysis <ArrowRight className="ml-1 h-3 w-3" />
+              </Link>
+            </Button>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4">
             {myRecentResults.length === 0 ? (
-              <div className="rounded-[1.25rem] border border-dashed border-slate-200 bg-slate-50/80 p-10 text-center text-slate-500">No recent grades available yet.</div>
+              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-[12px] text-slate-400">
+                No recent grades available yet.
+              </div>
             ) : (
-              <div className="grid gap-6 md:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-3">
                 {myRecentResults.map((result) => (
-                  <Card key={result.id} className="border-slate-200/70 bg-slate-50/75 shadow-none">
-                    <CardContent className="p-5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-slate-900">{result.subject}</p>
-                          <p className="text-sm text-slate-500">Latest assessment</p>
-                        </div>
-                        <Badge variant={result.grade === "F" ? "destructive" : "secondary"}>{result.grade}</Badge>
+                  <div key={result.id} className="rounded-lg border border-slate-100 bg-slate-50/60 p-4">
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <div>
+                        <p className="text-[13px] font-bold text-slate-900">{result.subject}</p>
+                        <p className="text-[11px] text-slate-400">Latest assessment</p>
                       </div>
-                      <div className="mt-4 flex items-end gap-2">
-                        <span className="text-4xl font-display font-bold text-slate-900">{result.marks}</span>
-                        <span className="pb-1 text-sm text-slate-500">/ 100</span>
-                      </div>
-                    </CardContent>
-                  </Card>
+                      <span className={cn(
+                        "inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                        result.grade === "F"
+                          ? "border-rose-200 bg-rose-50 text-rose-700"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-700",
+                      )}>
+                        {result.grade}
+                      </span>
+                    </div>
+                    <div className="flex items-end gap-1.5">
+                      <span className="text-3xl font-bold text-slate-900 leading-none">{result.marks}</span>
+                      <span className="mb-0.5 text-[12px] text-slate-400">/ 100</span>
+                    </div>
+                    {/* Mini progress bar */}
+                    <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className={cn("h-full rounded-full", result.marks >= 70 ? "bg-emerald-400" : result.marks >= 50 ? "bg-amber-400" : "bg-rose-400")}
+                        style={{ width: `${result.marks}%` }}
+                      />
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
           </CardContent>
-          <div className="border-t border-slate-200/70 p-4">
-            <Button asChild variant="ghost" className="w-full">
-              <Link href="/student/results">View full results analysis</Link>
-            </Button>
-          </div>
         </Card>
+
       </div>
     </Layout>
   );
