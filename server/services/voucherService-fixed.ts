@@ -2,7 +2,6 @@ import archiver from "archiver";
 import PDFDocument from "pdfkit";
 import { Writable } from "stream";
 import { storage } from "../storage.js";
-import { buildDocumentNumber } from "../../shared/finance.js";
 import type {
   FinanceVoucherOperationRecord,
   FinanceVoucherProgressSnapshot,
@@ -225,13 +224,19 @@ async function runGenerationJob(
       // 2️⃣ If classNames provided, resolve to student IDs
       if (input.classNames && input.classNames.length > 0) {
         try {
+          // Query the database to get all student IDs with matching class names
+          // Assuming `storage` has access to db and the students table/view
           const classNameArray = input.classNames.map(c => c.trim()).filter(Boolean);
           if (classNameArray.length === 0) return [];
 
-          const results = await Promise.all(
-            classNameArray.map(cn => storage.getStudentsByClass(cn))
-          );
-          const ids = results.flat().map(s => s.id);
+          // Use Drizzle query to fetch student IDs from the students view/table
+          // This may need adjustment based on actual schema
+          const result = await storage.db
+            .select({ id: "id" })
+            .from("students") // or "students-view" – adjust to your schema
+            .whereIn("className", classNameArray);
+
+          const ids = result.map(r => r.id);
           return Array.from(new Set(ids));
         } catch (error) {
           console.error("Failed to resolve class names to student IDs:", error);
@@ -313,6 +318,8 @@ async function runGenerationJob(
     const entries: VoucherEntry[] = [];
     let generatedCount = 0;
     let failedCount = 0;
+    const docNum = (seq: number) => `VCH-${new Date().getFullYear()}-${String(seq).padStart(6, "0")}`;
+
     for (let i = 0; i < invoicesToGenerate.length; i++) {
       // Stop if admin cancelled the job
       if (jobCancelFlags.has(jobId)) {
@@ -336,7 +343,8 @@ async function runGenerationJob(
         // ignore missing fee record – continue processing other invoices
       }
 
-      const documentNumber = buildDocumentNumber("VCH", inv.feeId);
+      const seqNo = i + 1;
+      const documentNumber = docNum(seqNo);
       // Build a deterministic file name; the sanitise routine prevents illegal chars
       const safeClass = sanitizeDocumentSegment(inv.className || "class");
       const safeStudent = sanitizeDocumentSegment(inv.studentName || "student");
