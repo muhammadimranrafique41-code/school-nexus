@@ -25,6 +25,7 @@ import { storage } from "./storage.js";
 import { loadTimetableSettings, computePeriodTimeline } from "./lib/settings-loader.js";
 import {
   cancelVoucherJob,
+  getFreshJobProgress,
   clearJobZip,
   getJobProgress,
   getJobZip,
@@ -1785,7 +1786,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(await previewVoucherJob(input));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid input" });
-      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      if (err instanceof Error) {
+        const statusCode = err.message.startsWith("No fee structure found for") ? 404 : 400;
+        return res.status(statusCode).json({ message: err.message });
+      }
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -1799,7 +1803,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(201).json(operation);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid input" });
-      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      if (err instanceof Error) {
+        const statusCode = err.message.includes("already running") ? 409 : 400;
+        return res.status(statusCode).json({ message: err.message });
+      }
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -1849,12 +1856,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!user) return;
       const id = parseNumberValue(req.params.operationId);
       if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid operation id" });
-      const progress = getJobProgress(id);
-      if (progress) return res.json(progress);
-      // Fall back to DB
-      const operation = await storage.getFinanceVoucherOperation(id);
-      if (!operation) return res.status(404).json({ message: "Voucher operation not found" });
-      res.json({ ...operation, phase: operation.status, message: null });
+      const shouldRefresh = (progress?: {
+        status?: string;
+        totalInvoices?: number;
+        generatedCount?: number;
+        skippedCount?: number;
+        failedCount?: number;
+      }) => {
+        if (!progress || progress.status !== "running") return false;
+        if ((progress.totalInvoices ?? 0) <= 0) return false;
+        const accounted = (progress.generatedCount ?? 0) + (progress.skippedCount ?? 0) + (progress.failedCount ?? 0);
+        return accounted >= (progress.totalInvoices ?? 0);
+      };
+
+      let progress = getJobProgress(id);
+      if (!progress) {
+        progress = await getFreshJobProgress(id);
+      }
+
+      if (!progress) return res.status(404).json({ message: "Voucher operation not found" });
+
+      if (shouldRefresh(progress)) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const refreshed = await getFreshJobProgress(id, true);
+        if (refreshed) progress = refreshed;
+      }
+
+      res.json(progress);
     } catch {
       res.status(500).json({ message: "Internal server error" });
     }

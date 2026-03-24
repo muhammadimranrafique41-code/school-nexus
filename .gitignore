@@ -5,6 +5,9 @@ server/public
 vite.config.ts.*
 *.tar.gz
 .env
+.env.test
 .local/
 .vercel
 .env*.local
+playwright-report/
+test-results/

@@ -353,9 +353,20 @@ const financeVoucherPreviewInvoiceSchema = z.object({
   amount: z.number(),
   remainingBalance: z.number(),
   dueDate: z.string(),
+  invoiceStatus: z.enum(["existing", "planned"]),
   hasExistingVoucher: z.boolean(),
   existingVoucherDocumentNumber: z.string().nullable().optional(),
   existingVoucherGeneratedAt: z.string().nullable().optional(),
+});
+
+const financeVoucherOperationErrorSchema = z.object({
+  at: z.string(),
+  invoiceId: z.number().nullable().optional(),
+  studentId: z.number().nullable().optional(),
+  studentName: z.string().nullable().optional(),
+  billingMonth: billingMonthSchema.nullable().optional(),
+  result: z.enum(["generated", "skipped", "failed"]),
+  error: z.string().nullable().optional(),
 });
 
 const financeVoucherOperationSchema = z.object({
@@ -373,6 +384,7 @@ const financeVoucherOperationSchema = z.object({
   requestedBy: z.number().nullable().optional(),
   requestedByName: z.string().nullable().optional(),
   errorMessage: z.string().nullable().optional(),
+  errorLog: z.array(financeVoucherOperationErrorSchema),
   startedAt: z.string().nullable().optional(),
   completedAt: z.string().nullable().optional(),
   cancelledAt: z.string().nullable().optional(),
@@ -394,7 +406,7 @@ const financeVoucherProgressSchema = financeVoucherOperationSchema.extend({
   currentInvoiceId: z.number().nullable().optional(),
   currentInvoiceNumber: z.string().nullable().optional(),
   currentStudentName: z.string().nullable().optional(),
-  phase: z.enum(["queued", "planning", "rendering", "archiving", "completed", "cancelled", "failed"]),
+  phase: z.enum(["queued", "planning", "rendering", "archiving", "completed", "completed_with_errors", "cancelled", "failed"]),
   message: z.string(),
 });
 
@@ -865,15 +877,25 @@ export const api = {
       responses: {
         200: z.object({
           billingMonth: billingMonthSchema,
+          classNameFilter: z.string().nullable().optional(),
+          targetStudentCount: z.number(),
           generatedCount: z.number(),
           skippedDuplicates: z.number(),
           skippedMissingProfiles: z.number(),
+          errorCount: z.number(),
           invoices: z.array(feeSchema),
           skippedStudents: z.array(
             z.object({
               studentId: z.number(),
               studentName: z.string(),
               reason: z.string(),
+            }),
+          ),
+          errors: z.array(
+            z.object({
+              studentId: z.number(),
+              studentName: z.string(),
+              message: z.string(),
             }),
           ),
         }),

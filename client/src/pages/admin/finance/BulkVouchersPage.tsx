@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatBillingPeriod } from "@shared/finance";
 import type {
   FinanceVoucherOperationRecord,
@@ -6,12 +6,17 @@ import type {
   FinanceVoucherProgressSnapshot,
 } from "@shared/finance";
 import { Layout } from "@/components/layout";
+import { VoucherGenerationProgress } from "@/components/finance/VoucherGenerationProgress";
 import { useStudents } from "@/hooks/use-users";
 import { useUser } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import {
-  downloadVoucherZip, useBulkVoucherPreview, useCancelVoucherJob,
-  useRecentVoucherOperations, useStartBulkJob, useVoucherProgress,
+  downloadVoucherZip,
+  useBulkVoucherPreview,
+  useCancelVoucherJob,
+  useRecentVoucherOperations,
+  useStartBulkJob,
+  useVoucherProgress,
 } from "@/hooks/use-bulk-vouchers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,6 +86,7 @@ function StatusBadge({ status }: { status: FinanceVoucherOperationRecord["status
     queued: "border-amber-200 bg-amber-50 text-amber-700",
     running: "border-blue-200 bg-blue-50 text-blue-700",
     completed: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    completed_with_errors: "border-amber-200 bg-amber-50 text-amber-700",
     failed: "border-rose-200 bg-rose-50 text-rose-700",
     cancelled: "border-slate-200 bg-slate-50 text-slate-500",
   };
@@ -97,15 +103,16 @@ function StatusBadge({ status }: { status: FinanceVoucherOperationRecord["status
 // ── Progress card ─────────────────────────────────────────────────────────
 function ProgressCard({ operationId, onComplete, onCancel }: {
   operationId: number;
-  onComplete?: (op: FinanceVoucherProgressSnapshot) => void;
+  onComplete?: () => void;
   onCancel?: () => void;
 }) {
   const { data: progress } = useVoucherProgress(operationId, true);
   const cancel = useCancelVoucherJob();
-  const isDone = progress ? ["completed", "failed", "cancelled"].includes(progress.phase) : false;
+  const isDone = progress ? ["completed", "completed_with_errors", "failed", "cancelled"].includes(progress.phase) : false;
+  const isCompletedPhase = progress ? ["completed", "completed_with_errors"].includes(progress.phase) : false;
 
   useEffect(() => {
-    if (progress?.phase === "completed" && onComplete) onComplete(progress);
+    if (progress && isCompletedPhase && onComplete) onComplete(progress);
   }, [progress?.phase]);
 
   if (!progress) {
@@ -116,13 +123,13 @@ function ProgressCard({ operationId, onComplete, onCancel }: {
     );
   }
 
-  const pct = progress.phase === "completed" || progress.phase === "failed" || progress.phase === "cancelled"
+  const pct = isDone
     ? 100 : progress.phase === "archiving" ? 92
       : progress.phase === "rendering" ? Math.round(10 + (progress.generatedCount / Math.max(progress.totalInvoices, 1)) * 75)
         : progress.phase === "planning" ? 15 : 5;
 
   const barColor: Record<string, string> = {
-    completed: "bg-emerald-500", failed: "bg-rose-500", cancelled: "bg-slate-400",
+    completed: "bg-emerald-500", completed_with_errors: "bg-amber-500", failed: "bg-rose-500", cancelled: "bg-slate-400",
   };
 
   return (
@@ -130,7 +137,7 @@ function ProgressCard({ operationId, onComplete, onCancel }: {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-[13px] font-semibold text-slate-700">
           {isDone ? (
-            progress.phase === "completed" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            isCompletedPhase ? <CheckCircle2 className={`h-4 w-4 ${progress.phase === "completed_with_errors" ? "text-amber-600" : "text-emerald-600"}`} />
               : progress.phase === "failed" ? <AlertCircle className="h-4 w-4 text-rose-600" />
                 : <X className="h-4 w-4 text-slate-400" />
           ) : <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />}
@@ -168,11 +175,11 @@ function ProgressCard({ operationId, onComplete, onCancel }: {
         </div>
       )}
 
-      {progress.phase === "completed" && (
-        <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+      {isCompletedPhase && (
+        <div className={`space-y-3 rounded-lg p-3 ${progress.phase === "completed_with_errors" ? "border border-amber-200 bg-amber-50/70" : "border border-emerald-200 bg-emerald-50/60"}`}>
           <div className="grid grid-cols-3 gap-2 text-center">
             {[
-              { l: "Generated", v: progress.generatedCount, c: "text-emerald-700" },
+              { l: "Generated", v: progress.generatedCount, c: progress.phase === "completed_with_errors" ? "text-amber-700" : "text-emerald-700" },
               { l: "Skipped", v: progress.skippedCount, c: "text-slate-600" },
               { l: "Failed", v: progress.failedCount, c: progress.failedCount > 0 ? "text-rose-600" : "text-slate-600" },
             ].map((i) => (
@@ -182,6 +189,11 @@ function ProgressCard({ operationId, onComplete, onCancel }: {
               </div>
             ))}
           </div>
+          {progress.errorMessage && (
+            <div className={`rounded-md px-3 py-2 text-[12px] ${progress.phase === "completed_with_errors" ? "border border-amber-200 bg-white text-amber-800" : "border border-slate-200 bg-white text-slate-600"}`}>
+              {progress.errorMessage}
+            </div>
+          )}
           {progress.archiveSizeBytes > 0 && (
             <Button size="sm" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
               onClick={() => downloadVoucherZip(operationId)}>
@@ -269,7 +281,7 @@ function RecentOperationsCard({ onResume }: { onResume?: (id: number) => void })
                           <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg hover:bg-indigo-50 hover:text-indigo-600" title="Track job" onClick={() => onResume?.(op.id)}>
                             <Search className="h-3.5 w-3.5" />
                           </Button>
-                        ) : op.status === "completed" && op.archiveSizeBytes > 0 ? (
+                        ) : (op.status === "completed" || op.status === "completed_with_errors") && op.archiveSizeBytes > 0 ? (
                           <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg hover:bg-emerald-50 hover:text-emerald-600" title="Download ZIP" onClick={() => downloadVoucherZip(op.id)}>
                             <Download className="h-3.5 w-3.5" />
                           </Button>
@@ -382,6 +394,7 @@ export default function BulkVouchersPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewData, setPreviewData] = useState<FinanceVoucherPreview | null>(null);
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
+  const recentOperationsRef = useRef<HTMLDivElement | null>(null);
 
   const previewMutation = useBulkVoucherPreview();
   const startMutation = useStartBulkJob();
@@ -419,6 +432,10 @@ export default function BulkVouchersPage() {
     setRows(buildDefaultRows()); setSelectedClasses(new Set());
     setForceRegenerate(false); setActiveJobId(null); setPreviewData(null);
   };
+
+  const handleViewOperationsLog = useCallback(() => {
+    recentOperationsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   return (
     <Layout>
@@ -478,7 +495,12 @@ export default function BulkVouchersPage() {
               </Button>
             </CardHeader>
             <CardContent className="px-4 py-3">
-              <ProgressCard operationId={activeJobId} onComplete={() => { }} onCancel={() => setActiveJobId(null)} />
+              <VoucherGenerationProgress
+                operationId={activeJobId}
+                onComplete={() => undefined}
+                onRetry={() => setActiveJobId(null)}
+                onViewOperationsLog={handleViewOperationsLog}
+              />
             </CardContent>
           </Card>
         )}
@@ -663,7 +685,9 @@ export default function BulkVouchersPage() {
         </div>
 
         {/* ── Recent operations ────────────────────────────────────────── */}
-        <RecentOperationsCard onResume={(id) => setActiveJobId(id)} />
+        <div ref={recentOperationsRef}>
+          <RecentOperationsCard onResume={(id) => setActiveJobId(id)} />
+        </div>
       </div>
 
       {/* ── Preview confirmation dialog ──────────────────────────────── */}

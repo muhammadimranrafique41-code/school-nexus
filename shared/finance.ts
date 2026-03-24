@@ -5,7 +5,7 @@ export const paymentMethods = ["Cash", "Bank Transfer", "Card", "Mobile Money", 
 export const paymentGateways = ["cash", "bank", "card", "mobile-money", "cheque", "online"] as const;
 export const gatewayPaymentStatuses = ["pending", "completed", "failed"] as const;
 export const invoiceSources = ["manual", "monthly"] as const;
-export const financeVoucherOperationStatuses = ["queued", "running", "completed", "cancelled", "failed"] as const;
+export const financeVoucherOperationStatuses = ["queued", "running", "completed", "completed_with_errors", "cancelled", "failed"] as const;
 
 export const feeStatusSchema = z.enum(feeStatuses);
 export const paymentMethodSchema = z.enum(paymentMethods);
@@ -71,6 +71,7 @@ export const billingProfileInputSchema = z.object({
 export const generateMonthlyFeesInputSchema = z.object({
   billingMonth: billingMonthSchema,
   dueDayOverride: z.coerce.number().int().min(1).max(28).optional(),
+  classNameFilter: z.string().trim().min(1).max(80).optional(),
 });
 
 const financeVoucherSelectionBaseSchema = z.object({
@@ -253,9 +254,20 @@ export type FinanceVoucherPreviewInvoice = {
   amount: number;
   remainingBalance: number;
   dueDate: string;
+  invoiceStatus: "existing" | "planned";
   hasExistingVoucher: boolean;
   existingVoucherDocumentNumber?: string | null;
   existingVoucherGeneratedAt?: string | null;
+};
+
+export type FinanceVoucherOperationError = {
+  at: string;
+  invoiceId?: number | null;
+  studentId?: number | null;
+  studentName?: string | null;
+  billingMonth?: string | null;
+  result: "generated" | "skipped" | "failed";
+  error?: string | null;
 };
 
 export type FinanceVoucherPreview = {
@@ -279,6 +291,7 @@ export type FinanceVoucherOperationRecord = FinanceVoucherSelectionInput & {
   requestedBy?: number | null;
   requestedByName?: string | null;
   errorMessage?: string | null;
+  errorLog: FinanceVoucherOperationError[];
   startedAt?: string | null;
   completedAt?: string | null;
   cancelledAt?: string | null;
@@ -290,7 +303,7 @@ export type FinanceVoucherProgressSnapshot = FinanceVoucherOperationRecord & {
   currentInvoiceId?: number | null;
   currentInvoiceNumber?: string | null;
   currentStudentName?: string | null;
-  phase: "queued" | "planning" | "rendering" | "archiving" | "completed" | "cancelled" | "failed";
+  phase: "queued" | "planning" | "rendering" | "archiving" | "completed" | "completed_with_errors" | "cancelled" | "failed";
   message: string;
 };
 

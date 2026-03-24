@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes.js";
 import { serveStatic } from "./static.js";
 import { scheduleDailyTeachingPulseCron } from "./generate-pulse.js";
 import { attachSocketServer } from "./socket.js";
+import { recoverStaleVoucherJobs, scheduleVoucherJobHealthCheck } from "./services/voucherService.js";
 
 declare module "http" {
   interface IncomingMessage {
@@ -82,6 +83,7 @@ export async function initializeApp() {
       await db.execute(sql`ALTER TABLE fees ADD COLUMN IF NOT EXISTS total_discount integer NOT NULL DEFAULT 0;`);
       await db.execute(sql`ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS discount integer NOT NULL DEFAULT 0;`);
       await db.execute(sql`ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS discount_reason text;`);
+      await db.execute(sql`ALTER TABLE finance_voucher_operations ADD COLUMN IF NOT EXISTS error_log jsonb NOT NULL DEFAULT '[]'::jsonb;`);
       // Update remaining_balance to ensure consistency
       await db.execute(sql`UPDATE fees SET remaining_balance = GREATEST(amount - paid_amount - total_discount, 0) WHERE remaining_balance IS NULL OR remaining_balance > 0;`);
       console.log("Database schema alignment successful.");
@@ -91,8 +93,15 @@ export async function initializeApp() {
 
     await registerRoutes(httpServer, app);
 
+    try {
+      await recoverStaleVoucherJobs();
+    } catch (err) {
+      console.error("Voucher operation recovery failed:", err);
+    }
+
     // Schedule background cron jobs
     scheduleDailyTeachingPulseCron();
+    scheduleVoucherJobHealthCheck();
 
     app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
       const status = err.status || err.statusCode || 500;

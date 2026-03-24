@@ -37,8 +37,6 @@ import {
   type FeePaymentWithMeta,
   type FeeWithStudent,
   type HomeworkDiary,
-  type InsertFinanceVoucher,
-  type InsertFinanceVoucherOperation,
   type InsertFinanceLedgerEntry,
   type InsertAcademic,
   type InsertAttendance,
@@ -85,6 +83,7 @@ import {
   type FeeBalanceSummary,
   type FinanceVoucherOperationRecord,
   type FinanceVoucherPreview,
+  type FinanceVoucherPreviewInvoice,
   type FinanceVoucherPreviewInput,
   type FinanceVoucherSelectionInput,
   type FinanceVoucherStartInput,
@@ -159,7 +158,7 @@ type FinanceReportFilters = {
 
 type FinanceVoucherSelectionPlan = {
   selection: FinanceVoucherSelectionInput;
-  invoices: FeeWithStudent[];
+  invoices: FinanceVoucherPreviewInvoice[];
   vouchersByFeeId: Map<number, FinanceVoucherWithMeta>;
 };
 
@@ -296,11 +295,15 @@ export interface IStorage {
   upsertBillingProfile(input: BillingProfileInput): Promise<StudentBillingProfileWithStudent>;
   generateMonthlyFees(input: GenerateMonthlyFeesInput): Promise<{
     billingMonth: string;
+    classNameFilter?: string | null;
+    targetStudentCount: number;
     generatedCount: number;
     skippedDuplicates: number;
     skippedMissingProfiles: number;
+    errorCount: number;
     invoices: FeeWithStudent[];
     skippedStudents: { studentId: number; studentName: string; reason: string }[];
+    errors: { studentId: number; studentName: string; message: string }[];
   }>;
   getFinanceReport(filters?: FinanceReportFilters): Promise<FinanceReportSnapshot>;
   getFeeBalanceSummary(): Promise<FeeBalanceSummary>;
@@ -309,10 +312,26 @@ export interface IStorage {
   previewFinanceVoucherSelection(input: FinanceVoucherPreviewInput): Promise<FinanceVoucherPreview>;
   createFinanceVoucherOperation(input: FinanceVoucherStartInput, requestedBy?: number): Promise<FinanceVoucherOperationRecord>;
   getFinanceVoucherOperation(id: number): Promise<FinanceVoucherOperationRecord | undefined>;
-  updateFinanceVoucherOperation(id: number, updates: Partial<InsertFinanceVoucherOperation>): Promise<FinanceVoucherOperationRecord | undefined>;
+  updateFinanceVoucherOperation(id: number, updates: Partial<FinanceVoucherOperation>): Promise<FinanceVoucherOperationRecord | undefined>;
+  finalizeFinanceVoucherOperation(
+    id: number,
+    updates: Pick<
+      FinanceVoucherOperation,
+      "status"
+      | "totalInvoices"
+      | "generatedCount"
+      | "skippedCount"
+      | "failedCount"
+      | "archiveSizeBytes"
+      | "errorMessage"
+      | "errorLog"
+      | "completedAt"
+      | "cancelledAt"
+    >,
+  ): Promise<FinanceVoucherOperationRecord | undefined>;
   listFinanceVoucherOperations(limit?: number): Promise<FinanceVoucherOperationRecord[]>;
   getFinanceVouchersByFeeIds(feeIds: number[]): Promise<FinanceVoucherWithMeta[]>;
-  saveFinanceVoucher(record: Omit<InsertFinanceVoucher, "generatedAt"> & { generatedAt?: string }): Promise<FinanceVoucherWithMeta>;
+  saveFinanceVoucher(record: Omit<FinanceVoucher, "id" | "generatedAt" | "generationVersion"> & { generatedAt?: string; generationVersion?: number }): Promise<FinanceVoucherWithMeta>;
   getLedgerEntriesByStudent(studentId: number): Promise<FinanceLedgerEntry[]>;
 
   getTotalStudents(): Promise<number>;
@@ -1539,28 +1558,130 @@ export class DatabaseStorage implements IStorage {
     return records
       .map((record) => ({
         ...record,
+        errorLog: Array.isArray(record.errorLog) ? record.errorLog : [],
         requestedByName: record.requestedBy ? userMap.get(record.requestedBy)?.name ?? null : null,
       }))
       .sort((left, right) => `${right.createdAt}-${right.id}`.localeCompare(`${left.createdAt}-${left.id}`));
   }
 
+  private buildPlannedVoucherFeeId(studentId: number, billingMonth: string) {
+    const numericMonth = Number(billingMonth.replace("-", ""));
+    return -1 * (numericMonth * 100000 + studentId);
+  }
+
+  private async getVoucherSelectionTargetStudents(selection: FinanceVoucherSelectionInput) {
+    const studentsList = await this.getStudents();
+    return studentsList.filter((student) => {
+      if (selection.classNames.length > 0 && !selection.classNames.includes(student.className ?? "")) return false;
+      if (selection.studentIds.length > 0 && !selection.studentIds.includes(student.id)) return false;
+      return true;
+    });
+  }
+
   private async getFinanceVoucherSelectionPlan(input: FinanceVoucherSelectionInput): Promise<FinanceVoucherSelectionPlan> {
     const selection = normalizeFinanceVoucherSelection(input);
-    const invoices = (await this.getFees())
-      .filter((invoice) => selection.billingMonths.includes(invoice.billingMonth))
-      .filter((invoice) => selection.classNames.length === 0 || selection.classNames.includes(invoice.student?.className ?? ""))
-      .filter((invoice) => selection.studentIds.length === 0 || selection.studentIds.includes(invoice.studentId))
+    const [targetStudents, profiles, existingInvoices] = await Promise.all([
+      this.getVoucherSelectionTargetStudents(selection),
+      this.getBillingProfiles(),
+      this.getFees(),
+    ]);
+
+    const targetStudentIds = new Set(targetStudents.map((student) => student.id));
+    const activeProfiles = profiles.filter((profile) => profile.isActive && targetStudentIds.has(profile.studentId));
+    const profileByStudentId = new Map(activeProfiles.map((profile) => [profile.studentId, profile]));
+    const existingInvoicesByKey = new Map(
+      existingInvoices
+        .filter((invoice) => selection.billingMonths.includes(invoice.billingMonth))
+        .filter((invoice) => targetStudentIds.has(invoice.studentId))
+        .map((invoice) => [`${invoice.studentId}:${invoice.billingMonth}`, invoice] as const),
+    );
+
+    const missingMonths: string[] = [];
+    const previewInvoices: FinanceVoucherPreviewInvoice[] = [];
+    for (const billingMonth of selection.billingMonths) {
+      const monthInvoices: FinanceVoucherPreviewInvoice[] = [];
+      for (const student of targetStudents) {
+        const existingInvoice = existingInvoicesByKey.get(`${student.id}:${billingMonth}`);
+        if (existingInvoice) {
+          monthInvoices.push({
+            feeId: existingInvoice.id,
+            studentId: existingInvoice.studentId,
+            studentName: existingInvoice.student?.name?.trim() || `Student #${existingInvoice.studentId}`,
+            className: existingInvoice.student?.className ?? student.className ?? null,
+            invoiceNumber: existingInvoice.invoiceNumber ?? null,
+            billingMonth: existingInvoice.billingMonth,
+            billingPeriod: existingInvoice.billingPeriod,
+            amount: existingInvoice.amount,
+            remainingBalance: existingInvoice.remainingBalance,
+            dueDate: existingInvoice.dueDate,
+            invoiceStatus: "existing",
+            hasExistingVoucher: false,
+            existingVoucherDocumentNumber: null,
+            existingVoucherGeneratedAt: null,
+          });
+          continue;
+        }
+
+        const profile = profileByStudentId.get(student.id);
+        if (!profile) continue;
+
+        monthInvoices.push({
+          feeId: this.buildPlannedVoucherFeeId(student.id, billingMonth),
+          studentId: student.id,
+          studentName: student.name,
+          className: student.className ?? null,
+          invoiceNumber: null,
+          billingMonth,
+          billingPeriod: formatBillingPeriod(billingMonth),
+          amount: profile.monthlyAmount,
+          remainingBalance: profile.monthlyAmount,
+          dueDate: buildDueDateForBillingMonth(billingMonth, profile.dueDay),
+          invoiceStatus: "planned",
+          hasExistingVoucher: false,
+          existingVoucherDocumentNumber: null,
+          existingVoucherGeneratedAt: null,
+        });
+      }
+
+      if (monthInvoices.length === 0) {
+        missingMonths.push(billingMonth);
+        continue;
+      }
+
+      previewInvoices.push(...monthInvoices);
+    }
+
+    if (missingMonths.length > 0) {
+      const label = missingMonths.length === 1 ? missingMonths[0] : missingMonths.join(", ");
+      throw new Error(`No fee structure found for ${label}`);
+    }
+
+    const voucherRows = await this.getFinanceVouchersByFeeIds(
+      previewInvoices
+        .map((invoice) => invoice.feeId)
+        .filter((feeId) => feeId > 0),
+    );
+    const vouchersByFeeId = new Map(voucherRows.map((record) => [record.feeId, record]));
+    const invoices = previewInvoices
+      .map((invoice) => {
+        const existingVoucher = invoice.feeId > 0 ? vouchersByFeeId.get(invoice.feeId) : undefined;
+        return {
+          ...invoice,
+          hasExistingVoucher: Boolean(existingVoucher),
+          existingVoucherDocumentNumber: existingVoucher?.documentNumber ?? null,
+          existingVoucherGeneratedAt: existingVoucher?.generatedAt ?? null,
+        };
+      })
       .sort((left, right) =>
-        `${left.billingMonth}-${left.student?.className ?? ""}-${left.student?.name ?? ""}-${left.id}`.localeCompare(
-          `${right.billingMonth}-${right.student?.className ?? ""}-${right.student?.name ?? ""}-${right.id}`,
+        `${left.billingMonth}-${left.className ?? ""}-${left.studentName}-${left.studentId}`.localeCompare(
+          `${right.billingMonth}-${right.className ?? ""}-${right.studentName}-${right.studentId}`,
         ),
       );
 
-    const voucherRows = await this.getFinanceVouchersByFeeIds(invoices.map((invoice) => invoice.id));
     return {
       selection,
       invoices,
-      vouchersByFeeId: new Map(voucherRows.map((record) => [record.feeId, record])),
+      vouchersByFeeId,
     };
   }
 
@@ -1953,55 +2074,72 @@ export class DatabaseStorage implements IStorage {
       this.getPublicSchoolSettings(),
     ]);
 
+    const classNameFilter = input.classNameFilter?.trim() || undefined;
+    const scopedStudents = classNameFilter
+      ? studentUsers.filter((student) => student.className === classNameFilter)
+      : studentUsers;
     const profilesByStudentId = new Map(billingProfiles.map((profile) => [profile.studentId, profile]));
     const [existingGenerated] = await Promise.all([
       db.select({ studentId: fees.studentId }).from(fees).where(eq(fees.generatedMonth, input.billingMonth)),
     ]);
     const duplicateStudents = new Set(existingGenerated.map((record) => record.studentId));
     const skippedStudents: { studentId: number; studentName: string; reason: string }[] = [];
+    const errors: { studentId: number; studentName: string; message: string }[] = [];
     const createdIds: number[] = [];
     let skippedDuplicates = 0;
     let skippedMissingProfiles = 0;
 
     await db.transaction(async (tx) => {
-      for (const student of studentUsers) {
-        const profile = profilesByStudentId.get(student.id);
-        if (!profile || !profile.isActive) {
-          skippedMissingProfiles += 1;
-          skippedStudents.push({
-            studentId: student.id,
-            studentName: student.name,
-            reason: profile ? "Billing profile is inactive" : "Missing billing profile",
-          });
-          continue;
+      for (let start = 0; start < scopedStudents.length; start += 50) {
+        const batch = scopedStudents.slice(start, start + 50);
+        for (const student of batch) {
+          const profile = profilesByStudentId.get(student.id);
+          if (!profile || !profile.isActive) {
+            skippedMissingProfiles += 1;
+            skippedStudents.push({
+              studentId: student.id,
+              studentName: student.name,
+              reason: profile ? "Billing profile is inactive" : "Missing billing profile",
+            });
+            continue;
+          }
+
+          if (duplicateStudents.has(student.id)) {
+            skippedDuplicates += 1;
+            skippedStudents.push({ studentId: student.id, studentName: student.name, reason: "Monthly invoice already generated" });
+            continue;
+          }
+
+          try {
+            const created = await this.createFeeRecord(
+              tx,
+              {
+                studentId: student.id,
+                amount: profile.monthlyAmount,
+                billingMonth: input.billingMonth,
+                billingPeriod: formatBillingPeriod(input.billingMonth),
+                dueDate: buildDueDateForBillingMonth(input.billingMonth, input.dueDayOverride ?? profile.dueDay),
+                description: `Monthly fee for ${formatBillingPeriod(input.billingMonth)}`,
+                feeType: "Monthly Fee",
+                source: "monthly",
+                generatedMonth: input.billingMonth,
+                lineItems: [{ label: `Monthly tuition for ${formatBillingPeriod(input.billingMonth)}`, amount: profile.monthlyAmount }],
+                notes: profile.notes ?? null,
+              },
+              publicSettings.financialSettings.invoicePrefix || "INV",
+            );
+
+            duplicateStudents.add(student.id);
+            createdIds.push(created.id);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Unable to generate invoice";
+            errors.push({
+              studentId: student.id,
+              studentName: student.name,
+              message,
+            });
+          }
         }
-
-        if (duplicateStudents.has(student.id)) {
-          skippedDuplicates += 1;
-          skippedStudents.push({ studentId: student.id, studentName: student.name, reason: "Monthly invoice already generated" });
-          continue;
-        }
-
-        const created = await this.createFeeRecord(
-          tx,
-          {
-            studentId: student.id,
-            amount: profile.monthlyAmount,
-            billingMonth: input.billingMonth,
-            billingPeriod: formatBillingPeriod(input.billingMonth),
-            dueDate: buildDueDateForBillingMonth(input.billingMonth, input.dueDayOverride ?? profile.dueDay),
-            description: `Monthly fee for ${formatBillingPeriod(input.billingMonth)}`,
-            feeType: "Monthly Fee",
-            source: "monthly",
-            generatedMonth: input.billingMonth,
-            lineItems: [{ label: `Monthly tuition for ${formatBillingPeriod(input.billingMonth)}`, amount: profile.monthlyAmount }],
-            notes: profile.notes ?? null,
-          },
-          publicSettings.financialSettings.invoicePrefix || "INV",
-        );
-
-        duplicateStudents.add(student.id);
-        createdIds.push(created.id);
       }
     });
 
@@ -2011,11 +2149,15 @@ export class DatabaseStorage implements IStorage {
 
     return {
       billingMonth: input.billingMonth,
+      classNameFilter: classNameFilter ?? null,
+      targetStudentCount: scopedStudents.length,
       generatedCount: invoices.length,
       skippedDuplicates,
       skippedMissingProfiles,
+      errorCount: errors.length,
       invoices,
       skippedStudents,
+      errors,
     };
   }
 
@@ -2058,33 +2200,87 @@ export class DatabaseStorage implements IStorage {
 
   async previewFinanceVoucherSelection(input: FinanceVoucherPreviewInput) {
     const plan = await this.getFinanceVoucherSelectionPlan(input);
-    const previewInvoices = plan.invoices.map((invoice) => {
-      const existingVoucher = plan.vouchersByFeeId.get(invoice.id);
-      return {
-        feeId: invoice.id,
-        studentId: invoice.studentId,
-        studentName: invoice.student?.name?.trim() || `Student #${invoice.studentId}`,
-        className: invoice.student?.className ?? null,
-        invoiceNumber: invoice.invoiceNumber ?? null,
-        billingMonth: invoice.billingMonth,
-        billingPeriod: invoice.billingPeriod,
-        amount: invoice.amount,
-        remainingBalance: invoice.remainingBalance,
-        dueDate: invoice.dueDate,
-        hasExistingVoucher: Boolean(existingVoucher),
-        existingVoucherDocumentNumber: existingVoucher?.documentNumber ?? null,
-        existingVoucherGeneratedAt: existingVoucher?.generatedAt ?? null,
-      };
-    });
-    const preview = buildFinanceVoucherPreview(plan.selection, previewInvoices);
+    const preview = buildFinanceVoucherPreview(plan.selection, plan.invoices);
     return {
       ...preview,
       sampleInvoices: preview.sampleInvoices.slice(0, input.previewLimit),
     };
   }
 
+  private isSameVoucherSelection(
+    operation: Pick<FinanceVoucherOperationRecord, "billingMonths" | "classNames" | "studentIds" | "force">,
+    selection: FinanceVoucherSelectionInput,
+  ) {
+    return JSON.stringify(operation.billingMonths) === JSON.stringify(selection.billingMonths)
+      && JSON.stringify(operation.classNames) === JSON.stringify(selection.classNames)
+      && JSON.stringify(operation.studentIds) === JSON.stringify(selection.studentIds)
+      && operation.force === selection.force;
+  }
+
+  async findConflictingRunningFinanceVoucherOperation(input: FinanceVoucherSelectionInput) {
+    const selection = normalizeFinanceVoucherSelection(input);
+    const rows = await db
+      .select()
+      .from(financeVoucherOperations)
+      .where(eq(financeVoucherOperations.status, "running"));
+    const operations = await this.attachFinanceVoucherOperations(rows);
+    return operations.find((row) => this.isSameVoucherSelection(row, selection));
+  }
+
+  async failStaleFinanceVoucherOperations(maxAgeMinutes = 30, reason = "Job timed out or server restarted") {
+    const rows = await db
+      .select()
+      .from(financeVoucherOperations)
+      .where(eq(financeVoucherOperations.status, "running"));
+    const staleRows = rows.filter((row) => {
+      const startedAt = row.startedAt ?? row.updatedAt ?? row.createdAt;
+      const ageMs = Date.now() - new Date(startedAt).getTime();
+      return Number.isFinite(ageMs) && ageMs > maxAgeMinutes * 60 * 1000;
+    });
+    if (staleRows.length === 0) return [];
+
+    const completedAt = new Date().toISOString();
+    const failedIds = staleRows.map((row) => row.id);
+    const updatedRows = await db.transaction(async (tx) => {
+      const updates: FinanceVoucherOperation[] = [];
+      for (const row of staleRows) {
+        const errorLog = Array.isArray(row.errorLog) ? row.errorLog : [];
+        const [updated] = await tx
+          .update(financeVoucherOperations)
+          .set({
+            status: "failed",
+            errorMessage: reason,
+            errorLog: [
+              ...errorLog,
+              {
+                at: completedAt,
+                result: "failed",
+                error: reason,
+              },
+            ],
+            completedAt,
+            updatedAt: completedAt,
+          })
+          .where(eq(financeVoucherOperations.id, row.id))
+          .returning();
+        if (updated) updates.push(updated);
+      }
+      return updates;
+    });
+
+    if (updatedRows.length !== failedIds.length) {
+      console.warn("Voucher operation recovery updated fewer records than expected", { failedIds, updatedCount: updatedRows.length });
+    }
+
+    return this.attachFinanceVoucherOperations(updatedRows);
+  }
+
   async createFinanceVoucherOperation(input: FinanceVoucherStartInput, requestedBy?: number) {
-    const preview = await this.previewFinanceVoucherSelection({ ...input, previewLimit: 50 });
+    const preview = await this.previewFinanceVoucherSelection({ ...input, previewLimit: 100000 });
+    const activeOperation = await this.findConflictingRunningFinanceVoucherOperation(preview.selection);
+    if (activeOperation) {
+      throw new Error(`A voucher job is already running for ${preview.selection.billingMonths.join(", ")}.`);
+    }
     const timestamp = new Date().toISOString();
     const [created] = await db.insert(financeVoucherOperations).values({
       requestedBy: requestedBy ?? null,
@@ -2099,6 +2295,7 @@ export class DatabaseStorage implements IStorage {
       failedCount: 0,
       archiveSizeBytes: 0,
       errorMessage: null,
+      errorLog: [],
       startedAt: null,
       completedAt: null,
       cancelledAt: null,
@@ -2116,7 +2313,7 @@ export class DatabaseStorage implements IStorage {
     return withMeta;
   }
 
-  async updateFinanceVoucherOperation(id: number, updates: Partial<InsertFinanceVoucherOperation>) {
+  async updateFinanceVoucherOperation(id: number, updates: Partial<FinanceVoucherOperation>) {
     const existing = await this.getFinanceVoucherOperation(id);
     if (!existing) return undefined;
     const [updated] = await db.update(financeVoucherOperations).set({
@@ -2127,12 +2324,44 @@ export class DatabaseStorage implements IStorage {
     return withMeta;
   }
 
+  async finalizeFinanceVoucherOperation(
+    id: number,
+    updates: Pick<
+      FinanceVoucherOperation,
+      "status"
+      | "totalInvoices"
+      | "generatedCount"
+      | "skippedCount"
+      | "failedCount"
+      | "archiveSizeBytes"
+      | "errorMessage"
+      | "errorLog"
+      | "completedAt"
+      | "cancelledAt"
+    >,
+  ) {
+    const existing = await this.getFinanceVoucherOperation(id);
+    if (!existing) return undefined;
+
+    const [updated] = await db.transaction(async (tx) => tx
+      .update(financeVoucherOperations)
+      .set({
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(financeVoucherOperations.id, id))
+      .returning());
+
+    const [withMeta] = await this.attachFinanceVoucherOperations([updated]);
+    return withMeta;
+  }
+
   async listFinanceVoucherOperations(limit = 10) {
     const rows = await db.select().from(financeVoucherOperations).orderBy(desc(financeVoucherOperations.createdAt), desc(financeVoucherOperations.id)).limit(limit);
     return this.attachFinanceVoucherOperations(rows);
   }
 
-  async saveFinanceVoucher(record: Omit<InsertFinanceVoucher, "generatedAt"> & { generatedAt?: string }) {
+  async saveFinanceVoucher(record: Omit<FinanceVoucher, "id" | "generatedAt" | "generationVersion"> & { generatedAt?: string; generationVersion?: number }) {
     const timestamp = record.generatedAt ?? new Date().toISOString();
     const [existing] = await db.select().from(financeVouchers).where(eq(financeVouchers.feeId, record.feeId)).limit(1);
     let saved: FinanceVoucher;

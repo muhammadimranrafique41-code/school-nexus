@@ -39,7 +39,7 @@ const PAGE_SIZE = 10;
 type InvoiceFormState = { studentId: string; amount: string; billingMonth: string; dueDate: string; description: string; feeType: string; notes: string; discount: string; discountReason: string };
 type PaymentFormState = { amount: string; paymentDate: string; method: "Cash" | "Bank Transfer" | "Card" | "Mobile Money" | "Cheque" | "Other"; reference: string; notes: string; discount: string; discountReason: string };
 type BillingProfileFormState = { studentId: string; monthlyAmount: string; dueDay: string; isActive: boolean; notes: string };
-type GenerationFormState = { billingMonth: string; dueDayOverride: string };
+type GenerationFormState = { billingMonth: string; dueDayOverride: string; classNameFilter: string };
 
 function createDefaultInvoiceForm(studentId = ""): InvoiceFormState {
   const billingMonth = getCurrentBillingMonth();
@@ -104,7 +104,7 @@ export default function Finance() {
   const [invoiceForm, setInvoiceForm] = useState<InvoiceFormState>(() => createDefaultInvoiceForm());
   const [paymentForm, setPaymentForm] = useState<PaymentFormState>(() => createDefaultPaymentForm());
   const [profileForm, setProfileForm] = useState<BillingProfileFormState>(() => createDefaultBillingProfileForm());
-  const [generationForm, setGenerationForm] = useState<GenerationFormState>({ billingMonth: getCurrentBillingMonth(), dueDayOverride: "" });
+  const [generationForm, setGenerationForm] = useState<GenerationFormState>({ billingMonth: getCurrentBillingMonth(), dueDayOverride: "", classNameFilter: "all" });
 
   const createFee = useCreateFee();
   const updateFee = useUpdateFee();
@@ -124,6 +124,14 @@ export default function Finance() {
   const { data: overdueBalances = [] } = useOverdueBalances();
 
   const studentsList = useMemo(() => [...students].sort((a, b) => a.name.localeCompare(b.name)), [students]);
+  const studentClassOptions = useMemo(
+    () => Array.from(new Set(
+      studentsList
+        .map((student) => student.className?.trim())
+        .filter((className): className is string => Boolean(className)),
+    )).sort((a, b) => a.localeCompare(b)),
+    [studentsList],
+  );
   const studentDirectory = useMemo(() => new Map(studentsList.map((s) => [s.id, s])), [studentsList]);
   const invoices = report?.invoices ?? [];
   const recentPayments = useMemo(() => [...(report?.payments ?? [])].sort((a, b) => +new Date(b.paymentDate) - +new Date(a.paymentDate)).slice(0, 6), [report?.payments]);
@@ -212,9 +220,14 @@ export default function Finance() {
 
   const handleGenerateMonthlyFees = async () => {
     try {
-      const result = await generateMonthlyFees.mutateAsync({ billingMonth: generationForm.billingMonth, dueDayOverride: generationForm.dueDayOverride ? Number(generationForm.dueDayOverride) : undefined });
+      const result = await generateMonthlyFees.mutateAsync({
+        billingMonth: generationForm.billingMonth,
+        dueDayOverride: generationForm.dueDayOverride ? Number(generationForm.dueDayOverride) : undefined,
+        classNameFilter: generationForm.classNameFilter === "all" ? undefined : generationForm.classNameFilter,
+      });
       setLastGenerationResult(result);
-      toast({ title: "Monthly fee generation complete", description: `Generated ${result.generatedCount} invoice(s), skipped ${result.skippedDuplicates} duplicate(s), and flagged ${result.skippedMissingProfiles} student(s) without active billing setup.` });
+      const scopeLabel = result.classNameFilter ? ` for ${result.classNameFilter}` : "";
+      toast({ title: "Monthly fee generation complete", description: `Processed ${result.targetStudentCount} student(s)${scopeLabel}: generated ${result.generatedCount}, skipped ${result.skippedDuplicates} duplicates, flagged ${result.skippedMissingProfiles} without active billing, and logged ${result.errorCount} error(s).` });
     } catch (error) { toast({ title: "Unable to generate monthly invoices", description: getErrorMessage(error), variant: "destructive" }); }
   };
 
@@ -928,17 +941,38 @@ export default function Finance() {
             <div className="grid gap-3 pt-2 md:grid-cols-2">
               <div className="space-y-1.5"><label className="text-xs font-medium text-slate-700">Billing month</label><Input type="month" className="h-8 text-sm" value={generationForm.billingMonth} onChange={(e) => setGenerationForm((c) => ({ ...c, billingMonth: e.target.value }))} /></div>
               <div className="space-y-1.5"><label className="text-xs font-medium text-slate-700">Due day override</label><Input type="number" min="1" max="28" className="h-8 text-sm" placeholder="Use profile default" value={generationForm.dueDayOverride} onChange={(e) => setGenerationForm((c) => ({ ...c, dueDayOverride: e.target.value }))} /></div>
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="text-xs font-medium text-slate-700">Class scope</label>
+                <Select value={generationForm.classNameFilter} onValueChange={(value) => setGenerationForm((c) => ({ ...c, classNameFilter: value }))}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All classes</SelectItem>
+                    {studentClassOptions.map((className) => <SelectItem key={className} value={className}>{className}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <p className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">Duplicate prevention is automatic per student and billing month. Students without an active billing profile are skipped.</p>
+            <p className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">Duplicate prevention is automatic per student and billing month. You can now run generation for all classes or limit it to a single class. Students without an active billing profile are skipped.</p>
             {lastGenerationResult && (
               <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="grid grid-cols-3 gap-3">
-                  {[{ l: "Generated", v: lastGenerationResult.generatedCount }, { l: "Duplicates skipped", v: lastGenerationResult.skippedDuplicates }, { l: "Missing profiles", v: lastGenerationResult.skippedMissingProfiles }].map((i) => (
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  {[{ l: "Target students", v: lastGenerationResult.targetStudentCount }, { l: "Generated", v: lastGenerationResult.generatedCount }, { l: "Duplicates skipped", v: lastGenerationResult.skippedDuplicates }, { l: "Missing profiles", v: lastGenerationResult.skippedMissingProfiles }].map((i) => (
                     <div key={i.l}><p className="text-[10px] uppercase tracking-[0.14em] text-slate-400">{i.l}</p><p className="text-xl font-bold text-slate-900">{i.v}</p></div>
                   ))}
                 </div>
+                <p className="text-[11px] text-slate-500">
+                  Scope: <span className="font-medium text-slate-700">{lastGenerationResult.classNameFilter ?? "All classes"}</span>
+                  {" • "}
+                  Errors: <span className="font-medium text-slate-700">{lastGenerationResult.errorCount}</span>
+                </p>
                 {lastGenerationResult.skippedStudents.length > 0 && (
                   <div className="space-y-1"><p className="text-[11px] font-semibold text-slate-700">Skipped students</p>{lastGenerationResult.skippedStudents.slice(0, 6).map((s) => <div key={`${s.studentId}-${s.reason}`} className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px]"><span className="font-medium text-slate-800">{s.studentName}</span><span className="ml-2 text-slate-400">{s.reason}</span></div>)}</div>
+                )}
+                {lastGenerationResult.errors.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-semibold text-slate-700">Generation errors</p>
+                    {lastGenerationResult.errors.slice(0, 6).map((error) => <div key={`${error.studentId}-${error.message}`} className="rounded-md border border-rose-200 bg-white px-2.5 py-1.5 text-[11px]"><span className="font-medium text-slate-800">{error.studentName}</span><span className="ml-2 text-rose-500">{error.message}</span></div>)}
+                  </div>
                 )}
               </div>
             )}

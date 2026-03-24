@@ -12,7 +12,9 @@
     "test:coverage": "tsx script/test-coverage.ts",
     "db:push": "drizzle-kit push",
     "fix-db": "tsx execute_sql.ts",
-    "seed": "tsx seed.ts"
+    "seed": "tsx seed.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1009.0",
@@ -57,7 +59,6 @@
     "cmdk": "^1.1.1",
     "connect-pg-simple": "^10.0.0",
     "date-fns": "^3.6.0",
-    "dotenv": "^16.4.5",
     "drizzle-orm": "^0.39.3",
     "drizzle-zod": "^0.7.0",
     "embla-carousel-react": "^8.6.0",
@@ -94,6 +95,8 @@
     "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.1",
+    "@playwright/test": "^1.58.2",
     "@replit/vite-plugin-cartographer": "^0.4.4",
     "@replit/vite-plugin-dev-banner": "^0.1.1",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
@@ -111,12 +114,15 @@
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.20",
     "cross-env": "^7.0.3",
+    "dotenv": "^17.3.1",
     "drizzle-kit": "^0.31.8",
     "esbuild": "^0.25.0",
+    "msw": "^2.12.14",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
+    "ts-node": "^10.9.2",
     "tsx": "^4.20.5",
-    "typescript": "5.6.3",
+    "typescript": "^5.6.3",
     "vite": "^7.3.0"
   },
   "overrides": {

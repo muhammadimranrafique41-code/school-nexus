@@ -395,6 +395,7 @@ export const financeVoucherOperations = pgTable("finance_voucher_operations", {
   failedCount: integer("failed_count").notNull().default(0),
   archiveSizeBytes: integer("archive_size_bytes").notNull().default(0),
   errorMessage: text("error_message"),
+  errorLog: jsonb("error_log").$type<Record<string, unknown>[]>().notNull().default(sql`'[]'::jsonb`),
   startedAt: text("started_at"),
   completedAt: text("completed_at"),
   cancelledAt: text("cancelled_at"),
