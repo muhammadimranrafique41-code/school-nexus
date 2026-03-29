@@ -31,7 +31,7 @@ import { Pagination, PaginationContent, PaginationItem, PaginationNext, Paginati
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Banknote, CalendarDays, Clock, CreditCard, Download, Eye, FilePlus2, Filter, Loader2, Pencil, Printer, ReceiptText, RefreshCcw, Search, Settings2, Trash2, Users, X, Zap, Gift } from "lucide-react";
+import { Banknote, CalendarDays, Clock, CreditCard, Download, Eye, FilePlus2, Filter, Layers, Loader2, Pencil, Printer, ReceiptText, RefreshCcw, Search, Settings2, Trash2, Users, X, Zap, Gift } from "lucide-react";
 import { buildInvoicePrintHtml, buildPaymentReceiptPrintHtml, type FeePaymentRecord, type FeeRecord, getCurrentBillingMonth, getFeeStatusClassName, getLatestRecordedPayment } from "@/lib/finance";
 import { downloadCsv, formatCurrency, formatDate, getErrorMessage, openPrintWindow, paginateItems } from "@/lib/utils";
 
@@ -261,6 +261,7 @@ export default function Finance() {
             <Button variant="outline" size="sm" onClick={() => setAdjustmentDialogOpen(true)}><Gift className="mr-1.5 h-3.5 w-3.5" />Adjustment</Button>
             <Button variant="outline" size="sm" onClick={() => setLateFeeDialogOpen(true)}><Clock className="mr-1.5 h-3.5 w-3.5" />Late fee</Button>
             <Button variant="outline" size="sm" onClick={() => openProfileDialog()}><Settings2 className="mr-1.5 h-3.5 w-3.5" />Billing profiles</Button>
+            <Button variant="outline" size="sm" onClick={() => { window.location.href = "/admin/finance/vouchers/generate"; }}><Layers className="mr-1.5 h-3.5 w-3.5" />Consolidated Vouchers</Button>
             <Button variant="outline" size="sm" onClick={handleExportInvoices} disabled={filteredInvoices.length === 0}><Download className="mr-1.5 h-3.5 w-3.5" />Export</Button>
             <Button size="sm" onClick={openCreateInvoiceDialog}><FilePlus2 className="mr-1.5 h-3.5 w-3.5" />Create invoice</Button>
           </div>

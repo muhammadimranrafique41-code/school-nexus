@@ -2965,5 +2965,253 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ─── Consolidated Voucher Routes ──────────────────────────────────────────
+
+  // GET /api/fees/vouchers/preview-students
+  app.get("/api/fees/vouchers/preview-students", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const rawMonths = req.query.billingMonths;
+      const billingMonths = (Array.isArray(rawMonths) ? rawMonths : [rawMonths]).filter(
+        (m): m is string => typeof m === "string" && /^\d{4}-\d{2}$/.test(m),
+      );
+      if (billingMonths.length === 0) {
+        return res.status(400).json({ message: "billingMonths is required" });
+      }
+      const includeOverdue = req.query.includeOverdue !== "false";
+      const rawClassNames = req.query.classNames;
+      const classNames = (Array.isArray(rawClassNames) ? rawClassNames : rawClassNames ? [rawClassNames] : []).filter(
+        (c): c is string => typeof c === "string",
+      );
+
+      const sortedMonths = [...billingMonths].sort();
+      const earliestMonth = sortedMonths[0];
+
+      // Fetch all fees
+      const allFees = await storage.getFees();
+
+      // Filter by class if specified
+      const filteredFees = classNames.length > 0
+        ? allFees.filter((f) => f.student?.className && classNames.includes(f.student.className))
+        : allFees;
+
+      // Group by student
+      const studentMap = new Map<number, {
+        name: string;
+        className?: string | null;
+        fatherName?: string | null;
+        previousDues: typeof filteredFees;
+        currentFees: typeof filteredFees;
+      }>();
+
+      for (const fee of filteredFees) {
+        const isPrevious = includeOverdue &&
+          fee.remainingBalance > 0 &&
+          fee.billingMonth < earliestMonth &&
+          (fee.status === "Unpaid" || fee.status === "Partially Paid" || fee.status === "Overdue");
+        const isCurrent = billingMonths.includes(fee.billingMonth) &&
+          fee.status !== "Paid";
+
+        if (!isPrevious && !isCurrent) continue;
+
+        const entry = studentMap.get(fee.studentId) ?? {
+          name: fee.student?.name ?? `Student #${fee.studentId}`,
+          className: fee.student?.className ?? null,
+          fatherName: fee.student?.fatherName ?? null,
+          previousDues: [],
+          currentFees: [],
+        };
+        if (isPrevious) entry.previousDues.push(fee);
+        if (isCurrent) entry.currentFees.push(fee);
+        studentMap.set(fee.studentId, entry);
+      }
+
+      const students = Array.from(studentMap.entries()).map(([studentId, data]) => {
+        const previousDuesTotal = data.previousDues.reduce((s, f) => s + f.remainingBalance, 0);
+        const selectedMonthsTotal = data.currentFees.reduce((s, f) => s + f.remainingBalance, 0);
+        const grandTotal = previousDuesTotal + selectedMonthsTotal;
+
+        let status: "overdue" | "current" | "advance" | "paid" = "current";
+        if (grandTotal === 0) status = "paid";
+        else if (previousDuesTotal > 0) status = "overdue";
+        else if (data.currentFees.every((f) => f.billingMonth > new Date().toISOString().slice(0, 7))) status = "advance";
+
+        return {
+          studentId,
+          name: data.name,
+          className: data.className,
+          fatherName: data.fatherName,
+          previousDuesTotal,
+          selectedMonthsTotal,
+          grandTotal,
+          status,
+          breakdown: {
+            previousDues: data.previousDues.map((f) => ({
+              feeId: f.id,
+              vNo: f.invoiceNumber,
+              feeType: f.feeType,
+              month: f.billingPeriod,
+              amount: f.amount,
+              balance: f.remainingBalance,
+            })),
+            currentMonths: data.currentFees.map((f) => ({
+              feeId: f.id,
+              vNo: f.invoiceNumber,
+              feeType: f.feeType,
+              month: f.billingPeriod,
+              amount: f.remainingBalance,
+            })),
+          },
+        };
+      });
+
+      const activeStudents = students.filter((s) => s.status !== "paid");
+      res.json({
+        summary: {
+          total: activeStudents.length,
+          overdue: activeStudents.filter((s) => s.status === "overdue").length,
+          currentOnly: activeStudents.filter((s) => s.status === "current").length,
+          alreadyPaid: students.filter((s) => s.status === "paid").length,
+        },
+        students: activeStudents.sort((a, b) => b.grandTotal - a.grandTotal),
+      });
+    } catch (err) {
+      console.error("preview-students error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/fees/vouchers/:studentId/consolidated
+  app.get("/api/fees/vouchers/:studentId/consolidated", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const studentId = parseNumberValue(req.params.studentId);
+      if (Number.isNaN(studentId)) return res.status(400).json({ message: "Invalid student id" });
+
+      const rawMonths = req.query.billingMonths;
+      const billingMonths = (Array.isArray(rawMonths) ? rawMonths : [rawMonths]).filter(
+        (m): m is string => typeof m === "string" && /^\d{4}-\d{2}$/.test(m),
+      );
+      if (billingMonths.length === 0) {
+        return res.status(400).json({ message: "billingMonths is required" });
+      }
+      const includeOverdue = req.query.includeOverdue !== "false";
+      const sortedMonths = [...billingMonths].sort();
+      const earliestMonth = sortedMonths[0];
+
+      const student = await storage.getUser(studentId);
+      if (!student || student.role !== "student") {
+        return res.status(404).json({ message: "Student not found" });
+      }
+
+      const allFees = await storage.getFeesByStudent(studentId);
+
+      const previousDues = includeOverdue
+        ? allFees.filter(
+            (f) =>
+              f.remainingBalance > 0 &&
+              f.billingMonth < earliestMonth &&
+              (f.status === "Unpaid" || f.status === "Partially Paid" || f.status === "Overdue"),
+          )
+        : [];
+
+      const currentFees = allFees.filter(
+        (f) => billingMonths.includes(f.billingMonth) && f.status !== "Paid",
+      );
+
+      const { calculateSummary, formatBillingPeriod, buildDocumentNumber } = await import("../shared/finance.js");
+
+      const summary = calculateSummary({
+        previousDues: previousDues.map((f) => ({ amount: f.amount, remainingBalance: f.remainingBalance })),
+        currentFees: currentFees.map((f) => ({ amount: f.remainingBalance })),
+        billingMonth: sortedMonths[sortedMonths.length - 1],
+      });
+
+      const voucherNumber = buildDocumentNumber("CV", studentId);
+
+      res.json({
+        student: {
+          id: student.id,
+          name: student.name,
+          fatherName: student.fatherName,
+          className: student.className,
+        },
+        voucherNumber,
+        generatedAt: new Date().toISOString(),
+        dueDate: summary.dueDate,
+        sections: {
+          previousDues: previousDues.map((f, i) => ({
+            sno: i + 1,
+            vNo: f.invoiceNumber,
+            feeType: f.feeType,
+            month: f.billingPeriod,
+            amount: f.amount,
+            balance: f.remainingBalance,
+          })),
+          currentMonths: currentFees.map((f, i) => ({
+            sno: previousDues.length + i + 1,
+            vNo: f.invoiceNumber,
+            feeType: f.feeType,
+            month: f.billingPeriod,
+            amount: f.remainingBalance,
+          })),
+        },
+        summary: {
+          previousDuesTotal: summary.previousDuesTotal,
+          currentMonthsTotal: summary.currentMonthsTotal,
+          grossTotal: summary.grossTotal,
+          discount: summary.discount,
+          netPayable: summary.netPayable,
+          lateFee: summary.lateFee,
+          payableWithinDate: summary.payableWithinDate,
+          payableAfterDueDate: summary.payableAfterDueDate,
+          amountInWords: summary.amountInWords,
+        },
+      });
+    } catch (err) {
+      console.error("consolidated voucher error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST /api/fees/vouchers/generate-batch (consolidated mode)
+  app.post("/api/fees/vouchers/generate-batch", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const input = z.object({
+        billingMonths: z.array(z.string().regex(/^\d{4}-\d{2}$/)).min(1).max(12),
+        classNames: z.array(z.string()).optional().default([]),
+        studentIds: z.array(z.number().int().positive()).optional().default([]),
+        includeOverdue: z.boolean().optional().default(true),
+        force: z.boolean().optional().default(false),
+      }).parse(req.body);
+
+      // Reuse existing voucher job infrastructure with consolidatedMode flag
+      const operation = await startVoucherJob(
+        {
+          billingMonths: input.billingMonths,
+          classNames: input.classNames,
+          studentIds: input.studentIds,
+          force: input.force,
+          consolidatedMode: true,
+          includeOverdue: input.includeOverdue,
+        },
+        user.id,
+      );
+
+      res.status(201).json({ operationId: operation.id });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid input" });
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }

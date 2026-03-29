@@ -2,6 +2,9 @@ import { and, count, desc, eq, inArray, sql, sum } from "drizzle-orm";
 import {
   academics,
   attendance,
+  consolidatedVoucherAuditLog,
+  consolidatedVoucherFeeLinks,
+  consolidatedVouchers,
   dailyDiary,
   diaryTemplates,
   feeAdjustments,
@@ -25,6 +28,10 @@ import {
   type AcademicWithTeacher,
   type Attendance,
   type AttendanceWithStudent,
+  type ConsolidatedVoucherAuditLogRecord,
+  type ConsolidatedVoucherFeeLink,
+  type ConsolidatedVoucherRecord,
+  type ConsolidatedVoucherWithMeta,
   type DailyDiary,
   type DiaryTemplate,
   type Fee,
@@ -37,6 +44,9 @@ import {
   type FeePaymentWithMeta,
   type FeeWithStudent,
   type HomeworkDiary,
+  type InsertConsolidatedVoucher,
+  type InsertConsolidatedVoucherAuditLog,
+  type InsertConsolidatedVoucherFeeLink,
   type InsertFinanceLedgerEntry,
   type InsertAcademic,
   type InsertAttendance,
@@ -333,6 +343,16 @@ export interface IStorage {
   getFinanceVouchersByFeeIds(feeIds: number[]): Promise<FinanceVoucherWithMeta[]>;
   saveFinanceVoucher(record: Omit<FinanceVoucher, "id" | "generatedAt" | "generationVersion"> & { generatedAt?: string; generationVersion?: number }): Promise<FinanceVoucherWithMeta>;
   getLedgerEntriesByStudent(studentId: number): Promise<FinanceLedgerEntry[]>;
+
+  // Consolidated Voucher operations
+  createConsolidatedVoucher(record: InsertConsolidatedVoucher): Promise<ConsolidatedVoucherWithMeta>;
+  getConsolidatedVoucher(id: number): Promise<ConsolidatedVoucherWithMeta | undefined>;
+  getConsolidatedVouchersByOperation(operationId: number): Promise<ConsolidatedVoucherWithMeta[]>;
+  getConsolidatedVouchersByStudent(studentId: number): Promise<ConsolidatedVoucherWithMeta[]>;
+  updateConsolidatedVoucherStatus(id: number, status: ConsolidatedVoucherRecord["status"], performedBy?: number): Promise<ConsolidatedVoucherWithMeta | undefined>;
+  createConsolidatedVoucherFeeLinks(links: InsertConsolidatedVoucherFeeLink[]): Promise<ConsolidatedVoucherFeeLink[]>;
+  createConsolidatedVoucherAuditLog(record: InsertConsolidatedVoucherAuditLog): Promise<ConsolidatedVoucherAuditLogRecord>;
+  getConsolidatedVoucherByDocumentNumber(documentNumber: string): Promise<ConsolidatedVoucherWithMeta | undefined>;
 
   getTotalStudents(): Promise<number>;
   getTotalTeachers(): Promise<number>;
@@ -2385,6 +2405,95 @@ export class DatabaseStorage implements IStorage {
     }
     const [withMeta] = await this.attachFinanceVouchers([saved]);
     return withMeta;
+  }
+
+  // ============================================================================
+  // CONSOLIDATED VOUCHER OPERATIONS
+  // ============================================================================
+
+  async createConsolidatedVoucher(record: InsertConsolidatedVoucher): Promise<ConsolidatedVoucherWithMeta> {
+    const [created] = await db.insert(consolidatedVouchers).values(record).returning();
+    const [hydrated] = await this.attachConsolidatedVouchers([created]);
+    return hydrated;
+  }
+
+  async getConsolidatedVoucher(id: number): Promise<ConsolidatedVoucherWithMeta | undefined> {
+    const rows = await db.select().from(consolidatedVouchers).where(eq(consolidatedVouchers.id, id)).limit(1);
+    if (rows.length === 0) return undefined;
+    const [hydrated] = await this.attachConsolidatedVouchers(rows);
+    return hydrated;
+  }
+
+  async getConsolidatedVouchersByOperation(operationId: number): Promise<ConsolidatedVoucherWithMeta[]> {
+    const rows = await db.select().from(consolidatedVouchers).where(eq(consolidatedVouchers.operationId, operationId));
+    return this.attachConsolidatedVouchers(rows);
+  }
+
+  async getConsolidatedVouchersByStudent(studentId: number): Promise<ConsolidatedVoucherWithMeta[]> {
+    const rows = await db.select().from(consolidatedVouchers).where(eq(consolidatedVouchers.studentId, studentId));
+    return this.attachConsolidatedVouchers(rows);
+  }
+
+  async updateConsolidatedVoucherStatus(id: number, status: ConsolidatedVoucherRecord["status"], performedBy?: number): Promise<ConsolidatedVoucherWithMeta | undefined> {
+    const existing = await this.getConsolidatedVoucher(id);
+    if (!existing) return undefined;
+
+    const [updated] = await db.update(consolidatedVouchers).set({
+      status,
+      updatedAt: new Date().toISOString(),
+    }).where(eq(consolidatedVouchers.id, id)).returning();
+
+    // Create audit log entry for status change
+    await db.insert(consolidatedVoucherAuditLog).values({
+      consolidatedVoucherId: id,
+      studentId: existing.studentId,
+      action: "status_changed" as const,
+      previousStatus: existing.status,
+      newStatus: status,
+      performedBy: performedBy ?? null,
+      createdAt: new Date().toISOString(),
+    });
+
+    const [hydrated] = await this.attachConsolidatedVouchers([updated]);
+    return hydrated;
+  }
+
+  async createConsolidatedVoucherFeeLinks(links: InsertConsolidatedVoucherFeeLink[]): Promise<ConsolidatedVoucherFeeLink[]> {
+    if (links.length === 0) return [];
+    return db.insert(consolidatedVoucherFeeLinks).values(links as any).returning();
+  }
+
+  async createConsolidatedVoucherAuditLog(record: InsertConsolidatedVoucherAuditLog): Promise<ConsolidatedVoucherAuditLogRecord> {
+    const [created] = await db.insert(consolidatedVoucherAuditLog).values(record).returning();
+    return created;
+  }
+
+  async getConsolidatedVoucherByDocumentNumber(documentNumber: string): Promise<ConsolidatedVoucherWithMeta | undefined> {
+    const rows = await db.select().from(consolidatedVouchers).where(eq(consolidatedVouchers.voucherDocumentNumber, documentNumber)).limit(1);
+    if (rows.length === 0) return undefined;
+    const [hydrated] = await this.attachConsolidatedVouchers(rows);
+    return hydrated;
+  }
+
+  // Helper to attach user relations to consolidated vouchers
+  private async attachConsolidatedVouchers(rows: ConsolidatedVoucherRecord[]): Promise<ConsolidatedVoucherWithMeta[]> {
+    if (rows.length === 0) return [];
+
+    const userIds = [...new Set([
+      ...rows.map((r) => r.studentId).filter(Boolean),
+      ...rows.map((r) => r.generatedBy).filter(Boolean),
+    ])];
+    const usersMap = new Map<number, User>();
+    if (userIds.length > 0) {
+      const userRecords = await db.select().from(users).where(inArray(users.id, userIds));
+      userRecords.forEach((u) => usersMap.set(u.id, u));
+    }
+
+    return rows.map((row) => ({
+      ...row,
+      student: row.studentId ? usersMap.get(row.studentId) ?? undefined : undefined,
+      generatedByUser: row.generatedBy ? usersMap.get(row.generatedBy) ?? undefined : undefined,
+    }));
   }
 
   async getTotalStudents(): Promise<number> {

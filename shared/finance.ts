@@ -79,6 +79,8 @@ const financeVoucherSelectionBaseSchema = z.object({
   classNames: z.array(z.string().trim().min(1).max(80)).max(24).default([]),
   studentIds: z.array(z.coerce.number().int().positive()).max(300).default([]),
   force: z.boolean().default(false),
+  consolidatedMode: z.boolean().default(false).optional(),
+  includeOverdue: z.boolean().default(true).optional(),
 });
 
 const validateVoucherSelection = (value: { classNames: string[], studentIds: number[] }, ctx: z.RefinementCtx) => {
@@ -724,3 +726,120 @@ export function buildOverdueBalanceEntries<TInvoice extends FinanceInvoiceSnapsh
 export function toIsoDate(value = new Date()) {
   return value.toISOString().slice(0, 10);
 }
+
+// ============================================================================
+// Consolidated Voucher Utilities
+// ============================================================================
+
+const ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+  "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+  "Seventeen", "Eighteen", "Nineteen"];
+const TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+function wordsBelow1000(n: number): string {
+  if (n === 0) return "";
+  if (n < 20) return ONES[n];
+  if (n < 100) return `${TENS[Math.floor(n / 10)]}${n % 10 ? " " + ONES[n % 10] : ""}`;
+  return `${ONES[Math.floor(n / 100)]} Hundred${n % 100 ? " " + wordsBelow1000(n % 100) : ""}`;
+}
+
+export function numberToWords(amount: number): string {
+  const n = Math.max(0, Math.floor(amount));
+  if (n === 0) return "Zero Only";
+  const parts: string[] = [];
+  if (n >= 1_000_000) parts.push(`${wordsBelow1000(Math.floor(n / 1_000_000))} Million`);
+  if (n >= 1_000) parts.push(`${wordsBelow1000(Math.floor((n % 1_000_000) / 1_000))} Thousand`);
+  const remainder = n % 1_000;
+  if (remainder > 0) parts.push(wordsBelow1000(remainder));
+  return parts.filter(Boolean).join(" ") + " Only";
+}
+
+export function formatCurrency(amount: number): string {
+  return Math.floor(amount).toLocaleString("en-US");
+}
+
+export function formatBillingMonth(str: string): string {
+  const [year, month] = str.split("-").map(Number);
+  if (!year || !month || month < 1 || month > 12) return str;
+  const date = new Date(year, month - 1, 1);
+  return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" }).format(date);
+}
+
+export type CalculateSummaryParams = {
+  previousDues: Array<{ amount: number; remainingBalance: number }>;
+  currentFees: Array<{ amount: number }>;
+  discountAmount?: number;
+  lateFeeAmount?: number;
+  dueDateDay?: number;
+  billingMonth: string;
+};
+
+export type CalculateSummaryResult = {
+  previousDuesTotal: number;
+  currentMonthsTotal: number;
+  grossTotal: number;
+  discount: number;
+  netPayable: number;
+  lateFee: number;
+  payableWithinDate: number;
+  payableAfterDueDate: number;
+  amountInWords: string;
+  dueDate: string;
+};
+
+export function calculateSummary(params: CalculateSummaryParams): CalculateSummaryResult {
+  const previousDuesTotal = params.previousDues.reduce((s, r) => s + r.remainingBalance, 0);
+  const currentMonthsTotal = params.currentFees.reduce((s, r) => s + r.amount, 0);
+  const grossTotal = previousDuesTotal + currentMonthsTotal;
+  const discount = Math.min(params.discountAmount ?? 0, grossTotal);
+  const lateFee = params.lateFeeAmount ?? 0;
+  const netPayable = Math.max(grossTotal - discount, 0);
+  const payableWithinDate = netPayable;
+  const payableAfterDueDate = netPayable + lateFee;
+  const dueDate = buildDueDateForBillingMonth(params.billingMonth, params.dueDateDay ?? 10);
+  return {
+    previousDuesTotal,
+    currentMonthsTotal,
+    grossTotal,
+    discount,
+    netPayable,
+    lateFee,
+    payableWithinDate,
+    payableAfterDueDate,
+    amountInWords: numberToWords(netPayable),
+    dueDate,
+  };
+}
+
+// ============================================================================
+// Consolidated Voucher Types
+// ============================================================================
+
+export type ConsolidatedFeeRow = {
+  feeId: number;
+  studentId: number;
+  studentName: string;
+  className?: string | null;
+  billingMonth: string;
+  billingPeriod: string;
+  amount: number;
+  remainingBalance: number;
+  dueDate: string;
+  status: FeeStatus;
+  payments?: FinancePaymentSnapshot[];
+};
+
+export type ConsolidatedSummary = {
+  totalPreviousDues: number;
+  totalCurrentFees: number;
+  totalAmount: number;
+  previousDueCount: number;
+  currentFeeCount: number;
+  studentCount: number;
+  previousDueStudents: number;
+  currentFeeStudents: number;
+  monthRange?: {
+    earliest: string;
+    latest: string;
+  };
+};

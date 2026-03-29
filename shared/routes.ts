@@ -956,6 +956,105 @@ export const api = {
         method: "GET",
         responses: { 200: z.any() },
       },
+      // ── Consolidated Voucher Routes ──────────────────────────────────────
+      previewStudents: {
+        path: "/api/fees/vouchers/preview-students",
+        method: "GET",
+        responses: {
+          200: z.object({
+            summary: z.object({
+              total: z.number(),
+              overdue: z.number(),
+              currentOnly: z.number(),
+              alreadyPaid: z.number(),
+            }),
+            students: z.array(z.object({
+              studentId: z.number(),
+              name: z.string(),
+              className: z.string().nullable().optional(),
+              fatherName: z.string().nullable().optional(),
+              previousDuesTotal: z.number(),
+              selectedMonthsTotal: z.number(),
+              grandTotal: z.number(),
+              status: z.enum(["overdue", "current", "advance", "paid"]),
+              breakdown: z.object({
+                previousDues: z.array(z.object({
+                  feeId: z.number(),
+                  vNo: z.string().nullable().optional(),
+                  feeType: z.string(),
+                  month: z.string(),
+                  amount: z.number(),
+                  balance: z.number(),
+                })),
+                currentMonths: z.array(z.object({
+                  feeId: z.number(),
+                  vNo: z.string().nullable().optional(),
+                  feeType: z.string(),
+                  month: z.string(),
+                  amount: z.number(),
+                })),
+              }),
+            })),
+          }),
+        },
+      },
+      consolidatedVoucher: {
+        path: "/api/fees/vouchers/:studentId/consolidated",
+        method: "GET",
+        responses: {
+          200: z.object({
+            student: z.object({
+              id: z.number(),
+              name: z.string(),
+              fatherName: z.string().nullable().optional(),
+              className: z.string().nullable().optional(),
+            }),
+            voucherNumber: z.string(),
+            generatedAt: z.string(),
+            dueDate: z.string(),
+            sections: z.object({
+              previousDues: z.array(z.object({
+                sno: z.number(),
+                vNo: z.string().nullable().optional(),
+                feeType: z.string(),
+                month: z.string(),
+                amount: z.number(),
+                balance: z.number(),
+              })),
+              currentMonths: z.array(z.object({
+                sno: z.number(),
+                vNo: z.string().nullable().optional(),
+                feeType: z.string(),
+                month: z.string(),
+                amount: z.number(),
+              })),
+            }),
+            summary: z.object({
+              previousDuesTotal: z.number(),
+              currentMonthsTotal: z.number(),
+              grossTotal: z.number(),
+              discount: z.number(),
+              netPayable: z.number(),
+              lateFee: z.number(),
+              payableWithinDate: z.number(),
+              payableAfterDueDate: z.number(),
+              amountInWords: z.string(),
+            }),
+          }),
+        },
+      },
+      generateBatch: {
+        path: "/api/fees/vouchers/generate-batch",
+        method: "POST",
+        input: z.object({
+          billingMonths: z.array(z.string().regex(/^\d{4}-\d{2}$/)).min(1).max(12),
+          classNames: z.array(z.string()).optional().default([]),
+          studentIds: z.array(z.number().int().positive()).optional().default([]),
+          includeOverdue: z.boolean().optional().default(true),
+          force: z.boolean().optional().default(false),
+        }),
+        responses: { 201: z.object({ operationId: z.number() }) },
+      },
     },
     ledger: {
       student: {
