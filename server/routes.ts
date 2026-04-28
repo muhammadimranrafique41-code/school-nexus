@@ -782,6 +782,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(cards.filter(Boolean));
   });
 
+  app.post(api.families.create.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const input = api.families.create.input.parse(req.body);
+      const timestamp = new Date().toISOString();
+      const created = await storage.createFamily({
+        name: input.name,
+        guardianDetails: input.guardianDetails ?? {},
+        walletBalance: "0",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+      res.status(201).json({
+        ...created,
+        walletBalance: Number(created.walletBalance ?? 0),
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res
+          .status(400)
+          .json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      }
+      if (err instanceof Error) {
+        return res.status(400).json({ message: err.message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get(api.families.detail.path, async (req, res) => {
     const user = await requireRole(req, res, ["admin"]);
     if (!user) return;

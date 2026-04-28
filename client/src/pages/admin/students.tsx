@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useFamilies } from "@/hooks/use-families";
 import { Link } from "wouter";
 import { Layout } from "@/components/layout";
 import {
@@ -21,12 +22,15 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Download, GraduationCap, Loader2, Plus, Search, Trash2, Edit2, ChevronRight, UserCheck, UserX, UserMinus } from "lucide-react";
+import { FamilySelect } from "@/components/family/FamilySelect";
+import { CreateFamilyDialog } from "@/components/family/CreateFamilyDialog";
 
 type ListedStudent = {
   id: number; name: string; email: string; role: string;
   className?: string | null; fatherName?: string | null; studentPhotoUrl?: string | null;
   rollNumber?: string | null; dateOfBirth?: string | null; gender?: string | null;
   admissionDate?: string | null; studentStatus?: string | null; phone?: string | null; address?: string | null;
+  familyId?: number | null; familyName?: string | null;
 };
 
 const optionalUrlField = z.union([z.string().trim().url("Enter a valid URL"), z.literal("")]).optional();
@@ -45,6 +49,8 @@ const studentSchema = z.object({
   studentStatus: z.string().optional().default("active"),
   phone: z.string().optional(),
   address: z.string().optional(),
+  familyId: z.number().int().positive().nullable().optional(),
+  familyName: z.string().optional(),
 }).superRefine((data, ctx) => {
   if (data.password && data.password.length < 6) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["password"], message: "Password must be at least 6 characters" });
@@ -88,16 +94,27 @@ export default function StudentManagement() {
   const [isOpen, setIsOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<ListedStudent | null>(null);
   const [studentToDelete, setStudentToDelete] = useState<ListedStudent | null>(null);
+  const [createFamilyOpen, setCreateFamilyOpen] = useState(false);
+  const [createFamilySeed, setCreateFamilySeed] = useState<string>("");
 
   const [searchTerm, setSearchTerm] = useState("");
   const [classFilter, setClassFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
 
+  const emptyStudentDefaults: z.infer<typeof studentSchema> = {
+    name: "", email: "", password: "", className: "", fatherName: "", studentPhotoUrl: "",
+    rollNumber: "", dateOfBirth: "", gender: "male", admissionDate: "",
+    studentStatus: "active", phone: "", address: "", familyId: null, familyName: "",
+  };
+
   const form = useForm<z.infer<typeof studentSchema>>({
     resolver: zodResolver(studentSchema),
-    defaultValues: { name: "", email: "", password: "", className: "", fatherName: "", studentPhotoUrl: "", rollNumber: "", dateOfBirth: "", gender: "male", admissionDate: "", studentStatus: "active", phone: "", address: "" }
+    defaultValues: emptyStudentDefaults,
   });
+
+  const { data: familiesData } = useFamilies();
+  const families = useMemo(() => ((familiesData ?? []) as Array<{ id: number; name: string }>).map(f => ({ id: f.id, name: f.name })), [familiesData]);
 
   const students = useMemo(() => (users ?? []).filter(u => u.role === 'student'), [users]);
 
@@ -120,6 +137,8 @@ export default function StudentManagement() {
       ...data,
       role: "student" as const,
       password: data.password?.trim() || undefined,
+      familyId: data.familyId ?? null,
+      familyName: data.familyName ?? "",
     };
 
     if (!editingStudent && !payload.password) {
@@ -136,7 +155,7 @@ export default function StudentManagement() {
 
       setIsOpen(false);
       setEditingStudent(null);
-      form.reset({ name: "", email: "", password: "", className: "", fatherName: "", studentPhotoUrl: "", rollNumber: "", dateOfBirth: "", gender: "male", admissionDate: "", studentStatus: "active", phone: "", address: "" });
+      form.reset(emptyStudentDefaults);
       toast({ title: editingStudent ? "Student updated" : "Student created", description: `${payload.name} has been saved successfully.` });
     } catch (error) {
       toast({ title: "Unable to save student", description: getErrorMessage(error), variant: "destructive" });
@@ -150,7 +169,7 @@ export default function StudentManagement() {
       rollNumber: student.rollNumber || "", dateOfBirth: student.dateOfBirth || "",
       gender: student.gender || "male", admissionDate: student.admissionDate || "",
       studentStatus: student.studentStatus || "active", phone: student.phone || "",
-      address: student.address || ""
+      address: student.address || "", familyId: student.familyId ?? null, familyName: student.familyName || "",
     });
     setEditingStudent(student);
     setIsOpen(true);
@@ -198,7 +217,7 @@ export default function StudentManagement() {
             <Button size="sm" variant="outline" onClick={exportCsv} disabled={filteredStudents.length === 0}>
               <Download className="mr-1.5 h-3.5 w-3.5" />Export CSV
             </Button>
-            <Button size="sm" onClick={() => { setEditingStudent(null); form.reset({ name: "", email: "", password: "", className: "", fatherName: "", studentPhotoUrl: "", rollNumber: "", dateOfBirth: "", gender: "male", admissionDate: "", studentStatus: "active", phone: "", address: "" }); setIsOpen(true); }}>
+            <Button size="sm" onClick={() => { setEditingStudent(null); form.reset(emptyStudentDefaults); setIsOpen(true); }}>
               <Plus className="mr-1.5 h-3.5 w-3.5" />Add Student
             </Button>
           </div>
@@ -260,6 +279,7 @@ export default function StudentManagement() {
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Roll No</th>
                   <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Student</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Family</th>
                   <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Class & Form</th>
                   <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Status</th>
                   <th className="px-4 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Actions</th>
@@ -267,9 +287,9 @@ export default function StudentManagement() {
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={5} className="py-14 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-indigo-500" /></td></tr>
+                  <tr><td colSpan={6} className="py-14 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-indigo-500" /></td></tr>
                 ) : filteredStudents.length === 0 ? (
-                  <tr><td colSpan={5} className="py-14 text-center text-[13px] text-slate-400">No students found.</td></tr>
+                  <tr><td colSpan={6} className="py-14 text-center text-[13px] text-slate-400">No students found.</td></tr>
                 ) : (
                   paginated.pageItems.map((student, idx) => (
                     <tr key={student.id} className={cn("group border-b border-slate-100 last:border-b-0 transition-colors duration-100 hover:bg-slate-50/60", idx % 2 === 1 && "bg-slate-50/30")}>
@@ -290,9 +310,12 @@ export default function StudentManagement() {
                         {student.fatherName && <span className="block text-[11px] text-slate-400">D/O, S/O {student.fatherName}</span>}
                       </td>
                       <td className="px-3 py-2.5">
-                        <StatusBadge status={student.studentStatus || "active"} />
-                      </td>
-                      <td className="px-4 py-2.5 text-right">
+  <StatusBadge status={student.studentStatus || "active"} />
+</td>
+<td className="px-3 py-2.5">
+  <span className="block text-[13px] font-semibold text-slate-600">{student.familyName || "None"}</span>
+</td>
+<td className="px-4 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1 opacity-50 transition-opacity group-hover:opacity-100">
                           <Button asChild variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-indigo-600 hover:bg-indigo-50" title="View Profile">
                             <Link href={`/admin/students/${student.id}`}><ChevronRight className="h-4 w-4" /></Link>
@@ -422,6 +445,53 @@ export default function StudentManagement() {
                   )} />
                 </div>
 
+                {/* Family linkage */}
+                <div className="space-y-3 rounded-lg border border-slate-100 bg-slate-50/40 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Family Linkage</p>
+                  <FormField
+                    control={form.control}
+                    name="familyId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium text-slate-700">Family</FormLabel>
+                        <FormControl>
+                          <div className="relative flex items-center gap-2">
+                            <FamilySelect
+                              value={field.value}
+                              onChange={(id, family) => {
+                                field.onChange(id);
+                                if (id !== null && family) {
+                                  form.setValue("familyName", family.name);
+                                } else {
+                                  form.setValue("familyName", "");
+                                }
+                              }}
+                              onCreateNew={(searchTerm) => {
+                                setCreateFamilySeed(searchTerm);
+                                setCreateFamilyOpen(true);
+                              }}
+                            />
+                            {field.value !== null && !field.dirty ? (
+                              <span className="ml-2 text-sm text-gray-500">
+                                {families.find(f => f.id === field.value)?.name || "None"}
+                              </span>
+                            ) : null}
+                            {form.watch("familyName") && (
+                              <span className="ml-2 text-sm text-gray-600">
+                                Selected: {form.watch("familyName")}
+                              </span>
+                            )}
+                          </div>
+                        </FormControl>
+                        <p className="text-[11px] text-slate-400">
+                          Group this student with siblings under a shared family unit. Optional but enables consolidated billing.
+                        </p>
+                        <FormMessage className="text-[11px]" />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
                 <div className="flex justify-end gap-2 pt-1">
                   <Button type="button" variant="outline" size="sm" onClick={() => setIsOpen(false)}>Cancel</Button>
                   <Button type="submit" size="sm" disabled={createUser.isPending || updateUser.isPending}>
@@ -450,6 +520,17 @@ export default function StudentManagement() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* ── Create Family (inline shortcut) ──────────────────────────── */}
+        <CreateFamilyDialog
+          open={createFamilyOpen}
+          onOpenChange={setCreateFamilyOpen}
+          defaultName={createFamilySeed}
+          onCreated={(family) => {
+            form.setValue("familyId", family.id, { shouldDirty: true, shouldValidate: true });
+            form.setValue("familyName", family.name);
+          }}
+        />
       </div>
     </Layout>
   );

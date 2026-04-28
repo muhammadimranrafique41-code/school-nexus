@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
+import { z } from "zod";
 import { getResponseErrorMessage } from "@/lib/utils";
 
 export function useFamilies() {
@@ -9,6 +10,28 @@ export function useFamilies() {
       const res = await fetch(api.families.list.path, { credentials: "include" });
       if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to load families"));
       return res.json();
+    },
+  });
+}
+
+export type CreateFamilyInput = z.infer<typeof api.families.create.input>;
+
+export function useCreateFamily() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: CreateFamilyInput) => {
+      const validated = api.families.create.input.parse(data);
+      const res = await fetch(api.families.create.path, {
+        method: api.families.create.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validated),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to create family"));
+      return api.families.create.responses[201].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.families.list.path] });
     },
   });
 }

@@ -875,6 +875,15 @@ export const api = {
       method: "GET",
       responses: { 200: z.array(familyCardSchema) },
     },
+    create: {
+      path: "/api/families",
+      method: "POST",
+      input: z.object({
+        name: z.string().trim().min(2, "Family name must be at least 2 characters").max(160),
+        guardianDetails: guardianDetailsSchema.optional(),
+      }),
+      responses: { 201: familySchema },
+    },
     detail: {
       path: "/api/families/:id",
       method: "GET",
