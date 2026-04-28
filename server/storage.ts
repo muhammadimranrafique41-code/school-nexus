@@ -8,11 +8,16 @@ import {
   dailyDiary,
   diaryTemplates,
   feeAdjustments,
+  familyFeeItems,
+  familyFees,
+  familyTransactions,
+  families,
   financeLedgerEntries,
   financeVoucherOperations,
   financeVouchers,
   feePayments,
   fees,
+  feeStructures,
   homeworkDiary,
   qrAttendanceEvents,
   qrProfiles,
@@ -34,8 +39,14 @@ import {
   type ConsolidatedVoucherWithMeta,
   type DailyDiary,
   type DiaryTemplate,
+  type Family,
+  type FamilyFee,
+  type FamilyFeeItem,
+  type FamilyGuardianDetails,
+  type FamilyTransaction,
   type Fee,
   type FeeAdjustment,
+  type FeeStructure,
   type FinanceLedgerEntry,
   type FinanceVoucher,
   type FinanceVoucherOperation,
@@ -50,6 +61,10 @@ import {
   type InsertFinanceLedgerEntry,
   type InsertAcademic,
   type InsertAttendance,
+  type InsertFamily,
+  type InsertFamilyFee,
+  type InsertFamilyFeeItem,
+  type InsertFamilyTransaction,
   type InsertDailyDiary,
   type InsertDiaryTemplate,
   type InsertHomeworkDiary,
@@ -172,6 +187,11 @@ type FinanceVoucherSelectionPlan = {
   vouchersByFeeId: Map<number, FinanceVoucherWithMeta>;
 };
 
+type FamilyWithMembers = Family & {
+  siblings: User[];
+  totalOutstanding: number;
+};
+
 const createRuntimeSettingsState = (): RuntimeSettingsState => {
   const timestamp = new Date().toISOString();
   return {
@@ -227,6 +247,12 @@ const toUserSummary = (user?: User) =>
     : undefined;
 
 export interface IStorage {
+  createFamily(record: InsertFamily): Promise<Family>;
+  updateFamily(id: number, updates: Partial<InsertFamily>): Promise<Family | undefined>;
+  getFamily(id: number): Promise<Family | undefined>;
+  getFamilies(): Promise<Family[]>;
+  getFamilyWithMembers(id: number): Promise<FamilyWithMembers | undefined>;
+  getFamiliesWithMembers(): Promise<FamilyWithMembers[]>;
   getUser(id: number): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
@@ -234,6 +260,12 @@ export interface IStorage {
   deleteUser(id: number): Promise<boolean>;
   getUsers(): Promise<User[]>;
   getStudents(): Promise<User[]>;
+  admitStudent(
+    user: InsertUser & {
+      familyName?: string;
+      guardianDetails?: FamilyGuardianDetails;
+    }
+  ): Promise<User>;
   getTeachers(): Promise<User[]>;
 
   getAcademics(): Promise<AcademicWithTeacher[]>;
@@ -319,6 +351,35 @@ export interface IStorage {
   getFeeBalanceSummary(): Promise<FeeBalanceSummary>;
   getStudentBalance(studentId: number): Promise<StudentBalanceSummary>;
   getOverdueBalances(): Promise<OverdueBalanceEntry[]>;
+  getFamilyBalance(familyId: number): Promise<FamilyWithMembers | undefined>;
+  generateFamilyVouchers(input: {
+    billingMonths: string[];
+    familyIds?: number[];
+    includeOverdue?: boolean;
+  }): Promise<Array<{ familyId: number; invoiceNumber: string; totalAmount: number }>>;
+  payFamily(
+    familyId: number,
+    input: {
+      amount: number;
+      paymentDate: string;
+      method: RecordFeePaymentInput["method"];
+      reference?: string | null;
+      notes?: string | null;
+    },
+    createdBy?: number
+  ): Promise<{
+    family: FamilyWithMembers;
+    walletBalance: number;
+    allocations: Array<{
+      feeId: number;
+      studentId: number;
+      studentName: string;
+      appliedAmount: number;
+      remainingBalanceAfter: number;
+      invoiceNumber?: string | null;
+    }>;
+    transactions: FamilyTransaction[];
+  }>;
   previewFinanceVoucherSelection(input: FinanceVoucherPreviewInput): Promise<FinanceVoucherPreview>;
   createFinanceVoucherOperation(input: FinanceVoucherStartInput, requestedBy?: number): Promise<FinanceVoucherOperationRecord>;
   getFinanceVoucherOperation(id: number): Promise<FinanceVoucherOperationRecord | undefined>;
@@ -392,6 +453,99 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private toWalletNumber(value: string | number | null | undefined) {
+    return Number(value ?? 0);
+  }
+
+  private async hydrateFamilies(rows: Family[]): Promise<Family[]> {
+    return rows.map((row) => ({
+      ...row,
+      walletBalance: String(this.toWalletNumber(row.walletBalance)),
+    }));
+  }
+
+  private async buildFamilyWithMembers(record: Family): Promise<FamilyWithMembers> {
+    const siblings = await db
+      .select()
+      .from(users)
+      .where(eq(users.familyId, record.id));
+    const siblingIds = siblings.map((sibling) => sibling.id);
+    const siblingFees = siblingIds.length === 0
+      ? []
+      : await db.select().from(fees).where(inArray(fees.studentId, siblingIds));
+    const totalOutstanding = siblingFees.reduce(
+      (sum, fee) => sum + Math.max(fee.remainingBalance ?? 0, 0),
+      0
+    );
+
+    return {
+      ...record,
+      walletBalance: String(this.toWalletNumber(record.walletBalance)),
+      siblings,
+      totalOutstanding,
+    };
+  }
+
+  async createFamily(record: InsertFamily): Promise<Family> {
+    const timestamp = new Date().toISOString();
+    const [created] = await db
+      .insert(families)
+      .values({
+        ...record,
+        createdAt: record.createdAt ?? timestamp,
+        updatedAt: record.updatedAt ?? timestamp,
+      })
+      .returning();
+    return {
+      ...created,
+      walletBalance: String(this.toWalletNumber(created.walletBalance)),
+    };
+  }
+
+  async updateFamily(
+    id: number,
+    updates: Partial<InsertFamily>
+  ): Promise<Family | undefined> {
+    const [updated] = await db
+      .update(families)
+      .set({
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(families.id, id))
+      .returning();
+    if (!updated) return undefined;
+    return {
+      ...updated,
+      walletBalance: String(this.toWalletNumber(updated.walletBalance)),
+    };
+  }
+
+  async getFamily(id: number): Promise<Family | undefined> {
+    const [family] = await db.select().from(families).where(eq(families.id, id));
+    if (!family) return undefined;
+    return {
+      ...family,
+      walletBalance: String(this.toWalletNumber(family.walletBalance)),
+    };
+  }
+
+  async getFamilies(): Promise<Family[]> {
+    const records = await db.select().from(families);
+    return this.hydrateFamilies(records);
+  }
+
+  async getFamilyWithMembers(id: number): Promise<FamilyWithMembers | undefined> {
+    const family = await this.getFamily(id);
+    if (!family) return undefined;
+    return this.buildFamilyWithMembers(family);
+  }
+
+  async getFamiliesWithMembers(): Promise<FamilyWithMembers[]> {
+    const records = await this.getFamilies();
+    return Promise.all(records.map((record) => this.buildFamilyWithMembers(record)));
+  }
+
   private normalizeAttendance(record: InsertAttendance): InsertAttendance & { session: string; remarks: string | null } {
     return {
       ...record,
@@ -900,13 +1054,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUser(id: number): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+    const [row] = await db
+      .select({
+        user: users,
+        familyName: families.name,
+      })
+      .from(users)
+      .leftJoin(families, eq(users.familyId, families.id))
+      .where(eq(users.id, id));
+    if (!row) return undefined;
+    return {
+      ...row.user,
+      familyName: row.familyName,
+    };
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    return user;
+    const [row] = await db
+      .select({
+        user: users,
+        familyName: families.name,
+      })
+      .from(users)
+      .leftJoin(families, eq(users.familyId, families.id))
+      .where(eq(users.email, email));
+    if (!row) return undefined;
+    return {
+      ...row.user,
+      familyName: row.familyName,
+    };
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
@@ -937,6 +1113,40 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  async admitStudent(
+    user: InsertUser & {
+      familyName?: string;
+      guardianDetails?: FamilyGuardianDetails;
+    }
+  ): Promise<User> {
+    let familyId = user.familyId ?? null;
+
+    if (!familyId && (user.familyName?.trim() || user.guardianDetails)) {
+      const family = await this.createFamily({
+        name:
+          user.familyName?.trim() ||
+          `${user.fatherName?.trim() || user.name.trim()} Family`,
+        guardianDetails: user.guardianDetails ?? {
+          primary: {
+            name: user.fatherName ?? user.name,
+            phone: user.phone ?? null,
+            address: user.address ?? null,
+          },
+        },
+        walletBalance: "0",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      familyId = family.id;
+    }
+
+    return this.createUser({
+      ...user,
+      role: "student",
+      familyId,
+    });
+  }
+
   async updateUser(id: number, updates: Partial<InsertUser>): Promise<User | undefined> {
     const [user] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
     if (!user) return undefined;
@@ -950,13 +1160,33 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUsers(): Promise<User[]> {
-    return db.select().from(users);
+    const rows = await db
+      .select({
+        user: users,
+        familyName: families.name,
+      })
+      .from(users)
+      .leftJoin(families, eq(users.familyId, families.id));
+    return rows.map(({ user, familyName }) => ({
+      ...user,
+      familyName,
+    }));
   }
 
   async getStudents(): Promise<User[]> {
     await this.syncRoleProfiles();
-    const rows = await db.select({ user: users }).from(students).innerJoin(users, eq(students.userId, users.id));
-    return rows.map(({ user }) => user);
+    const rows = await db
+      .select({
+        user: users,
+        familyName: families.name,
+      })
+      .from(students)
+      .innerJoin(users, eq(students.userId, users.id))
+      .leftJoin(families, eq(users.familyId, families.id));
+    return rows.map(({ user, familyName }) => ({
+      ...user,
+      familyName,
+    }));
   }
 
   async getTeachers(): Promise<User[]> {
@@ -2212,6 +2442,272 @@ export class DatabaseStorage implements IStorage {
     return buildOverdueBalanceEntries(await this.getFees());
   }
 
+  async getFamilyBalance(familyId: number): Promise<FamilyWithMembers | undefined> {
+    return this.getFamilyWithMembers(familyId);
+  }
+
+  async generateFamilyVouchers(input: {
+    billingMonths: string[];
+    familyIds?: number[];
+    includeOverdue?: boolean;
+  }) {
+    const familiesWithMembers = await this.getFamiliesWithMembers();
+    const targetFamilies = familiesWithMembers.filter((family) => {
+      if (!family.siblings.length) return false;
+      if (input.familyIds?.length && !input.familyIds.includes(family.id)) return false;
+      return true;
+    });
+
+    const allFees = await this.getFees();
+    const generated: Array<{
+      familyId: number;
+      invoiceNumber: string;
+      totalAmount: number;
+    }> = [];
+
+    for (const family of targetFamilies) {
+      const studentIds = new Set(family.siblings.map((sibling) => sibling.id));
+      const eligibleFees = allFees.filter((fee) => {
+        if (!studentIds.has(fee.studentId)) return false;
+        if (fee.remainingBalance <= 0) return false;
+        if (input.billingMonths.includes(fee.billingMonth)) return true;
+        return Boolean(input.includeOverdue) && fee.status === "Overdue";
+      });
+      if (!eligibleFees.length) continue;
+
+      const timestamp = new Date().toISOString();
+      const totalAmount = eligibleFees.reduce(
+        (sum, fee) => sum + fee.remainingBalance,
+        0
+      );
+      const [created] = await db
+        .insert(familyFees)
+        .values({
+          familyId: family.id,
+          invoiceNumber: buildDocumentNumber("FAM", family.id),
+          billingMonth: [...input.billingMonths].sort()[0] ?? timestamp.slice(0, 7),
+          billingPeriod: input.billingMonths.map((month) => formatBillingPeriod(month)).join(", "),
+          dueDate: buildDueDateForBillingMonth(
+            [...input.billingMonths].sort().at(-1) ?? timestamp.slice(0, 7),
+            10
+          ),
+          totalAmount,
+          paidAmount: 0,
+          remainingBalance: totalAmount,
+          status: "Unpaid",
+          studentCount: family.siblings.length,
+          summary: {
+            totalPreviousDues: eligibleFees
+              .filter((fee) => !input.billingMonths.includes(fee.billingMonth))
+              .reduce((sum, fee) => sum + fee.remainingBalance, 0),
+            totalCurrentFees: eligibleFees
+              .filter((fee) => input.billingMonths.includes(fee.billingMonth))
+              .reduce((sum, fee) => sum + fee.remainingBalance, 0),
+            totalAmount,
+            previousDueCount: eligibleFees.filter(
+              (fee) => !input.billingMonths.includes(fee.billingMonth)
+            ).length,
+            currentFeeCount: eligibleFees.filter((fee) =>
+              input.billingMonths.includes(fee.billingMonth)
+            ).length,
+            studentCount: family.siblings.length,
+            previousDueStudents: new Set(
+              eligibleFees
+                .filter((fee) => !input.billingMonths.includes(fee.billingMonth))
+                .map((fee) => fee.studentId)
+            ).size,
+            currentFeeStudents: new Set(
+              eligibleFees
+                .filter((fee) => input.billingMonths.includes(fee.billingMonth))
+                .map((fee) => fee.studentId)
+            ).size,
+            monthRange: {
+              earliest: [...input.billingMonths].sort()[0] ?? timestamp.slice(0, 7),
+              latest:
+                [...input.billingMonths].sort().at(-1) ?? timestamp.slice(0, 7),
+            },
+          },
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        })
+        .returning();
+
+      if (eligibleFees.length) {
+        await db.insert(familyFeeItems).values(
+          eligibleFees.map((fee) => ({
+            familyFeeId: created.id,
+            feeId: fee.id,
+            studentId: fee.studentId,
+            createdAt: timestamp,
+          }))
+        );
+      }
+
+      generated.push({
+        familyId: family.id,
+        invoiceNumber: created.invoiceNumber,
+        totalAmount,
+      });
+    }
+
+    return generated;
+  }
+
+  async payFamily(
+    familyId: number,
+    input: {
+      amount: number;
+      paymentDate: string;
+      method: RecordFeePaymentInput["method"];
+      reference?: string | null;
+      notes?: string | null;
+    },
+    createdBy?: number
+  ) {
+    const family = await this.getFamilyWithMembers(familyId);
+    if (!family) throw new Error("Family not found");
+
+    const allFees = await this.getFees();
+    const outstanding = allFees
+      .filter(
+        (fee) => fee.student?.familyId === familyId && fee.remainingBalance > 0
+      )
+      .sort((left, right) =>
+        `${left.dueDate}-${left.id}`.localeCompare(`${right.dueDate}-${right.id}`)
+      );
+
+    let available = input.amount + this.toWalletNumber(family.walletBalance);
+    const allocations: Array<{
+      feeId: number;
+      studentId: number;
+      studentName: string;
+      appliedAmount: number;
+      remainingBalanceAfter: number;
+      invoiceNumber?: string | null;
+    }> = [];
+
+    const publicSettings = await this.getPublicSchoolSettings();
+    const receiptPrefix = publicSettings.financialSettings.receiptPrefix || "RCT";
+    const timestamp = new Date().toISOString();
+
+    await db.transaction(async (tx) => {
+      for (const fee of outstanding) {
+        if (available <= 0) break;
+        const appliedAmount = Math.min(available, fee.remainingBalance);
+        if (appliedAmount <= 0) continue;
+
+        const [createdPayment] = await tx
+          .insert(feePayments)
+          .values({
+            feeId: fee.id,
+            studentId: fee.studentId,
+            familyId,
+            amount: appliedAmount,
+            discount: 0,
+            discountReason: null,
+            paymentDate: input.paymentDate,
+            method: input.method,
+            receiptNumber: null,
+            reference: input.reference ?? null,
+            notes: input.notes ?? null,
+            idempotencyKey: null,
+            createdAt: timestamp,
+            createdBy: createdBy ?? null,
+          })
+          .returning();
+
+        const receiptNumber = buildDocumentNumber(
+          receiptPrefix,
+          createdPayment.id,
+          new Date(input.paymentDate || timestamp)
+        );
+        await tx
+          .update(feePayments)
+          .set({ receiptNumber })
+          .where(eq(feePayments.id, createdPayment.id));
+
+        const newPaidAmount = fee.paidAmount + appliedAmount;
+        const ledger = summarizeFeeLedger(
+          fee.amount,
+          newPaidAmount,
+          fee.dueDate,
+          fee.totalDiscount ?? 0
+        );
+        await tx
+          .update(fees)
+          .set({
+            paidAmount: newPaidAmount,
+            remainingBalance: ledger.remainingBalance,
+            status: ledger.status,
+            updatedAt: timestamp,
+          })
+          .where(eq(fees.id, fee.id));
+
+        allocations.push({
+          feeId: fee.id,
+          studentId: fee.studentId,
+          studentName: fee.student?.name ?? `Student #${fee.studentId}`,
+          appliedAmount,
+          remainingBalanceAfter: ledger.remainingBalance,
+          invoiceNumber: fee.invoiceNumber,
+        });
+        available -= appliedAmount;
+      }
+
+      const endingWalletBalance = Math.max(available, 0);
+      await tx
+        .update(families)
+        .set({
+          walletBalance: endingWalletBalance.toFixed(2),
+          updatedAt: timestamp,
+        })
+        .where(eq(families.id, familyId));
+
+      await tx.insert(familyTransactions).values({
+        familyId,
+        familyFeeId: null,
+        amount: input.amount,
+        type: "family_fee_payment",
+        method: input.method,
+        reference: input.reference ?? null,
+        notes: input.notes ?? null,
+        allocation: allocations.map((allocation) => ({
+          feeId: allocation.feeId,
+          studentId: allocation.studentId,
+          appliedAmount: allocation.appliedAmount,
+        })),
+        createdAt: timestamp,
+        createdBy: createdBy ?? null,
+      });
+    });
+
+    for (const allocation of allocations) {
+      await this.createLedgerEntry(allocation.studentId, "payment", {
+        feeId: allocation.feeId,
+        debit: 0,
+        credit: allocation.appliedAmount,
+        referenceId: allocation.invoiceNumber ?? `FEE-${allocation.feeId}`,
+        description: `Family payment received via ${input.method}`,
+        createdBy,
+      });
+    }
+
+    const refreshedFamily = await this.getFamilyWithMembers(familyId);
+    const transactions = await db
+      .select()
+      .from(familyTransactions)
+      .where(eq(familyTransactions.familyId, familyId));
+
+    if (!refreshedFamily) throw new Error("Family not found after payment");
+
+    return {
+      family: refreshedFamily,
+      walletBalance: this.toWalletNumber(refreshedFamily.walletBalance),
+      allocations,
+      transactions,
+    };
+  }
+
   async getFinanceVouchersByFeeIds(feeIds: number[]) {
     if (feeIds.length === 0) return [];
     const rows = await db.select().from(financeVouchers).where(inArray(financeVouchers.feeId, feeIds));
@@ -2534,8 +3030,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPublicSchoolSettings(): Promise<PublicSchoolSettings> {
-    const response = await this.getSchoolSettings();
-    return response.publicSettings;
+    try {
+      const record = await this.ensureSchoolSettingsRecord();
+      return buildPublicSchoolSettings(decryptSchoolSettingsData(record.data));
+    } catch (error) {
+      if (!isMissingSettingsTableError(error)) throw error;
+      return buildPublicSchoolSettings(decryptSchoolSettingsData(runtimeSettingsState.current.data));
+    }
   }
 
   async updateSchoolSettings(data: SchoolSettingsData, updatedBy?: number, changeSummary?: string): Promise<AdminSchoolSettingsResponse> {

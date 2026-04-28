@@ -21,7 +21,7 @@ import { db } from "./db.js";
 import { AssignTeacherSchema, CreateClassSchema } from "../lib/validators/classes.js";
 import { registerQrAttendanceRoutes } from "./qr-attendance-routes.js";
 import { createSessionMiddleware } from "./session.js";
-import { storage } from "./storage.js";
+import { storage } from "./storage.ts";
 import { loadTimetableSettings, computePeriodTimeline } from "./lib/settings-loader.js";
 import {
   cancelVoucherJob,
@@ -415,6 +415,148 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   const getTeacherClassNames = async (teacherId: number) => new Set((await storage.getTeacherClasses(teacherId)).map((item) => item.className));
 
+  const buildFamilyCard = async (familyId: number) => {
+    const family = await storage.getFamilyWithMembers(familyId);
+    if (!family) return undefined;
+
+    const siblings = await Promise.all(
+      family.siblings.map(async (sibling) => {
+        const balance = await storage.getStudentBalance(sibling.id);
+        return {
+          ...sibling,
+          outstandingBalance: balance.outstandingBalance,
+          openInvoices: balance.openInvoices,
+        };
+      })
+    );
+
+    return {
+      id: family.id,
+      name: family.name,
+      guardianDetails: family.guardianDetails ?? {},
+      walletBalance: Number(family.walletBalance ?? 0),
+      totalOutstanding: family.totalOutstanding,
+      siblingCount: siblings.length,
+      siblings,
+    };
+  };
+
+  const buildFamilyVoucherPayload = async (
+    familyId: number,
+    billingMonths: string[],
+    includeOverdue = true
+  ) => {
+    const family = await storage.getFamilyWithMembers(familyId);
+    if (!family) return undefined;
+
+    const sortedMonths = [...billingMonths].sort();
+    const earliestMonth = sortedMonths[0];
+    const fees = await storage.getFees();
+    const siblingIds = new Set(family.siblings.map((sibling) => sibling.id));
+    const scopedFees = fees.filter((fee) => siblingIds.has(fee.studentId));
+
+    const siblings = family.siblings.map((sibling) => {
+      const studentFees = scopedFees.filter((fee) => fee.studentId === sibling.id);
+      const previousDues = includeOverdue
+        ? studentFees.filter(
+            (fee) =>
+              fee.remainingBalance > 0 &&
+              fee.billingMonth < earliestMonth &&
+              ["Unpaid", "Partially Paid", "Overdue"].includes(fee.status)
+          )
+        : [];
+      const currentFees = studentFees.filter(
+        (fee) =>
+          billingMonths.includes(fee.billingMonth) && fee.remainingBalance > 0
+      );
+      return {
+        studentId: sibling.id,
+        studentName: sibling.name,
+        className: sibling.className ?? null,
+        fatherName: sibling.fatherName ?? null,
+        previousDues: previousDues.map((fee) => ({
+          feeId: fee.id,
+          invoiceNumber: fee.invoiceNumber ?? null,
+          feeType: fee.feeType,
+          billingPeriod: fee.billingPeriod,
+          amount: fee.amount,
+          remainingBalance: fee.remainingBalance,
+        })),
+        currentFees: currentFees.map((fee) => ({
+          feeId: fee.id,
+          invoiceNumber: fee.invoiceNumber ?? null,
+          feeType: fee.feeType,
+          billingPeriod: fee.billingPeriod,
+          amount: fee.amount,
+          remainingBalance: fee.remainingBalance,
+        })),
+        total:
+          previousDues.reduce((sum, fee) => sum + fee.remainingBalance, 0) +
+          currentFees.reduce((sum, fee) => sum + fee.remainingBalance, 0),
+      };
+    });
+
+    const previousDuesTotal = siblings.reduce(
+      (sum, sibling) =>
+        sum +
+        sibling.previousDues.reduce(
+          (studentSum, fee) => studentSum + fee.remainingBalance,
+          0
+        ),
+      0
+    );
+    const currentMonthsTotal = siblings.reduce(
+      (sum, sibling) =>
+        sum +
+        sibling.currentFees.reduce(
+          (studentSum, fee) => studentSum + fee.remainingBalance,
+          0
+        ),
+      0
+    );
+    const { calculateSummary } = await import("../shared/finance.js");
+    const summary = calculateSummary({
+      previousDues: siblings.flatMap((sibling) =>
+        sibling.previousDues.map((fee) => ({
+          amount: fee.amount,
+          remainingBalance: fee.remainingBalance,
+        }))
+      ),
+      currentFees: siblings.flatMap((sibling) =>
+        sibling.currentFees.map((fee) => ({
+          amount: fee.remainingBalance,
+        }))
+      ),
+      billingMonth: sortedMonths.at(-1) ?? new Date().toISOString().slice(0, 7),
+    });
+
+    return {
+      family: {
+        id: family.id,
+        name: family.name,
+        guardianDetails: family.guardianDetails ?? {},
+        walletBalance: Number(family.walletBalance ?? 0),
+        totalOutstanding: family.totalOutstanding,
+        siblingCount: siblings.length,
+      },
+      siblings,
+      voucherNumber: `FAM-${String(family.id).padStart(5, "0")}-${Date.now()}`,
+      generatedAt: new Date().toISOString(),
+      dueDate: summary.dueDate,
+      summary: {
+        previousDuesTotal,
+        currentMonthsTotal,
+        grossTotal: summary.grossTotal,
+        discount: summary.discount,
+        netPayable: summary.netPayable,
+        lateFee: summary.lateFee,
+        payableWithinDate: summary.payableWithinDate,
+        payableAfterDueDate: summary.payableAfterDueDate,
+        amountInWords: summary.amountInWords,
+      },
+    };
+  };
+
   app.get(api.auth.me.path, async (req, res) => {
     const user = await requireUser(req, res);
     if (user) res.json(user);
@@ -443,6 +585,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(user);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.auth.register.path, async (req, res) => {
+    try {
+      const input = api.auth.register.input.parse(req.body);
+      const { familyName, guardianDetails, ...userInput } = input;
+      const createdUser =
+        userInput.role === "student"
+          ? await storage.admitStudent({
+              ...userInput,
+              familyName,
+              guardianDetails,
+            })
+          : await storage.createUser(userInput);
+      res.status(201).json(createdUser);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res
+          .status(400)
+          .json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      }
+      if (isUniqueViolation(err)) {
+        return res
+          .status(409)
+          .json({ message: "A user with this email already exists.", field: "email" });
+      }
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -500,7 +670,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get(api.settings.publicGet.path, async (_req, res) => {
     try {
       res.json(await storage.getPublicSchoolSettings());
-    } catch {
+    } catch (err) {
+      console.error("Failed to load public settings", err);
       res.status(500).json({ message: "Failed to load public settings" });
     }
   });
@@ -510,7 +681,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = await requireRole(req, res, ["admin"]);
       if (!user) return;
       res.json(await storage.getSchoolSettings());
-    } catch {
+    } catch (err) {
+      console.error("Failed to load settings", err);
       res.status(500).json({ message: "Failed to load settings" });
     }
   });
@@ -575,16 +747,121 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (user) res.json(await storage.getStudents());
   });
 
+  app.post(api.students.admit.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const input = api.students.admit.input.parse(req.body);
+      const createdUser = await storage.admitStudent(input);
+      res.status(201).json(createdUser);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res
+          .status(400)
+          .json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      }
+      if (isUniqueViolation(err)) {
+        return res
+          .status(409)
+          .json({ message: "A user with this email already exists.", field: "email" });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get(api.teachers.list.path, async (req, res) => {
     const user = await requireRole(req, res, ["admin", "teacher"]);
     if (user) res.json(await storage.getTeachers());
+  });
+
+  app.get(api.families.list.path, async (req, res) => {
+    const user = await requireRole(req, res, ["admin"]);
+    if (!user) return;
+    const families = await storage.getFamiliesWithMembers();
+    const cards = await Promise.all(families.map((family) => buildFamilyCard(family.id)));
+    res.json(cards.filter(Boolean));
+  });
+
+  app.get(api.families.detail.path, async (req, res) => {
+    const user = await requireRole(req, res, ["admin"]);
+    if (!user) return;
+    const familyId = parseNumberValue(req.params.id);
+    if (Number.isNaN(familyId)) {
+      return res.status(400).json({ message: "Invalid family id", field: "id" });
+    }
+    const family = await buildFamilyCard(familyId);
+    if (!family) return res.status(404).json({ message: "Family not found" });
+    res.json(family);
+  });
+
+  app.get(api.families.dashboard.path, async (req, res) => {
+    const user = await requireRole(req, res, ["student", "admin"]);
+    if (!user) return;
+    const familyId = user.familyId;
+    if (!familyId) return res.status(404).json({ message: "Family not found" });
+    const family = await buildFamilyCard(familyId);
+    if (!family) return res.status(404).json({ message: "Family not found" });
+    res.json(family);
+  });
+
+  app.post(api.families.pay.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const familyId = parseNumberValue(req.params.id);
+      if (Number.isNaN(familyId)) {
+        return res.status(400).json({ message: "Invalid family id", field: "id" });
+      }
+      const input = api.families.pay.input.parse(req.body);
+      const result = await storage.payFamily(familyId, input, user.id);
+      res.json({
+        family: {
+          id: result.family.id,
+          name: result.family.name,
+          guardianDetails: result.family.guardianDetails ?? {},
+          walletBalance: result.walletBalance,
+          totalOutstanding: result.family.totalOutstanding,
+        },
+        paymentAmount: input.amount,
+        walletBalance: result.walletBalance,
+        allocations: result.allocations,
+        transactions: result.transactions.map((transaction) => ({
+          id: transaction.id,
+          amount: transaction.amount,
+          type: transaction.type,
+          method: transaction.method ?? null,
+          reference: transaction.reference ?? null,
+          notes: transaction.notes ?? null,
+          createdAt: transaction.createdAt,
+        })),
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res
+          .status(400)
+          .json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      }
+      if (err instanceof Error) {
+        return res.status(400).json({ message: err.message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   app.post(api.users.create.path, async (req, res) => {
     try {
       const user = await requireRole(req, res, ["admin"]);
       if (!user) return;
-      const createdUser = await storage.createUser(api.users.create.input.parse(req.body));
+      const input = api.users.create.input.parse(req.body);
+      const { familyName, guardianDetails, ...userInput } = input;
+      const createdUser =
+        userInput.role === "student"
+          ? await storage.admitStudent({
+              ...userInput,
+              familyName,
+              guardianDetails,
+            })
+          : await storage.createUser(userInput);
       res.status(201).json(createdUser);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
@@ -2966,6 +3243,98 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ─── Consolidated Voucher Routes ──────────────────────────────────────────
+
+  app.get(api.fees.vouchers.previewFamilies.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const rawMonths = req.query.billingMonths;
+      const billingMonths = (Array.isArray(rawMonths) ? rawMonths : [rawMonths]).filter(
+        (month): month is string => typeof month === "string" && /^\d{4}-\d{2}$/.test(month)
+      );
+      if (billingMonths.length === 0) {
+        return res.status(400).json({ message: "billingMonths is required" });
+      }
+
+      const families = await storage.getFamiliesWithMembers();
+      const payloads = await Promise.all(
+        families.map((family) => buildFamilyVoucherPayload(family.id, billingMonths))
+      );
+      const previews = payloads
+        .filter(Boolean)
+        .map((payload) => ({
+          familyId: payload!.family.id,
+          familyName: payload!.family.name,
+          totalOutstanding: payload!.family.totalOutstanding,
+          totalCurrentFees: payload!.summary.currentMonthsTotal,
+          siblingCount: payload!.family.siblingCount,
+          siblings: payload!.siblings.map((sibling) => ({
+            studentId: sibling.studentId,
+            studentName: sibling.studentName,
+            className: sibling.className,
+            previousDuesTotal: sibling.previousDues.reduce((sum, fee) => sum + fee.remainingBalance, 0),
+            selectedMonthsTotal: sibling.currentFees.reduce((sum, fee) => sum + fee.remainingBalance, 0),
+            total: sibling.total,
+          })),
+        }))
+        .filter((family) => family.totalOutstanding > 0 || family.totalCurrentFees > 0);
+
+      res.json({
+        summary: {
+          totalFamilies: previews.length,
+          totalStudents: previews.reduce((sum, family) => sum + family.siblingCount, 0),
+          totalOutstanding: previews.reduce((sum, family) => sum + family.totalOutstanding, 0),
+        },
+        families: previews.sort((left, right) => right.totalOutstanding - left.totalOutstanding),
+      });
+    } catch (err) {
+      console.error("preview-families error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get(api.fees.vouchers.familyVoucher.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const familyId = parseNumberValue(req.params.familyId);
+      if (Number.isNaN(familyId)) return res.status(400).json({ message: "Invalid family id" });
+
+      const rawMonths = req.query.billingMonths;
+      const billingMonths = (Array.isArray(rawMonths) ? rawMonths : [rawMonths]).filter(
+        (month): month is string => typeof month === "string" && /^\d{4}-\d{2}$/.test(month)
+      );
+      if (billingMonths.length === 0) {
+        return res.status(400).json({ message: "billingMonths is required" });
+      }
+
+      const payload = await buildFamilyVoucherPayload(familyId, billingMonths);
+      if (!payload) return res.status(404).json({ message: "Family not found" });
+      res.json(payload);
+    } catch (err) {
+      console.error("family voucher error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.fees.vouchers.generateFamilyVouchers.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const input = api.fees.vouchers.generateFamilyVouchers.input.parse(req.body);
+      const families = await storage.generateFamilyVouchers(input);
+      res.status(201).json({
+        generatedCount: families.length,
+        families,
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid input" });
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
 
   // GET /api/fees/vouchers/preview-students
   app.get("/api/fees/vouchers/preview-students", async (req, res) => {

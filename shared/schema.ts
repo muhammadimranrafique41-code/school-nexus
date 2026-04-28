@@ -74,9 +74,37 @@ export const dailyTeachingPulseStatusSchema = z.enum(
   dailyTeachingPulseStatuses
 );
 
+export type FamilyGuardianContact = {
+  name?: string | null;
+  relation?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+};
+
+export type FamilyGuardianDetails = {
+  primary?: FamilyGuardianContact | null;
+  secondary?: FamilyGuardianContact | null;
+  notes?: string | null;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CORE TABLES (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
+
+export const families = pgTable("families", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  guardianDetails: jsonb("guardian_details")
+    .$type<FamilyGuardianDetails>()
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  walletBalance: numeric("wallet_balance", { precision: 12, scale: 2 })
+    .notNull()
+    .default("0"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+});
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -99,6 +127,9 @@ export const users = pgTable("users", {
   studentStatus: text("student_status").default("active"),
   phone: text("phone"),
   address: text("address"),
+  familyId: integer("family_id").references(() => families.id, {
+    onDelete: "set null",
+  }),
 });
 
 export const sessions = pgTable("session", {
@@ -341,6 +372,10 @@ export const feePayments = pgTable(
     studentId: integer("student_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    familyId: integer("family_id").references(() => families.id, {
+      onDelete: "set null",
+    }),
+    familyFeeId: integer("family_fee_id"),
     amount: integer("amount").notNull(),
     discount: integer("discount").default(0).notNull(),
     discountReason: text("discount_reason"),
@@ -494,6 +529,120 @@ export const studentBillingProfiles = pgTable("student_billing_profiles", {
   notes: text("notes"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+});
+
+export const feeStructures = pgTable(
+  "fee_structures",
+  {
+    id: serial("id").primaryKey(),
+    className: text("class_name").notNull(),
+    term: text("term").notNull(),
+    baseRate: integer("base_rate").notNull().default(0),
+    transportRate: integer("transport_rate").notNull().default(0),
+    miscRate: integer("misc_rate").notNull().default(0),
+    chargeItems: jsonb("charge_items")
+      .$type<FeeLineItem[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => ({
+    classTermIdx: uniqueIndex("fee_structures_class_term_idx").on(
+      table.className,
+      table.term
+    ),
+  })
+);
+
+export const familyFees = pgTable(
+  "family_fees",
+  {
+    id: serial("id").primaryKey(),
+    familyId: integer("family_id")
+      .notNull()
+      .references(() => families.id, { onDelete: "cascade" }),
+    invoiceNumber: text("invoice_number").notNull(),
+    billingMonth: text("billing_month").notNull(),
+    billingPeriod: text("billing_period").notNull(),
+    dueDate: text("due_date").notNull(),
+    totalAmount: integer("total_amount").notNull(),
+    paidAmount: integer("paid_amount").notNull().default(0),
+    remainingBalance: integer("remaining_balance").notNull().default(0),
+    status: text("status").$type<FeeStatus>().notNull().default("Unpaid"),
+    studentCount: integer("student_count").notNull().default(0),
+    summary: jsonb("summary")
+      .$type<ConsolidatedSummary>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => ({
+    invoiceNumberIdx: uniqueIndex("family_fees_invoice_number_idx").on(
+      table.invoiceNumber
+    ),
+  })
+);
+
+export const familyFeeItems = pgTable(
+  "family_fee_items",
+  {
+    id: serial("id").primaryKey(),
+    familyFeeId: integer("family_fee_id")
+      .notNull()
+      .references(() => familyFees.id, { onDelete: "cascade" }),
+    feeId: integer("fee_id")
+      .notNull()
+      .references(() => fees.id, { onDelete: "cascade" }),
+    studentId: integer("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => ({
+    familyFeeLinkIdx: uniqueIndex("family_fee_items_family_fee_fee_idx").on(
+      table.familyFeeId,
+      table.feeId
+    ),
+  })
+);
+
+export const familyTransactions = pgTable("family_transactions", {
+  id: serial("id").primaryKey(),
+  familyId: integer("family_id")
+    .notNull()
+    .references(() => families.id, { onDelete: "cascade" }),
+  familyFeeId: integer("family_fee_id").references(() => familyFees.id, {
+    onDelete: "set null",
+  }),
+  amount: integer("amount").notNull(),
+  type: text("type")
+    .$type<
+      | "family_wallet_credit"
+      | "family_wallet_debit"
+      | "family_fee_payment"
+      | "family_adjustment"
+    >()
+    .notNull(),
+  method: text("method").$type<PaymentMethod>(),
+  reference: text("reference"),
+  notes: text("notes"),
+  allocation: jsonb("allocation")
+    .$type<
+      Array<{
+        feeId: number;
+        studentId: number;
+        appliedAmount: number;
+      }>
+    >()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  createdAt: text("created_at").notNull(),
+  createdBy: integer("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1224,8 +1373,10 @@ export const insertUserSchema = createInsertSchema(users)
       .default("active"),
     phone: optionalUserTextFieldSchema,
     address: optionalUserTextFieldSchema,
+    familyId: z.coerce.number().int().positive().nullable().optional(),
   });
 
+export const insertFamilySchema = createInsertSchema(families).omit({ id: true });
 export const insertStudentSchema = createInsertSchema(students);
 export const insertTeacherSchema = createInsertSchema(teachers);
 export const insertAcademicSchema = createInsertSchema(academics).omit({
@@ -1268,6 +1419,20 @@ export const insertFinanceAuditLogSchema = createInsertSchema(
 export const insertStudentBillingProfileSchema = createInsertSchema(
   studentBillingProfiles
 );
+export const insertFeeStructureSchema = createInsertSchema(feeStructures).omit({
+  id: true,
+});
+export const insertFamilyFeeSchema = createInsertSchema(familyFees).omit({
+  id: true,
+});
+export const insertFamilyFeeItemSchema = createInsertSchema(familyFeeItems).omit({
+  id: true,
+});
+export const insertFamilyTransactionSchema = createInsertSchema(
+  familyTransactions
+).omit({
+  id: true,
+});
 export const insertFinanceVoucherOperationSchema = createInsertSchema(
   financeVoucherOperations
 ).omit({ id: true });
@@ -1326,6 +1491,8 @@ export const insertConsolidatedVoucherAuditLogSchema = createInsertSchema(
 // EXPORTED DRIZZLE TYPES (existing)
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type Family = typeof families.$inferSelect;
+export type InsertFamily = z.infer<typeof insertFamilySchema>;
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Student = typeof students.$inferSelect;
@@ -1370,6 +1537,16 @@ export type StudentBillingProfile =
   typeof studentBillingProfiles.$inferSelect;
 export type InsertStudentBillingProfile = z.infer<
   typeof insertStudentBillingProfileSchema
+>;
+export type FeeStructure = typeof feeStructures.$inferSelect;
+export type InsertFeeStructure = z.infer<typeof insertFeeStructureSchema>;
+export type FamilyFee = typeof familyFees.$inferSelect;
+export type InsertFamilyFee = z.infer<typeof insertFamilyFeeSchema>;
+export type FamilyFeeItem = typeof familyFeeItems.$inferSelect;
+export type InsertFamilyFeeItem = z.infer<typeof insertFamilyFeeItemSchema>;
+export type FamilyTransaction = typeof familyTransactions.$inferSelect;
+export type InsertFamilyTransaction = z.infer<
+  typeof insertFamilyTransactionSchema
 >;
 export type FinanceVoucherOperation =
   typeof financeVoucherOperations.$inferSelect;

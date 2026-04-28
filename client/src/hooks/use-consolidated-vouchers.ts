@@ -3,8 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 import { getResponseErrorMessage } from "@/lib/utils";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 export type MonthRow = {
   id: string;
   month: string;
@@ -12,35 +10,100 @@ export type MonthRow = {
   checked: boolean;
 };
 
-export type StudentPreviewItem = {
-  studentId: number;
-  name: string;
-  className?: string | null;
-  fatherName?: string | null;
-  previousDuesTotal: number;
-  selectedMonthsTotal: number;
-  grandTotal: number;
-  status: "overdue" | "current" | "advance" | "paid";
-  breakdown: {
-    previousDues: Array<{ feeId: number; vNo?: string | null; feeType: string; month: string; amount: number; balance: number }>;
-    currentMonths: Array<{ feeId: number; vNo?: string | null; feeType: string; month: string; amount: number }>;
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
+function toBillingMonth(month: string, year: number): string {
+  const idx = MONTHS.indexOf(month as (typeof MONTHS)[number]);
+  return `${year}-${String(idx + 1).padStart(2, "0")}`;
+}
+
+export type FamilyPreviewItem = {
+  familyId: number;
+  familyName: string;
+  totalOutstanding: number;
+  totalCurrentFees: number;
+  siblingCount: number;
+  siblings: Array<{
+    studentId: number;
+    studentName: string;
+    className?: string | null;
+    previousDuesTotal: number;
+    selectedMonthsTotal: number;
+    total: number;
+  }>;
+};
+
+export type FamilyPreviewResponse = {
+  summary: {
+    totalFamilies: number;
+    totalStudents: number;
+    totalOutstanding: number;
   };
+  families: FamilyPreviewItem[];
 };
 
-export type StudentPreviewResponse = {
-  summary: { total: number; overdue: number; currentOnly: number; alreadyPaid: number };
-  students: StudentPreviewItem[];
-};
-
-export type ConsolidatedVoucherResponse = {
-  student: { id: number; name: string; fatherName?: string | null; className?: string | null };
+export type FamilyVoucherResponse = {
+  family: {
+    id: number;
+    name: string;
+    guardianDetails: {
+      primary?: {
+        name?: string | null;
+        relation?: string | null;
+        phone?: string | null;
+        email?: string | null;
+      } | null;
+      secondary?: {
+        name?: string | null;
+        relation?: string | null;
+        phone?: string | null;
+        email?: string | null;
+      } | null;
+      notes?: string | null;
+    };
+    walletBalance: number;
+    totalOutstanding: number;
+    siblingCount: number;
+  };
+  siblings: Array<{
+    studentId: number;
+    studentName: string;
+    className?: string | null;
+    fatherName?: string | null;
+    previousDues: Array<{
+      feeId: number;
+      invoiceNumber?: string | null;
+      feeType: string;
+      billingPeriod: string;
+      amount: number;
+      remainingBalance: number;
+    }>;
+    currentFees: Array<{
+      feeId: number;
+      invoiceNumber?: string | null;
+      feeType: string;
+      billingPeriod: string;
+      amount: number;
+      remainingBalance: number;
+    }>;
+    total: number;
+  }>;
   voucherNumber: string;
   generatedAt: string;
   dueDate: string;
-  sections: {
-    previousDues: Array<{ sno: number; vNo?: string | null; feeType: string; month: string; amount: number; balance: number }>;
-    currentMonths: Array<{ sno: number; vNo?: string | null; feeType: string; month: string; amount: number }>;
-  };
   summary: {
     previousDuesTotal: number;
     currentMonthsTotal: number;
@@ -54,74 +117,70 @@ export type ConsolidatedVoucherResponse = {
   };
 };
 
-const MONTHS = ["January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December"] as const;
-
-function toBillingMonth(month: string, year: number): string {
-  const idx = MONTHS.indexOf(month as typeof MONTHS[number]);
-  return `${year}-${String(idx + 1).padStart(2, "0")}`;
-}
-
-// ─── useMonthSelector ─────────────────────────────────────────────────────────
+export type FamilyPreviewFilters = {
+  search: string;
+};
 
 export function useMonthSelector() {
   const currentYear = new Date().getFullYear();
-
-  const [rows, setRows] = useState<MonthRow[]>(() =>
-    MONTHS.map((month, i) => ({
-      id: `row-${i}`,
+  const [rows, setRows] = useState<MonthRow[]>(
+    MONTHS.map((month, index) => ({
+      id: `row-${index}`,
       month,
       year: currentYear,
       checked: false,
-    })),
+    }))
   );
 
   const toggleCheck = useCallback((id: string) => {
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, checked: !r.checked } : r)));
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, checked: !row.checked } : row)));
   }, []);
 
   const setMonth = useCallback((id: string, month: string) => {
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, month } : r)));
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, month } : row)));
   }, []);
 
   const setYear = useCallback((id: string, year: number) => {
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, year } : r)));
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, year } : row)));
   }, []);
 
   const setAllYear = useCallback((year: number) => {
-    setRows((prev) => prev.map((r) => ({ ...r, year })));
+    setRows((prev) => prev.map((row) => ({ ...row, year })));
   }, []);
 
   const selectAll = useCallback(() => {
-    setRows((prev) => prev.map((r) => ({ ...r, checked: true })));
+    setRows((prev) => prev.map((row) => ({ ...row, checked: true })));
   }, []);
 
   const clearAll = useCallback(() => {
-    setRows((prev) => prev.map((r) => ({ ...r, checked: false })));
+    setRows((prev) => prev.map((row) => ({ ...row, checked: false })));
   }, []);
 
   const removeSelected = useCallback((billingMonth: string) => {
     setRows((prev) =>
-      prev.map((r) =>
-        r.checked && toBillingMonth(r.month, r.year) === billingMonth
-          ? { ...r, checked: false }
-          : r,
-      ),
+      prev.map((row) =>
+        row.checked && toBillingMonth(row.month, row.year) === billingMonth
+          ? { ...row, checked: false }
+          : row
+      )
     );
   }, []);
 
   const { selectedMonths, duplicates } = useMemo(() => {
-    const checked = rows.filter((r) => r.checked);
+    const checked = rows.filter((row) => row.checked);
     const seen = new Set<string>();
     const dups = new Set<string>();
-    for (const r of checked) {
-      const bm = toBillingMonth(r.month, r.year);
-      if (seen.has(bm)) dups.add(r.id);
-      seen.add(bm);
+    for (const row of checked) {
+      const billingMonth = toBillingMonth(row.month, row.year);
+      if (seen.has(billingMonth)) dups.add(row.id);
+      seen.add(billingMonth);
     }
-    const unique = checked.filter((r) => !dups.has(r.id));
+    const unique = checked.filter((row) => !dups.has(row.id));
     return {
-      selectedMonths: unique.map((r) => ({ ...r, billingMonth: toBillingMonth(r.month, r.year) })),
+      selectedMonths: unique.map((row) => ({
+        ...row,
+        billingMonth: toBillingMonth(row.month, row.year),
+      })),
       duplicates: dups,
     };
   }, [rows]);
@@ -142,106 +201,105 @@ export function useMonthSelector() {
   };
 }
 
-// ─── useStudentPreview ────────────────────────────────────────────────────────
-
-export type StudentPreviewFilters = {
-  className: string;
-  status: string;
-  search: string;
-};
-
-export function useStudentPreview(billingMonths: string[], enabled: boolean) {
-  const [filters, setFilters] = useState<StudentPreviewFilters>({
-    className: "",
-    status: "all",
+export function useFamilyPreview(billingMonths: string[], enabled: boolean) {
+  const [filters, setFilters] = useState<FamilyPreviewFilters>({
     search: "",
   });
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
 
-  const queryKey = [api.fees.vouchers.previewStudents.path, billingMonths.join(",")];
-
-  const query = useQuery<StudentPreviewResponse>({
-    queryKey,
+  const query = useQuery<FamilyPreviewResponse>({
+    queryKey: [api.fees.vouchers.previewFamilies.path, billingMonths.join(",")],
     queryFn: async () => {
       const params = new URLSearchParams();
-      billingMonths.forEach((m) => params.append("billingMonths", m));
-      const res = await fetch(`${api.fees.vouchers.previewStudents.path}?${params}`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to load student preview"));
+      billingMonths.forEach((month) => params.append("billingMonths", month));
+      const res = await fetch(
+        `${api.fees.vouchers.previewFamilies.path}?${params}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) {
+        throw new Error(
+          await getResponseErrorMessage(res, "Failed to load family preview")
+        );
+      }
       return res.json();
     },
     enabled: enabled && billingMonths.length > 0,
     staleTime: 30_000,
   });
 
-  const filteredStudents = useMemo(() => {
-    const students = query.data?.students ?? [];
-    return students.filter((s) => {
-      if (filters.status !== "all" && s.status !== filters.status) return false;
-      if (filters.className && s.className !== filters.className) return false;
-      if (filters.search && !s.name.toLowerCase().includes(filters.search.toLowerCase())) return false;
-      return true;
+  const filteredFamilies = useMemo(() => {
+    const families = query.data?.families ?? [];
+    const search = filters.search.trim().toLowerCase();
+    if (!search) return families;
+    return families.filter((family) => {
+      const haystack = [
+        family.familyName,
+        ...family.siblings.map((sibling) => sibling.studentName),
+        ...family.siblings.map((sibling) => sibling.className ?? ""),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(search);
     });
-  }, [query.data, filters]);
+  }, [filters.search, query.data]);
 
-  const toggleExpand = useCallback((studentId: number) => {
+  const toggleExpand = useCallback((familyId: number) => {
     setExpandedRows((prev) => {
       const next = new Set(prev);
-      next.has(studentId) ? next.delete(studentId) : next.add(studentId);
+      next.has(familyId) ? next.delete(familyId) : next.add(familyId);
       return next;
     });
   }, []);
 
-  return { query, filters, setFilters, filteredStudents, expandedRows, toggleExpand };
+  return { query, filters, setFilters, filteredFamilies, expandedRows, toggleExpand };
 }
 
-// ─── useConsolidatedVoucher ───────────────────────────────────────────────────
-
-export function useConsolidatedVoucher(studentId: number | null, billingMonths: string[]) {
-  const queryKey = [api.fees.vouchers.consolidatedVoucher.path, studentId, billingMonths.join(",")];
-
-  const query = useQuery<ConsolidatedVoucherResponse>({
-    queryKey,
+export function useFamilyVoucher(familyId: number | null, billingMonths: string[]) {
+  return useQuery<FamilyVoucherResponse>({
+    queryKey: [api.fees.vouchers.familyVoucher.path, familyId, billingMonths.join(",")],
     queryFn: async () => {
       const params = new URLSearchParams();
-      billingMonths.forEach((m) => params.append("billingMonths", m));
-      const url = api.fees.vouchers.consolidatedVoucher.path.replace(":studentId", String(studentId));
+      billingMonths.forEach((month) => params.append("billingMonths", month));
+      const url = api.fees.vouchers.familyVoucher.path.replace(
+        ":familyId",
+        String(familyId)
+      );
       const res = await fetch(`${url}?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to load voucher"));
+      if (!res.ok) {
+        throw new Error(await getResponseErrorMessage(res, "Failed to load family voucher"));
+      }
       return res.json();
     },
-    enabled: studentId !== null && billingMonths.length > 0,
+    enabled: familyId !== null && billingMonths.length > 0,
     staleTime: 60_000,
   });
-
-  return query;
 }
 
-// ─── useGenerateBatch ─────────────────────────────────────────────────────────
-
-export function useGenerateBatch() {
+export function useGenerateFamilyVouchers() {
   const queryClient = useQueryClient();
 
-  return useMutation<{ operationId: number }, Error, {
-    billingMonths: string[];
-    classNames?: string[];
-    studentIds?: number[];
-    includeOverdue?: boolean;
-    force?: boolean;
-  }>({
+  return useMutation<
+    { generatedCount: number; families: Array<{ familyId: number; invoiceNumber: string; totalAmount: number }> },
+    Error,
+    { billingMonths: string[]; familyIds?: number[]; includeOverdue?: boolean }
+  >({
     mutationFn: async (input) => {
-      const res = await fetch(api.fees.vouchers.generateBatch.path, {
+      const res = await fetch(api.fees.vouchers.generateFamilyVouchers.path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
         credentials: "include",
       });
-      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to start batch generation"));
+      if (!res.ok) {
+        throw new Error(
+          await getResponseErrorMessage(res, "Failed to generate family vouchers")
+        );
+      }
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["finance", "vouchers"] });
+      queryClient.invalidateQueries({ queryKey: [api.fees.vouchers.previewFamilies.path] });
+      queryClient.invalidateQueries({ queryKey: [api.families.list.path] });
     },
   });
 }

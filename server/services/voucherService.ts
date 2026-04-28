@@ -1,7 +1,7 @@
 import archiver from "archiver";
 import PDFDocument from "pdfkit";
 import { Writable } from "stream";
-import { storage } from "../storage.js";
+import { storage } from "../storage.ts";
 import { buildDocumentNumber, buildDueDateForBillingMonth, formatBillingPeriod, isOverdue as checkIsOverdue } from "../../shared/finance.js";
 import type {
   ConsolidatedFeeRow,

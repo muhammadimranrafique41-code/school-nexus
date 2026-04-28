@@ -6,7 +6,7 @@
  * Over time, business logic can be migrated here from storage.ts
  */
 
-import { storage } from "../storage.js";
+import { storage } from "../storage.ts";
 import type { CreateFeeInput, FeeStatus, UpdateFeeInput } from "../../shared/finance.js";
 import type { FeeWithStudent } from "../../shared/schema.js";
 

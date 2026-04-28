@@ -12,7 +12,7 @@
  * - Report generation
  */
 
-import { storage } from "../storage.js";
+import { storage } from "../storage.ts";
 import { lateFeeService } from "./lateFeeService.js";
 import type { GenerateMonthlyFeesInput } from "../../shared/finance.js";
 

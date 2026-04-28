@@ -5,7 +5,7 @@
  * Provides comprehensive financial reporting capabilities for school finance operations.
  */
 
-import { storage } from "../storage.js";
+import { storage } from "../storage.ts";
 import { feeService } from "./feeService.js";
 import { paymentService } from "./paymentService.js";
 import type { FeeWithStudent } from "../../shared/schema.js";

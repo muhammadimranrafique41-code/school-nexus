@@ -47,6 +47,7 @@ const adminSections: SidebarSection[] = [
     items: [
       { title: "Teachers", url: "/admin/teachers", icon: Briefcase },
       { title: "Students", url: "/admin/students", icon: GraduationCap },
+      { title: "Families", url: "/admin/families", icon: Users },
       { title: "Classes", url: "/admin/classes", icon: BookOpen },
       { title: "Schedule Builder", url: "/admin/timetable", icon: LayoutGrid },
       { title: "Homework Diary", url: "/admin/homework-diary", icon: Notebook, badge: "New" },
@@ -97,7 +98,10 @@ const studentSections: SidebarSection[] = [
   },
   {
     label: "Billing",
-    items: [{ title: "My Fees", url: "/student/fees", icon: WalletCards }],
+    items: [
+      { title: "My Fees", url: "/student/fees", icon: WalletCards },
+      { title: "My Family", url: "/student/family", icon: Users },
+    ],
   },
 ];
 

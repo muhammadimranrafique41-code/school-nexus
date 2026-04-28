@@ -7,10 +7,28 @@ initializeApp()
     // this serves both the API and the client.
     // It is the only port that is not firewalled.
     const port = parseInt(process.env.PORT || "5000", 10);
+    const host = "0.0.0.0";
+
+    httpServer.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        log(
+          `Port ${port} is already in use on ${host}. ` +
+            `Stop the process bound to that port (Windows: \`netstat -ano | findstr :${port}\` then \`taskkill /PID <pid> /F\`) ` +
+            `or set a different PORT in your environment before starting the dev server.`,
+          "startup",
+        );
+      } else if (err.code === "EACCES") {
+        log(`Insufficient privileges to bind to port ${port} on ${host}.`, "startup");
+      } else {
+        log(`Failed to start HTTP server: ${err.message}`, "startup");
+      }
+      process.exit(1);
+    });
+
     httpServer.listen(
       {
         port,
-        host: "0.0.0.0",
+        host,
       },
       () => {
         log(`serving on port ${port}`);

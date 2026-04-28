@@ -6,7 +6,7 @@
  * Designed to be idempotent - safe to run multiple times without creating duplicates.
  */
 
-import { storage } from "../storage.js";
+import { storage } from "../storage.ts";
 import type { CreateFeeAdjustmentInput } from "../../shared/finance.js";
 import type { PublicSchoolSettings } from "../../shared/settings.js";
 

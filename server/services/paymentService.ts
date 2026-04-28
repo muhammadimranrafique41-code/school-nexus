@@ -6,7 +6,7 @@
  * Over time, business logic like payment processing, reconciliation can be moved here
  */
 
-import { storage } from "../storage.js";
+import { storage } from "../storage.ts";
 import type { PaymentMethod, RecordFeePaymentInput } from "../../shared/finance.js";
 import type { FeePaymentWithMeta, FeeWithStudent } from "../../shared/schema.js";
 

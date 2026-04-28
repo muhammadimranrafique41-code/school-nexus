@@ -24,6 +24,7 @@ import AdminTimetable from "./pages/admin/timetable";
 import AdminHomeworkDiary from "./pages/admin/homework-diary";
 import AdminDailyDiary from "./pages/admin/daily-diary";
 import AdminStudentProfile from "./pages/admin/student-profile";
+import AdminFamiliesPage from "./pages/admin/families";
 
 import TeacherDashboard from "./pages/teacher/dashboard";
 import TeacherAttendance from "./pages/teacher/attendance";
@@ -43,6 +44,7 @@ import StudentTimetable from "./pages/student/timetable";
 import StudentFees from "./pages/student/fees";
 import StudentHomeworkDiary from "./pages/student/homework-diary";
 import StudentDailyDiary from "./pages/student/daily-diary";
+import StudentFamilyPage from "./pages/student/family";
 
 import { ProtectedRoute } from "./components/protected-route";
 
@@ -63,6 +65,9 @@ function Router() {
       </Route>
       <Route path="/admin/students">
         <ProtectedRoute allowedRoles={['admin']}><AdminUsers roleFilter="student" /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/families">
+        <ProtectedRoute allowedRoles={['admin']}><AdminFamiliesPage /></ProtectedRoute>
       </Route>
       <Route path="/admin/teachers/create">
         <ProtectedRoute allowedRoles={['admin']}><CreateTeacher /></ProtectedRoute>
@@ -160,6 +165,9 @@ function Router() {
       </Route>
       <Route path="/student/fees">
         <ProtectedRoute allowedRoles={['student']}><StudentFees /></ProtectedRoute>
+      </Route>
+      <Route path="/student/family">
+        <ProtectedRoute allowedRoles={['student']}><StudentFamilyPage /></ProtectedRoute>
       </Route>
       <Route path="/student/homework">
         <ProtectedRoute allowedRoles={['student']}><StudentHomeworkDiary /></ProtectedRoute>

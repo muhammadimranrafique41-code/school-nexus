@@ -6,7 +6,7 @@
  * It's the source-of-truth for all financial transactions.
  */
 
-import { storage } from "../storage.js";
+import { storage } from "../storage.ts";
 import type { FinanceLedgerEntry } from "../../shared/schema.js";
 
 export class LedgerService {

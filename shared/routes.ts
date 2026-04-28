@@ -96,6 +96,49 @@ const userSchema = z.object({
   className: z.string().nullable().optional(),
   fatherName: z.string().nullable().optional(),
   studentPhotoUrl: z.string().nullable().optional(),
+  familyId: z.number().nullable().optional(),
+  familyName: z.string().nullable().optional(),
+});
+
+const guardianContactSchema = z.object({
+  name: z.string().nullable().optional(),
+  relation: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+});
+
+const guardianDetailsSchema = z.object({
+  primary: guardianContactSchema.nullable().optional(),
+  secondary: guardianContactSchema.nullable().optional(),
+  notes: z.string().nullable().optional(),
+});
+
+const familySchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  guardianDetails: guardianDetailsSchema,
+  walletBalance: z.number(),
+});
+
+const studentAdmissionSchema = userWriteSchema.extend({
+  role: z.literal("student").default("student"),
+  familyId: z.coerce.number().int().positive().optional().nullable(),
+  familyName: z.string().trim().min(2).max(160).optional(),
+  guardianDetails: guardianDetailsSchema.optional(),
+  studentStatus: z
+    .enum(["active", "inactive", "graduated", "suspended"])
+    .optional()
+    .nullable(),
+});
+
+const userCreateSchema = userWriteSchema.extend({
+  familyName: z.string().trim().min(2).max(160).optional(),
+  guardianDetails: guardianDetailsSchema.optional(),
+  studentStatus: z
+    .enum(["active", "inactive", "graduated", "suspended"])
+    .optional()
+    .nullable(),
 });
 
 const apiEnvelope = <T extends z.ZodTypeAny>(dataSchema: T) =>
@@ -340,6 +383,114 @@ const overdueBalanceItemSchema = z.object({
 const paymentReceiptSchema = z.object({
   invoice: feeSchema,
   payment: feePaymentSchema,
+});
+
+const familyPaymentAllocationSchema = z.object({
+  feeId: z.number(),
+  studentId: z.number(),
+  studentName: z.string(),
+  appliedAmount: z.number(),
+  remainingBalanceAfter: z.number(),
+  invoiceNumber: z.string().nullable().optional(),
+});
+
+const familyPaymentResponseSchema = z.object({
+  family: familySchema.extend({
+    totalOutstanding: z.number(),
+  }),
+  paymentAmount: z.number(),
+  walletBalance: z.number(),
+  allocations: z.array(familyPaymentAllocationSchema),
+  transactions: z.array(
+    z.object({
+      id: z.number(),
+      amount: z.number(),
+      type: z.string(),
+      method: paymentMethodSchema.nullable().optional(),
+      reference: z.string().nullable().optional(),
+      notes: z.string().nullable().optional(),
+      createdAt: z.string(),
+    }),
+  ),
+});
+
+const familyCardSchema = familySchema.extend({
+  totalOutstanding: z.number(),
+  siblingCount: z.number(),
+  siblings: z.array(
+    userSchema.extend({
+      outstandingBalance: z.number(),
+      openInvoices: z.number(),
+    }),
+  ),
+});
+
+const familyFeePreviewSchema = z.object({
+  familyId: z.number(),
+  familyName: z.string(),
+  totalOutstanding: z.number(),
+  totalCurrentFees: z.number(),
+  siblingCount: z.number(),
+  siblings: z.array(
+    z.object({
+      studentId: z.number(),
+      studentName: z.string(),
+      className: z.string().nullable().optional(),
+      previousDuesTotal: z.number(),
+      selectedMonthsTotal: z.number(),
+      total: z.number(),
+    }),
+  ),
+});
+
+const familyVoucherResponseSchema = z.object({
+  family: familySchema.extend({
+    totalOutstanding: z.number(),
+    siblingCount: z.number(),
+  }),
+  siblings: z.array(
+    z.object({
+      studentId: z.number(),
+      studentName: z.string(),
+      className: z.string().nullable().optional(),
+      fatherName: z.string().nullable().optional(),
+      previousDues: z.array(
+        z.object({
+          feeId: z.number(),
+          invoiceNumber: z.string().nullable().optional(),
+          feeType: z.string(),
+          billingPeriod: z.string(),
+          amount: z.number(),
+          remainingBalance: z.number(),
+        }),
+      ),
+      currentFees: z.array(
+        z.object({
+          feeId: z.number(),
+          invoiceNumber: z.string().nullable().optional(),
+          feeType: z.string(),
+          billingPeriod: z.string(),
+          amount: z.number(),
+          remainingBalance: z.number(),
+        }),
+      ),
+      total: z.number(),
+    }),
+  ),
+  voucherNumber: z.string(),
+  generatedAt: z.string(),
+  dueDate: z.string(),
+  summary: z.object({
+    previousDuesTotal: z.number(),
+    currentMonthsTotal: z.number(),
+    grossTotal: z.number(),
+    discount: z.number(),
+    netPayable: z.number(),
+    lateFee: z.number(),
+    payableWithinDate: z.number(),
+    payableAfterDueDate: z.number(),
+    amountInWords: z.string(),
+  }),
 });
 
 const financeVoucherPreviewInvoiceSchema = z.object({
@@ -666,7 +817,7 @@ export const api = {
     register: {
       path: "/api/auth/register",
       method: "POST",
-      input: userWriteSchema,
+      input: userCreateSchema,
       responses: { 201: userSchema },
     },
     logout: {
@@ -690,7 +841,7 @@ export const api = {
     create: {
       path: "/api/users",
       method: "POST",
-      input: userWriteSchema,
+      input: userCreateSchema,
       responses: { 201: userSchema },
     },
     update: {
@@ -710,6 +861,41 @@ export const api = {
       path: "/api/students",
       method: "GET",
       responses: { 200: z.array(userSchema) },
+    },
+    admit: {
+      path: "/api/students/admission",
+      method: "POST",
+      input: studentAdmissionSchema,
+      responses: { 201: userSchema },
+    },
+  },
+  families: {
+    list: {
+      path: "/api/families",
+      method: "GET",
+      responses: { 200: z.array(familyCardSchema) },
+    },
+    detail: {
+      path: "/api/families/:id",
+      method: "GET",
+      responses: { 200: familyCardSchema },
+    },
+    pay: {
+      path: "/api/families/:id/pay",
+      method: "POST",
+      input: z.object({
+        amount: z.coerce.number().int().positive(),
+        paymentDate: z.string().min(1),
+        method: paymentMethodSchema,
+        reference: z.string().trim().max(120).optional().nullable(),
+        notes: z.string().trim().max(300).optional().nullable(),
+      }),
+      responses: { 200: familyPaymentResponseSchema },
+    },
+    dashboard: {
+      path: "/api/families/dashboard/me",
+      method: "GET",
+      responses: { 200: familyCardSchema },
     },
   },
   teachers: {
@@ -957,6 +1143,46 @@ export const api = {
         responses: { 200: z.any() },
       },
       // ── Consolidated Voucher Routes ──────────────────────────────────────
+      previewFamilies: {
+        path: "/api/fees/vouchers/preview-families",
+        method: "GET",
+        responses: {
+          200: z.object({
+            summary: z.object({
+              totalFamilies: z.number(),
+              totalStudents: z.number(),
+              totalOutstanding: z.number(),
+            }),
+            families: z.array(familyFeePreviewSchema),
+          }),
+        },
+      },
+      familyVoucher: {
+        path: "/api/fees/vouchers/family/:familyId",
+        method: "GET",
+        responses: { 200: familyVoucherResponseSchema },
+      },
+      generateFamilyVouchers: {
+        path: "/api/fees/generate-family-vouchers",
+        method: "POST",
+        input: z.object({
+          billingMonths: z.array(z.string().regex(/^\d{4}-\d{2}$/)).min(1).max(12),
+          familyIds: z.array(z.number().int().positive()).optional().default([]),
+          includeOverdue: z.boolean().optional().default(true),
+        }),
+        responses: {
+          201: z.object({
+            generatedCount: z.number(),
+            families: z.array(
+              z.object({
+                familyId: z.number(),
+                invoiceNumber: z.string(),
+                totalAmount: z.number(),
+              }),
+            ),
+          }),
+        },
+      },
       previewStudents: {
         path: "/api/fees/vouchers/preview-students",
         method: "GET",
