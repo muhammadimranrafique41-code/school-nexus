@@ -1,5 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../db.js";
+import * as dotenv from "dotenv";
+dotenv.config({ path: ".env.local" }); // <-- ensure .env.local is loaded before any process.env access
 import {
   academics,
   attendance,
@@ -323,10 +325,15 @@ async function collectGroundedContext(user: User) {
 
 function buildFallbackAnswer(question: string, context: Awaited<ReturnType<typeof collectGroundedContext>>) {
   const lowerQuestion = question.toLowerCase();
+  const isGreeting = /^(hi|hello|hey|good morning|good afternoon|good evening|howdy|greetings?|what'?s up|sup)\b/i.test(lowerQuestion.trim());
   const wantsAttendance = /attendance|absent|present|late/.test(lowerQuestion);
   const wantsFinance = /fee|finance|voucher|wallet|overdue|paid|collection|balance/.test(lowerQuestion);
   const wantsHomework = /homework|assignment|diary|submission|pending|task/.test(lowerQuestion);
   const wantsClasses = /class|teacher|student|size|status|homeroom/.test(lowerQuestion);
+
+  if (isGreeting) {
+    return `Hello! I'm the Schooliee AI Assistant. How can I help you today?`;
+  }
 
   const lines: string[] = [];
   lines.push(`I checked live records scoped to ${context.scope.role === "admin" ? "all classes" : context.scope.classNames.join(", ") || "your assigned classes"}.`);
@@ -382,52 +389,69 @@ function buildFallbackAnswer(question: string, context: Awaited<ReturnType<typeo
 
 async function askOpenRouter(input: AiChatInput, context: Awaited<ReturnType<typeof collectGroundedContext>>) {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return null;
-
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": process.env.APP_URL ?? "http://localhost:5000",
-      "X-Title": "Schooliee AI School Assistant",
-    },
-    body: JSON.stringify({
-      model: process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini",
-      temperature: 0.2,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are the Schooliee AI School Assistant. Answer only from the provided JSON context. Do not invent totals, names, dates, balances, or attendance figures. If the context does not contain enough data, say so. Keep answers concise and operational.",
-        },
-        ...input.history.slice(-8),
-        {
-          role: "user",
-          content: `Question: ${input.message}\n\nGrounded JSON context:\n${JSON.stringify(context.summary)}`,
-        },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`OpenRouter request failed: ${response.status} ${body}`);
+  if (!apiKey) {
+    console.warn("[AI Assistant] OPENROUTER_API_KEY not set, falling back to local summary");
+    return null;
   }
+  console.log("[AI Assistant] OpenRouter API key loaded, calling API with message:", input.message);
 
-  const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] };
-  return payload.choices?.[0]?.message?.content?.trim() || null;
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.APP_URL ?? "http://localhost:5000",
+        "X-Title": "Schooliee AI School Assistant",
+      },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_MODEL ?? "google/gemini-2.0-flash-001",
+        temperature: 0.2,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are the Schooliee AI School Assistant. Respond naturally to greetings, pleasantries, and general school‑related questions. Use the provided JSON context for factual answers about attendance, fees, homework, classes, etc., but feel free to answer off‑topic or general inquiries with your general knowledge. If you lack sufficient data, politely indicate that you don't have the information.",
+          },
+          ...input.history.slice(-8),
+          {
+            role: "user",
+            content: `${input.message}\n\nGrounded JSON context:\n${JSON.stringify(context.summary, null, 2)}`,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      if (response.status === 404) {
+        console.error("[AI Assistant] OpenRouter: model not found (404)", { body, status: response.status });
+        return null;
+      }
+      if (response.status === 401 || response.status === 403) {
+        console.error("[AI Assistant] OpenRouter: auth failed (" + response.status + ")", { body, status: response.status });
+        return null;
+      }
+      console.error(`[AI Assistant] OpenRouter API error: ${response.status} ${response.statusText}`, { body, status: response.status });
+      throw new Error(`OpenRouter request failed: ${response.status} ${body}`);
+    }
+
+    const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] };
+    const answer = payload.choices?.[0]?.message?.content?.trim();
+    if (!answer) {
+      console.warn("[AI Assistant] OpenRouter returned empty response");
+      return null;
+    }
+    return answer;
+  } catch (error) {
+    console.error("[AI Assistant] OpenRouter request failed:", error);
+    return null;
+  }
 }
 
 export async function chatWithSchoolAssistant(user: User, input: AiChatInput): Promise<AiChatResult> {
   const context = await collectGroundedContext(user);
-  let answer: string | null = null;
-
-  try {
-    answer = await askOpenRouter(input, context);
-  } catch (error) {
-    console.warn("[AI Assistant] Falling back to local grounded summary:", error);
-  }
+  const answer = await askOpenRouter(input, context);
 
   return {
     answer: answer ?? buildFallbackAnswer(input.message, context),
