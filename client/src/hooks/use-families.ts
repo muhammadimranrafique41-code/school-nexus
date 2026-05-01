@@ -15,6 +15,7 @@ export function useFamilies() {
 }
 
 export type CreateFamilyInput = z.infer<typeof api.families.create.input>;
+export type UpdateFamilyInput = z.infer<typeof api.families.update.input>;
 
 export function useCreateFamily() {
   const queryClient = useQueryClient();
@@ -32,6 +33,45 @@ export function useCreateFamily() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.families.list.path] });
+    },
+  });
+}
+
+export function useUpdateFamily() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: UpdateFamilyInput & { id: number }) => {
+      const validated = api.families.update.input.parse(data);
+      const res = await fetch(buildUrl(api.families.update.path, { id }), {
+        method: api.families.update.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validated),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to update family"));
+      return api.families.update.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.families.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.families.dashboard.path] });
+    },
+  });
+}
+
+export function useDeleteFamily() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(buildUrl(api.families.delete.path, { id }), {
+        method: api.families.delete.method,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to delete family"));
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.families.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.families.dashboard.path] });
     },
   });
 }

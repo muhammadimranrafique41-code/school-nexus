@@ -16,6 +16,7 @@ import {
   users,
   type ResultWithStudent,
   type User,
+  type InsertFamily,
 } from "../shared/schema.js";
 import { db } from "./db.js";
 import { AssignTeacherSchema, CreateClassSchema } from "../lib/validators/classes.js";
@@ -822,6 +823,65 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const family = await buildFamilyCard(familyId);
     if (!family) return res.status(404).json({ message: "Family not found" });
     res.json(family);
+  });
+
+  app.patch(api.families.update.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const familyId = parseNumberValue(req.params.id);
+      if (Number.isNaN(familyId)) {
+        return res.status(400).json({ message: "Invalid family id", field: "id" });
+      }
+      const input = api.families.update.input.parse(req.body);
+      const updates: Record<string, unknown> = {};
+      if (input.name !== undefined) updates.name = input.name;
+      if (input.guardianDetails !== undefined) updates.guardianDetails = input.guardianDetails ?? {};
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: "No fields supplied to update" });
+      }
+      const updated = await storage.updateFamily(familyId, updates as Partial<InsertFamily>);
+      if (!updated) return res.status(404).json({ message: "Family not found" });
+      res.json({
+        ...updated,
+        walletBalance: Number(updated.walletBalance ?? 0),
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res
+          .status(400)
+          .json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      }
+      if (err instanceof Error) {
+        return res.status(400).json({ message: err.message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete(api.families.delete.path, async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const familyId = parseNumberValue(req.params.id);
+      if (Number.isNaN(familyId)) {
+        return res.status(400).json({ message: "Invalid family id", field: "id" });
+      }
+      const deleted = await storage.deleteFamily(familyId);
+      if (!deleted) return res.status(404).json({ message: "Family not found" });
+      res.json({ success: true, message: "Family deleted" });
+    } catch (err) {
+      const error = err as Error & { code?: string; linkedCount?: number };
+      if (error?.code === "FAMILY_HAS_MEMBERS") {
+        return res
+          .status(409)
+          .json({ message: error.message, linkedCount: error.linkedCount ?? 0 });
+      }
+      if (err instanceof Error) {
+        return res.status(400).json({ message: err.message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   app.get(api.families.dashboard.path, async (req, res) => {

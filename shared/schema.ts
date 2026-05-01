@@ -74,19 +74,24 @@ export const dailyTeachingPulseStatusSchema = z.enum(
   dailyTeachingPulseStatuses
 );
 
-export type FamilyGuardianContact = {
-  name?: string | null;
-  relation?: string | null;
-  phone?: string | null;
-  email?: string | null;
-  address?: string | null;
-};
+export const familyGuardianContactSchema = z.object({
+  name: z.string().nullable().optional(),
+  relation: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  cnic: z.string().nullable().optional(),
+  occupation: z.string().nullable().optional(),
+});
 
-export type FamilyGuardianDetails = {
-  primary?: FamilyGuardianContact | null;
-  secondary?: FamilyGuardianContact | null;
-  notes?: string | null;
-};
+export const familyGuardianDetailsSchema = z.object({
+  primary: familyGuardianContactSchema.nullable().optional(),
+  secondary: familyGuardianContactSchema.nullable().optional(),
+  notes: z.string().nullable().optional(),
+});
+
+export type FamilyGuardianContact = z.infer<typeof familyGuardianContactSchema>;
+export type FamilyGuardianDetails = z.infer<typeof familyGuardianDetailsSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CORE TABLES (unchanged)

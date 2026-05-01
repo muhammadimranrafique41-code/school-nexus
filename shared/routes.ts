@@ -15,6 +15,7 @@ import {
   timetableDaySchema,
   insertTimetableSettingsSchema,
   insertFinanceVoucherSchema,
+  familyGuardianDetailsSchema as sharedFamilyGuardianDetailsSchema,
 } from "./schema.js";
 import {
   CreateHomeworkSchema,
@@ -100,19 +101,7 @@ const userSchema = z.object({
   familyName: z.string().nullable().optional(),
 });
 
-const guardianContactSchema = z.object({
-  name: z.string().nullable().optional(),
-  relation: z.string().nullable().optional(),
-  phone: z.string().nullable().optional(),
-  email: z.string().nullable().optional(),
-  address: z.string().nullable().optional(),
-});
-
-const guardianDetailsSchema = z.object({
-  primary: guardianContactSchema.nullable().optional(),
-  secondary: guardianContactSchema.nullable().optional(),
-  notes: z.string().nullable().optional(),
-});
+const guardianDetailsSchema = sharedFamilyGuardianDetailsSchema;
 
 const familySchema = z.object({
   id: z.number(),
@@ -888,6 +877,23 @@ export const api = {
       path: "/api/families/:id",
       method: "GET",
       responses: { 200: familyCardSchema },
+    },
+    update: {
+      path: "/api/families/:id",
+      method: "PATCH",
+      input: z.object({
+        name: z.string().trim().min(2, "Family name must be at least 2 characters").max(160).optional(),
+        guardianDetails: guardianDetailsSchema.optional(),
+      }),
+      responses: { 200: familySchema },
+    },
+    delete: {
+      path: "/api/families/:id",
+      method: "DELETE",
+      responses: {
+        200: z.object({ success: z.boolean().optional(), message: z.string().optional() }),
+        409: z.object({ message: z.string(), linkedCount: z.number().optional() }),
+      },
     },
     pay: {
       path: "/api/families/:id/pay",

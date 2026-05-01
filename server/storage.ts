@@ -249,6 +249,7 @@ const toUserSummary = (user?: User) =>
 export interface IStorage {
   createFamily(record: InsertFamily): Promise<Family>;
   updateFamily(id: number, updates: Partial<InsertFamily>): Promise<Family | undefined>;
+  deleteFamily(id: number): Promise<boolean>;
   getFamily(id: number): Promise<Family | undefined>;
   getFamilies(): Promise<Family[]>;
   getFamilyWithMembers(id: number): Promise<FamilyWithMembers | undefined>;
@@ -519,6 +520,23 @@ export class DatabaseStorage implements IStorage {
       ...updated,
       walletBalance: String(this.toWalletNumber(updated.walletBalance)),
     };
+  }
+
+  async deleteFamily(id: number): Promise<boolean> {
+    const linkedUsers = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.familyId, id));
+    if (linkedUsers.length > 0) {
+      const error = new Error(
+        `Cannot delete family: ${linkedUsers.length} member(s) still linked. Unlink members before deleting.`
+      ) as Error & { code?: string; linkedCount?: number };
+      error.code = "FAMILY_HAS_MEMBERS";
+      error.linkedCount = linkedUsers.length;
+      throw error;
+    }
+    const result = await db.delete(families).where(eq(families.id, id)).returning();
+    return result.length > 0;
   }
 
   async getFamily(id: number): Promise<Family | undefined> {
