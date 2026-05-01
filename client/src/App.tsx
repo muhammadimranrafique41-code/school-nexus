@@ -25,6 +25,7 @@ import AdminHomeworkDiary from "./pages/admin/homework-diary";
 import AdminDailyDiary from "./pages/admin/daily-diary";
 import AdminStudentProfile from "./pages/admin/student-profile";
 import AdminFamiliesPage from "./pages/admin/families";
+import AiAssistantPage from "./pages/ai-assistant";
 
 import TeacherDashboard from "./pages/teacher/dashboard";
 import TeacherAttendance from "./pages/teacher/attendance";
@@ -56,6 +57,9 @@ function Router() {
       {/* Admin Routes */}
       <Route path="/admin/users">
         <ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/ai-assistant">
+        <ProtectedRoute allowedRoles={['admin']}><AiAssistantPage /></ProtectedRoute>
       </Route>
       <Route path="/admin/students/create">
         <ProtectedRoute allowedRoles={['admin']}><CreateStudent /></ProtectedRoute>
@@ -118,6 +122,9 @@ function Router() {
       {/* Teacher Routes */}
       <Route path="/teacher/attendance">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherAttendance /></ProtectedRoute>
+      </Route>
+      <Route path="/teacher/ai-assistant">
+        <ProtectedRoute allowedRoles={['teacher']}><AiAssistantPage /></ProtectedRoute>
       </Route>
       <Route path="/teacher/qr-card">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherQrCard /></ProtectedRoute>

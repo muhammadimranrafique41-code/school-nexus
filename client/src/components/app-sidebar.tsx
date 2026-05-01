@@ -1,6 +1,6 @@
 import {
   BookOpen, Users, LayoutDashboard, Calculator,
-  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight
+  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles
 } from "lucide-react";
 import {
   Sidebar,
@@ -39,6 +39,7 @@ const adminSections: SidebarSection[] = [
     label: "Overview",
     items: [
       { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
+      { title: "AI Assistant", url: "/admin/ai-assistant", icon: Sparkles, badge: "AI" },
       { title: "Users", url: "/admin/users", icon: Users },
     ],
   },
@@ -66,7 +67,10 @@ const adminSections: SidebarSection[] = [
 const teacherSections: SidebarSection[] = [
   {
     label: "Overview",
-    items: [{ title: "Dashboard", url: "/teacher", icon: LayoutDashboard }],
+    items: [
+      { title: "Dashboard", url: "/teacher", icon: LayoutDashboard },
+      { title: "AI Assistant", url: "/teacher/ai-assistant", icon: Sparkles, badge: "AI" },
+    ],
   },
   {
     label: "Teaching",

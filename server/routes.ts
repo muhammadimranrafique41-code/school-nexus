@@ -36,6 +36,7 @@ import {
 } from "./services/voucherService.js";
 import { LedgerService } from "./services/ledgerService.js";
 import { AuditService } from "./services/auditService.js";
+import { chatWithSchoolAssistant } from "./services/aiService.js";
 import { createPresignedDownload, createPresignedUpload } from "./s3.js";
 import {
   broadcastHomeworkDiaryPublish,
@@ -561,6 +562,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get(api.auth.me.path, async (req, res) => {
     const user = await requireUser(req, res);
     if (user) res.json(user);
+  });
+
+  app.post(api.ai.chat.path, async (req, res) => {
+    const user = await requireRole(req, res, ["admin", "teacher"]);
+    if (!user) return;
+
+    try {
+      const input = api.ai.chat.input.parse(req.body);
+      const result = await chatWithSchoolAssistant(user, input);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      console.error("[AI Assistant] Chat failed:", err);
+      res.status(500).json({ message: "AI assistant failed to answer this question." });
+    }
   });
 
   app.post(api.auth.login.path, async (req, res) => {

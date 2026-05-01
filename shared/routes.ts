@@ -795,6 +795,26 @@ const studentResultExamSchema = z.object({
   status: z.string(),
 });
 
+const aiChatMessageSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string().trim().min(1).max(4000),
+});
+
+const aiChatInputSchema = z.object({
+  message: z.string().trim().min(1, "Message is required").max(1000),
+  history: z.array(aiChatMessageSchema).max(12).optional().default([]),
+});
+
+const aiChatResponseSchema = z.object({
+  answer: z.string(),
+  sources: z.array(z.string()),
+  scopedTo: z.object({
+    role: z.enum(["admin", "teacher"]),
+    classNames: z.array(z.string()),
+  }),
+  generatedAt: z.string(),
+});
+
 export const api = {
   auth: {
     login: {
@@ -819,6 +839,14 @@ export const api = {
       path: "/api/me",
       method: "GET",
       responses: { 200: userSchema },
+    },
+  },
+  ai: {
+    chat: {
+      path: "/api/ai/chat",
+      method: "POST",
+      input: aiChatInputSchema,
+      responses: { 200: aiChatResponseSchema },
     },
   },
   users: {
