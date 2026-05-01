@@ -1,5 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
-import { useFamilies } from "@/hooks/use-families";
+import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/layout";
 import {
@@ -112,9 +111,6 @@ export default function StudentManagement() {
     resolver: zodResolver(studentSchema),
     defaultValues: emptyStudentDefaults,
   });
-
-  const { data: familiesData } = useFamilies();
-  const families = useMemo(() => ((familiesData ?? []) as Array<{ id: number; name: string }>).map(f => ({ id: f.id, name: f.name })), [familiesData]);
 
   const students = useMemo(() => (users ?? []).filter(u => u.role === 'student'), [users]);
 
@@ -455,33 +451,17 @@ export default function StudentManagement() {
                       <FormItem>
                         <FormLabel className="text-xs font-medium text-slate-700">Family</FormLabel>
                         <FormControl>
-                          <div className="relative flex items-center gap-2">
-                            <FamilySelect
-                              value={field.value}
-                              onChange={(id, family) => {
-                                field.onChange(id);
-                                if (id !== null && family) {
-                                  form.setValue("familyName", family.name);
-                                } else {
-                                  form.setValue("familyName", "");
-                                }
-                              }}
-                              onCreateNew={(searchTerm) => {
-                                setCreateFamilySeed(searchTerm);
-                                setCreateFamilyOpen(true);
-                              }}
-                            />
-                            {field.value !== null && !field.dirty ? (
-                              <span className="ml-2 text-sm text-gray-500">
-                                {families.find(f => f.id === field.value)?.name || "None"}
-                              </span>
-                            ) : null}
-                            {form.watch("familyName") && (
-                              <span className="ml-2 text-sm text-gray-600">
-                                Selected: {form.watch("familyName")}
-                              </span>
-                            )}
-                          </div>
+                          <FamilySelect
+                            value={field.value ?? null}
+                            onChange={(id, family) => {
+                              field.onChange(id);
+                              form.setValue("familyName", id !== null && family ? family.name : "");
+                            }}
+                            onCreateNew={(searchTerm) => {
+                              setCreateFamilySeed(searchTerm);
+                              setCreateFamilyOpen(true);
+                            }}
+                          />
                         </FormControl>
                         <p className="text-[11px] text-slate-400">
                           Group this student with siblings under a shared family unit. Optional but enables consolidated billing.

@@ -17,6 +17,8 @@ import { Badge } from "@/components/ui/badge";
 import { Download, GraduationCap, Loader2, Pencil, Plus, Search, ShieldCheck, Trash2, Users } from "lucide-react";
 import { downloadCsv, getErrorMessage, paginateItems } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { FamilySelect } from "@/components/family/FamilySelect";
+import { CreateFamilyDialog } from "@/components/family/CreateFamilyDialog";
 
 type UsersManagementProps = { roleFilter?: "admin" | "teacher" | "student" };
 type ListedUser = {
@@ -26,6 +28,7 @@ type ListedUser = {
   fatherName?: string | null; studentPhotoUrl?: string | null;
   rollNumber?: string | null; dateOfBirth?: string | null; gender?: string | null;
   admissionDate?: string | null; studentStatus?: string | null; phone?: string | null; address?: string | null;
+  familyId?: number | null; familyName?: string | null;
 };
 
 const optionalUrlField = z.union([z.string().trim().url("Enter a valid photo URL"), z.literal("")]).optional();
@@ -38,6 +41,8 @@ const userSchema = z.object({
   rollNumber: z.string().optional(), dateOfBirth: z.string().optional(), gender: z.string().optional(),
   admissionDate: z.string().optional(), studentStatus: z.string().optional().default("active"),
   phone: z.string().optional(), address: z.string().optional(),
+  familyId: z.number().int().positive().nullable().optional(),
+  familyName: z.string().optional(),
 }).superRefine((data, ctx) => {
   if (data.password && data.password.length < 6) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["password"], message: "Password must be at least 6 characters" });
   if (data.role === "teacher" && !data.subject?.trim()) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["subject"], message: "Subject is required for teachers" });
@@ -88,11 +93,19 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [editingUser, setEditingUser] = useState<ListedUser | null>(null);
   const [userToDelete, setUserToDelete] = useState<ListedUser | null>(null);
+  const [createFamilyOpen, setCreateFamilyOpen] = useState(false);
+  const [createFamilySeed, setCreateFamilySeed] = useState<string>("");
 
   const defaultRole = roleFilter ?? "student";
+  const emptyUserDefaults: z.infer<typeof userSchema> = {
+    name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "",
+    employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "",
+    rollNumber: "", dateOfBirth: "", gender: "male", admissionDate: "", studentStatus: "active",
+    phone: "", address: "", familyId: null, familyName: "",
+  };
   const form = useForm<z.infer<typeof userSchema>>({
     resolver: zodResolver(userSchema),
-    defaultValues: { name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "", rollNumber: "", dateOfBirth: "", gender: "male", admissionDate: "", studentStatus: "active", phone: "", address: "" },
+    defaultValues: emptyUserDefaults,
   });
   const watchRole = form.watch("role");
   const mutationPending = createUser.isPending || updateUser.isPending;
@@ -111,13 +124,23 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
 
   const openCreateDialog = () => {
     setEditingUser(null);
-    form.reset({ name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "", rollNumber: "", dateOfBirth: "", gender: "male", admissionDate: "", studentStatus: "active", phone: "", address: "" });
+    form.reset(emptyUserDefaults);
     setIsOpen(true);
   };
 
   const openEditDialog = (user: ListedUser) => {
     setEditingUser(user);
-    form.reset({ name: user.name, email: user.email, password: "", role: roleFilter ?? (user.role === "admin" || user.role === "teacher" ? user.role : "student"), subject: user.subject ?? "", designation: user.designation ?? "", department: user.department ?? "", employeeId: user.employeeId ?? "", teacherPhotoUrl: user.teacherPhotoUrl ?? "", className: user.className ?? "", fatherName: user.fatherName ?? "", studentPhotoUrl: user.studentPhotoUrl ?? "", rollNumber: user.rollNumber ?? "", dateOfBirth: user.dateOfBirth ?? "", gender: user.gender ?? "male", admissionDate: user.admissionDate ?? "", studentStatus: user.studentStatus ?? "active", phone: user.phone ?? "", address: user.address ?? "" });
+    form.reset({
+      name: user.name, email: user.email, password: "",
+      role: roleFilter ?? (user.role === "admin" || user.role === "teacher" ? user.role : "student"),
+      subject: user.subject ?? "", designation: user.designation ?? "", department: user.department ?? "",
+      employeeId: user.employeeId ?? "", teacherPhotoUrl: user.teacherPhotoUrl ?? "",
+      className: user.className ?? "", fatherName: user.fatherName ?? "", studentPhotoUrl: user.studentPhotoUrl ?? "",
+      rollNumber: user.rollNumber ?? "", dateOfBirth: user.dateOfBirth ?? "", gender: user.gender ?? "male",
+      admissionDate: user.admissionDate ?? "", studentStatus: user.studentStatus ?? "active",
+      phone: user.phone ?? "", address: user.address ?? "",
+      familyId: user.familyId ?? null, familyName: user.familyName ?? "",
+    });
     setIsOpen(true);
   };
 
@@ -141,6 +164,8 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
       studentStatus: role === "student" ? values.studentStatus || undefined : undefined,
       phone: role === "student" ? values.phone?.trim() || undefined : undefined,
       address: role === "student" ? values.address?.trim() || undefined : undefined,
+      familyId: role === "student" ? values.familyId ?? null : undefined,
+      familyName: role === "student" ? values.familyName?.trim() || undefined : undefined,
     };
     if (!editingUser && !payload.password) return form.setError("password", { message: "Temporary password is required" });
     try {
@@ -148,7 +173,7 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
       else await createUser.mutateAsync({ ...payload, password: payload.password! });
       toast({ title: editingUser ? "User updated" : "User created", description: `${payload.name} has been saved successfully.` });
       setIsOpen(false); setEditingUser(null);
-      form.reset({ name: "", email: "", password: "", role: defaultRole, subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "", className: "", fatherName: "", studentPhotoUrl: "", rollNumber: "", dateOfBirth: "", gender: "male", admissionDate: "", studentStatus: "active", phone: "", address: "" });
+      form.reset(emptyUserDefaults);
     } catch (error) { toast({ title: "Unable to save user", description: getErrorMessage(error), variant: "destructive" }); }
   };
 
@@ -528,6 +553,39 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
                   </div>
                 )}
 
+                {/* Family linkage (students only) */}
+                {watchRole === "student" && (
+                  <div className="space-y-3 rounded-lg border border-slate-100 bg-slate-50/40 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Family Linkage</p>
+                    <FormField
+                      control={form.control}
+                      name="familyId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium text-slate-700">Family</FormLabel>
+                          <FormControl>
+                            <FamilySelect
+                              value={field.value ?? null}
+                              onChange={(id, family) => {
+                                field.onChange(id);
+                                form.setValue("familyName", id !== null && family ? family.name : "");
+                              }}
+                              onCreateNew={(searchTerm) => {
+                                setCreateFamilySeed(searchTerm);
+                                setCreateFamilyOpen(true);
+                              }}
+                            />
+                          </FormControl>
+                          <p className="text-[11px] text-slate-400">
+                            Group this student with siblings under a shared family unit. Optional but enables consolidated billing.
+                          </p>
+                          <FormMessage className="text-[11px]" />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                )}
+
                 <div className="flex justify-end gap-2 pt-1">
                   <Button type="button" variant="outline" size="sm" onClick={() => setIsOpen(false)}>Cancel</Button>
                   <Button type="submit" size="sm" disabled={mutationPending}>
@@ -556,6 +614,17 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* ── Create Family (inline shortcut) ──────────────────────────── */}
+        <CreateFamilyDialog
+          open={createFamilyOpen}
+          onOpenChange={setCreateFamilyOpen}
+          defaultName={createFamilySeed}
+          onCreated={(family) => {
+            form.setValue("familyId", family.id, { shouldDirty: true, shouldValidate: true });
+            form.setValue("familyName", family.name);
+          }}
+        />
       </div>
     </Layout>
   );
