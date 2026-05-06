@@ -28,6 +28,7 @@ import AdminDailyDiary from "./pages/admin/daily-diary";
 import AdminStudentProfile from "./pages/admin/student-profile";
 import AdminFamiliesPage from "./pages/admin/families";
 import AiAssistantPage from "./pages/ai-assistant";
+import WhatsappPage from "./pages/admin/whatsapp";
 
 import TeacherDashboard from "./pages/teacher/dashboard";
 import TeacherAttendance from "./pages/teacher/attendance";
@@ -62,6 +63,9 @@ function Router() {
       </Route>
       <Route path="/admin/ai-assistant">
         <ProtectedRoute allowedRoles={['admin']}><AiAssistantPage /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/whatsapp">
+        <ProtectedRoute allowedRoles={['admin']}><WhatsappPage /></ProtectedRoute>
       </Route>
       <Route path="/admin/students/create">
         <ProtectedRoute allowedRoles={['admin']}><CreateStudent /></ProtectedRoute>

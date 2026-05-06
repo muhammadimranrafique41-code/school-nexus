@@ -135,6 +135,11 @@ export const users = pgTable("users", {
   familyId: integer("family_id").references(() => families.id, {
     onDelete: "set null",
   }),
+  // ── WhatsApp opt-in fields (added by migration 0018) ─────────────────
+  /** Whether the parent/guardian has opted in to WhatsApp notifications */
+  whatsappOptIn: boolean("whatsapp_opt_in").notNull().default(true),
+  /** Optional separate WhatsApp number (if different from primary phone) */
+  whatsappPhone: varchar("whatsapp_phone", { length: 20 }),
 });
 
 export const sessions = pgTable("session", {
@@ -721,6 +726,10 @@ export const financeVouchers = pgTable(
     generatedBy: integer("generated_by").references(() => users.id, {
       onDelete: "set null",
     }),
+    // ── WhatsApp delivery tracking (added by migration 0018) ─────────────
+    whatsappSent: boolean("whatsapp_sent").notNull().default(false),
+    whatsappSentAt: timestamp("whatsapp_sent_at", { withTimezone: true }),
+    whatsappMessageId: integer("whatsapp_message_id"),
   },
   (table) => ({
     feeIdx: uniqueIndex("finance_vouchers_fee_idx").on(table.feeId),
@@ -792,6 +801,11 @@ export const consolidatedVouchers = pgTable(
     // ── Timestamps ────────────────────────────────────────────────────────
     generatedAt: text("generated_at").notNull(),
     updatedAt: text("updated_at").notNull(),
+
+    // ── WhatsApp delivery tracking (added by migration 0018) ─────────────
+    whatsappSent: boolean("whatsapp_sent").notNull().default(false),
+    whatsappSentAt: timestamp("whatsapp_sent_at", { withTimezone: true }),
+    whatsappMessageId: integer("whatsapp_message_id"),
   },
   (table) => ({
     /**
@@ -1426,7 +1440,9 @@ const optionalStudentPhotoUrlSchema = z.preprocess(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const insertUserSchema = createInsertSchema(users)
-  .omit({ id: true })
+  // Omit id + the two fields whose DB defaults would make them required in the
+  // inferred output type (drizzle-zod treats .notNull().default() as required).
+  .omit({ id: true, whatsappOptIn: true, studentStatus: true })
   .extend({
     name: z.string().trim().min(1, "Name is required").max(120),
     email: z.string().trim().email("Invalid email address"),
@@ -1444,14 +1460,17 @@ export const insertUserSchema = createInsertSchema(users)
     dateOfBirth: optionalUserTextFieldSchema,
     gender: z.enum(["male", "female", "other"]).nullable().optional(),
     admissionDate: optionalUserTextFieldSchema,
+    // Re-added as truly optional so callers don't need to supply it
     studentStatus: z
       .enum(["active", "inactive", "graduated", "suspended"])
       .nullable()
-      .optional()
-      .default("active"),
+      .optional(),
     phone: optionalUserTextFieldSchema,
     address: optionalUserTextFieldSchema,
     familyId: z.coerce.number().int().positive().nullable().optional(),
+    // ── WhatsApp fields (optional on insert — default handled by DB) ──────
+    whatsappOptIn: z.boolean().optional(),
+    whatsappPhone: z.string().max(20).nullable().optional(),
   });
 
 export const insertFamilySchema = createInsertSchema(families).omit({ id: true });
@@ -1516,7 +1535,13 @@ export const insertFinanceVoucherOperationSchema = createInsertSchema(
 ).omit({ id: true });
 export const insertFinanceVoucherSchema = createInsertSchema(
   financeVouchers
-).omit({ id: true });
+).omit({
+  id: true,
+  // WhatsApp columns have DB defaults — omit so existing callers don't need to supply them
+  whatsappSent: true,
+  whatsappSentAt: true,
+  whatsappMessageId: true,
+});
 export const insertClassSchema = createInsertSchema(classes).omit({
   id: true,
 });
@@ -1571,7 +1596,11 @@ export const insertConsolidatedVoucherAuditLogSchema = createInsertSchema(
 
 export type Family = typeof families.$inferSelect;
 export type InsertFamily = z.infer<typeof insertFamilySchema>;
-export type User = typeof users.$inferSelect;
+/** Base DB row from the `users` table. */
+export type User = typeof users.$inferSelect & {
+  /** Joined from `families.name` — present when the user belongs to a family. */
+  familyName?: string | null;
+};
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Student = typeof students.$inferSelect;
 export type InsertStudent = z.infer<typeof insertStudentSchema>;
@@ -1746,3 +1775,122 @@ export type ConsolidatedVoucherWithMeta = ConsolidatedVoucherRecord & {
   feeLinks?: ConsolidatedVoucherFeeLink[];
   auditLogs?: ConsolidatedVoucherAuditLogRecord[];
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WHATSAPP NOTIFICATION TABLES
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const whatsappMessageStatusEnum = [
+  "pending",
+  "sent",
+  "delivered",
+  "read",
+  "failed",
+] as const;
+export type WhatsappMessageStatus =
+  (typeof whatsappMessageStatusEnum)[number];
+
+export const whatsappMessages = pgTable(
+  "whatsapp_messages",
+  {
+    id: serial("id").primaryKey(),
+    recipientNumber: varchar("recipient_number", { length: 20 }).notNull(),
+    recipientType: varchar("recipient_type", { length: 20 })
+      .notNull()
+      .default("parent"),
+    recipientId: integer("recipient_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    messageBody: text("message_body").notNull(),
+    templateName: varchar("template_name", { length: 100 }),
+    mediaUrl: varchar("media_url", { length: 500 }),
+    mediaType: varchar("media_type", { length: 50 }),
+    status: varchar("status", { length: 20 })
+      .$type<WhatsappMessageStatus>()
+      .notNull()
+      .default("pending"),
+    errorMessage: text("error_message"),
+    /** WhatsApp Cloud API message ID returned on successful send */
+    waMessageId: varchar("wa_message_id", { length: 100 }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    /** Freeform context: { diary_entry_id, voucher_id, fee_id, class_id } */
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  },
+  (table) => ({
+    recipientStatusIdx: index("whatsapp_messages_recipient_status_idx").on(
+      table.recipientNumber,
+      table.status
+    ),
+    statusCreatedIdx: index("whatsapp_messages_status_created_idx").on(
+      table.status,
+      table.createdAt
+    ),
+    recipientIdIdx: index("whatsapp_messages_recipient_id_idx").on(
+      table.recipientId,
+      table.createdAt
+    ),
+  })
+);
+
+export const whatsappTemplates = pgTable("whatsapp_templates", {
+  id: serial("id").primaryKey(),
+  /** Must match the approved template name in Meta Business Manager */
+  name: varchar("name", { length: 100 }).notNull().unique(),
+  /** UTILITY | MARKETING | AUTHENTICATION */
+  category: varchar("category", { length: 50 }).notNull(),
+  language: varchar("language", { length: 10 }).notNull().default("en"),
+  /** Template body with {{1}} {{2}} … placeholders */
+  bodyText: text("body_text").notNull(),
+  headerText: text("header_text"),
+  footerText: text("footer_text"),
+  /** [{ "key": "student_name", "index": 1 }, …] */
+  variables: jsonb("variables")
+    .$type<{ key: string; index: number }[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ── Insert schemas ────────────────────────────────────────────────────────────
+
+export const insertWhatsappMessageSchema = createInsertSchema(
+  whatsappMessages
+).omit({
+  id: true,
+  createdAt: true,
+  // These have DB defaults — callers should not need to supply them on insert
+  status: true,
+  waMessageId: true,
+  sentAt: true,
+  deliveredAt: true,
+  readAt: true,
+}).extend({
+  // Re-add status as optional so callers can override the default if needed
+  status: z.enum(["pending", "sent", "delivered", "read", "failed"]).optional().default("pending"),
+});
+
+export const insertWhatsappTemplateSchema = createInsertSchema(
+  whatsappTemplates
+).omit({ id: true, createdAt: true, updatedAt: true });
+
+// ── Drizzle types ─────────────────────────────────────────────────────────────
+
+export type WhatsappMessage = typeof whatsappMessages.$inferSelect;
+export type InsertWhatsappMessage = z.infer<
+  typeof insertWhatsappMessageSchema
+>;
+export type WhatsappTemplate = typeof whatsappTemplates.$inferSelect;
+export type InsertWhatsappTemplate = z.infer<
+  typeof insertWhatsappTemplateSchema
+>;

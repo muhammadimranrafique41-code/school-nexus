@@ -5,7 +5,7 @@ export const paymentMethods = ["Cash", "Bank Transfer", "Card", "Mobile Money", 
 export const paymentGateways = ["cash", "bank", "card", "mobile-money", "cheque", "online"] as const;
 export const gatewayPaymentStatuses = ["pending", "completed", "failed"] as const;
 export const invoiceSources = ["manual", "monthly"] as const;
-export const financeVoucherOperationStatuses = ["queued", "running", "completed", "completed_with_errors", "cancelled", "failed"] as const;
+export const financeVoucherOperationStatuses = ["pending", "queued", "running", "completed", "completed_with_errors", "cancelled", "failed"] as const;
 
 export const feeStatusSchema = z.enum(feeStatuses);
 export const paymentMethodSchema = z.enum(paymentMethods);

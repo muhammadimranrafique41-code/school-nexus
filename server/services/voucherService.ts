@@ -2,6 +2,7 @@ import archiver from "archiver";
 import PDFDocument from "pdfkit";
 import { Writable } from "stream";
 import { storage } from "../storage.ts";
+import { auditService } from "./auditService.js";
 import { buildDocumentNumber, buildDueDateForBillingMonth, formatBillingPeriod, isOverdue as checkIsOverdue } from "../../shared/finance.js";
 import type {
   ConsolidatedFeeRow,
@@ -798,6 +799,20 @@ async function runGenerationJob(
     });
     if (!operation) return;
 
+    // ── Audit: job started ───────────────────────────────────────────────
+    // Log a "generated" (start) event against the operation record.
+    // We use jobId as a synthetic consolidatedVoucherId since the operation
+    // represents the entire batch; individual voucher audit entries are
+    // added per-student in the consolidated path.
+    void auditService.logVoucherStart(
+      jobId,
+      /* studentId — batch-level, use 0 as sentinel */ 0,
+      requestedBy,
+      { jobId, billingMonths: input.billingMonths, consolidatedMode: input.consolidatedMode ?? false }
+    ).catch((err: unknown) => {
+      console.warn("[VoucherService] Audit start log failed (non-fatal):", err instanceof Error ? err.message : String(err));
+    });
+
     snapshot = {
       ...operation,
       phase: "planning",
@@ -993,6 +1008,10 @@ async function runGenerationJob(
               generatedAt: new Date().toISOString(),
               generatedBy: requestedBy ?? null,
               generationVersion: 1,
+              // WhatsApp delivery fields — populated later by whatsappVoucherService
+              whatsappSent: false,
+              whatsappSentAt: null,
+              whatsappMessageId: null,
             });
 
             generatedCount += 1;
@@ -1127,6 +1146,16 @@ async function runGenerationJob(
       error: finalErrorMessage,
     });
     console.error("Voucher generation job failed:", finalErrorMessage);
+
+    // ── Audit: job failed ────────────────────────────────────────────────
+    void auditService.logVoucherError(
+      jobId,
+      /* studentId — batch-level sentinel */ 0,
+      error,
+      requestedBy
+    ).catch((auditErr: unknown) => {
+      console.warn("[VoucherService] Audit error log failed (non-fatal):", auditErr instanceof Error ? auditErr.message : String(auditErr));
+    });
   } finally {
     jobCancelFlags.delete(jobId);
 
@@ -1153,6 +1182,25 @@ async function runGenerationJob(
           currentInvoiceNumber: null,
           currentStudentName: null,
         });
+
+        // ── Audit: job completed (or cancelled) ──────────────────────────
+        if (finalStatus === "completed" || finalStatus === "completed_with_errors") {
+          void auditService.logVoucherComplete(
+            jobId,
+            /* studentId — batch-level sentinel */ 0,
+            requestedBy,
+            {
+              jobId,
+              finalStatus,
+              generatedCount,
+              skippedCount,
+              failedCount,
+              archiveSizeBytes,
+            }
+          ).catch((auditErr: unknown) => {
+            console.warn("[VoucherService] Audit complete log failed (non-fatal):", auditErr instanceof Error ? auditErr.message : String(auditErr));
+          });
+        }
       }
     } catch (error) {
       console.error("Failed to finalize voucher operation status:", error);

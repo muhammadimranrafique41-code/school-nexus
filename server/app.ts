@@ -5,6 +5,7 @@ import { serveStatic } from "./static.js";
 import { scheduleDailyTeachingPulseCron } from "./generate-pulse.js";
 import { attachSocketServer } from "./socket.js";
 import { recoverStaleVoucherJobs, scheduleVoucherJobHealthCheck } from "./services/voucherService.js";
+import { initRateLimiters } from "./middleware/rateLimiter.js";
 
 declare module "http" {
   interface IncomingMessage {
@@ -89,6 +90,14 @@ export async function initializeApp() {
       console.log("Database schema alignment successful.");
     } catch (err) {
       console.error("Database schema alignment failed:", err);
+    }
+
+    // Initialise rate limiters before routes are registered so that
+    // financeRateLimiterSync is ready when the first request arrives.
+    try {
+      await initRateLimiters();
+    } catch (err) {
+      console.error("Rate limiter initialisation failed (non-fatal):", err);
     }
 
     await registerRoutes(httpServer, app);

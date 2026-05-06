@@ -127,6 +127,13 @@
       "when": 1773600877841,
       "tag": "0017_academic_sessions_and_promotion",
       "breakpoints": false
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1773600878841,
+      "tag": "0018_whatsapp_notifications",
+      "breakpoints": false
     }
   ]
 }

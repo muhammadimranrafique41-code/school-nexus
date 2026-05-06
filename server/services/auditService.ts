@@ -11,6 +11,7 @@
  * @module server/services/auditService
  */
 
+import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   financeAuditLogs,
@@ -227,8 +228,8 @@ export class AuditService {
     const logs = await db
       .select()
       .from(financeAuditLogs)
-      .where(db.eq(financeAuditLogs.studentId, studentId))
-      .orderBy(db.desc(financeAuditLogs.createdAt))
+      .where(eq(financeAuditLogs.studentId, studentId))
+      .orderBy(desc(financeAuditLogs.createdAt))
       .limit(limit);
 
     return logs;
@@ -241,8 +242,8 @@ export class AuditService {
     const logs = await db
       .select()
       .from(financeAuditLogs)
-      .where(db.eq(financeAuditLogs.feeId, feeId))
-      .orderBy(db.asc(financeAuditLogs.createdAt));
+      .where(eq(financeAuditLogs.feeId, feeId))
+      .orderBy(asc(financeAuditLogs.createdAt));
 
     return logs;
   }
@@ -259,12 +260,12 @@ export class AuditService {
       .select()
       .from(financeAuditLogs)
       .where(
-        db.and(
-          db.gte(financeAuditLogs.createdAt, startDate),
-          db.lte(financeAuditLogs.createdAt, endDate)
+        and(
+          gte(financeAuditLogs.createdAt, startDate),
+          lte(financeAuditLogs.createdAt, endDate)
         )
       )
-      .orderBy(db.desc(financeAuditLogs.createdAt))
+      .orderBy(desc(financeAuditLogs.createdAt))
       .limit(limit);
 
     return logs;
@@ -277,8 +278,8 @@ export class AuditService {
     const logs = await db
       .select()
       .from(financeAuditLogs)
-      .where(db.eq(financeAuditLogs.action, action))
-      .orderBy(db.desc(financeAuditLogs.createdAt))
+      .where(eq(financeAuditLogs.action, action))
+      .orderBy(desc(financeAuditLogs.createdAt))
       .limit(limit);
 
     return logs;

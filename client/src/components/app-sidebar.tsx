@@ -1,6 +1,6 @@
 import {
   BookOpen, Users, LayoutDashboard, Calculator,
-  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle
+  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle
 } from "lucide-react";
 import {
   Sidebar,
@@ -40,6 +40,7 @@ const adminSections: SidebarSection[] = [
     items: [
       { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
       { title: "AI Assistant", url: "/admin/ai-assistant", icon: Sparkles, badge: "AI" },
+      { title: "WhatsApp", url: "/admin/whatsapp", icon: MessageCircle, badge: "New" },
       { title: "Users", url: "/admin/users", icon: Users },
     ],
   },

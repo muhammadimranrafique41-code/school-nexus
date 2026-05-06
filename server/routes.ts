@@ -52,6 +52,23 @@ import {
 import { LedgerService } from "./services/ledgerService.js";
 import { AuditService } from "./services/auditService.js";
 import { chatWithSchoolAssistant } from "./services/aiService.js";
+import {
+  getActiveTemplates,
+  getRecentMessages,
+  handleWebhookStatusUpdate,
+  isWhatsappConfigured,
+  type WhatsappMessageStatus,
+} from "./services/whatsappService.js";
+import {
+  sendHomeworkDiaryNotifications,
+  sendDailyDiaryNotifications,
+} from "./services/whatsappDiaryService.js";
+import {
+  sendVoucherNotification,
+  sendConsolidatedVoucherNotification,
+  sendBulkVoucherNotifications,
+  sendFeeReminder,
+} from "./services/whatsappVoucherService.js";
 import { historyService } from "./services/historyService.js";
 import { hasPermission } from "./middleware/rbac.js";
 import { financeRateLimiterSync, initRateLimiters } from "./middleware/rateLimiter.js";
@@ -1210,11 +1227,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = await requireRole(req, res, ["student"]);
       if (!user) return;
 
-      const filters = api.student.homework.list.input?.parse(req.query) ?? {};
-      const page = filters.page ?? 1;
-      const limit = filters.limit ?? 20;
+      const filters = api.student.homework.list.input?.parse(req.query) ?? { page: 1, limit: 20 };
+      const page = (filters as { page?: number }).page ?? 1;
+      const limit = (filters as { limit?: number }).limit ?? 20;
       const offset = (page - 1) * limit;
-      const status = filters.status ?? "active";
+      const status = (filters as { status?: string }).status ?? "active";
 
       const classRecord = await findClassByNameKey(user.className ?? null);
       if (!classRecord) {
@@ -1245,7 +1262,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         subject: row.subject,
         title: row.title,
         description: row.description ?? null,
-        dueDate: row.dueDate instanceof Date ? row.dueDate.toISOString().slice(0, 10) : String(row.dueDate),
+        dueDate: String(row.dueDate ?? ""),
         priority: row.priority,
         files: row.files ?? [],
         status: row.status,
@@ -1442,7 +1459,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const periods = await db
       .select()
       .from(dailyTeachingPulse)
-      .where(and(eq(dailyTeachingPulse.teacherId, user.id), eq(dailyTeachingPulse.date, today as unknown as Date)))
+      .where(and(eq(dailyTeachingPulse.teacherId, user.id), eq(dailyTeachingPulse.date, today)))
       .orderBy(asc(dailyTeachingPulse.period));
 
     const stats = {
@@ -4050,6 +4067,275 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       console.error("Failed to get class promotion history", err);
       return res.status(500).json({ message: "Failed to get class promotion history" });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // WHATSAPP ROUTES
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // GET /api/whatsapp/status – check configuration status
+  app.get("/api/whatsapp/status", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      return res.json({
+        configured: isWhatsappConfigured(),
+        phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID
+          ? `...${process.env.WHATSAPP_PHONE_NUMBER_ID.slice(-4)}`
+          : null,
+        apiVersion: process.env.WHATSAPP_API_VERSION ?? "v19.0",
+      });
+    } catch (err) {
+      console.error("[WhatsApp] Status check failed:", err);
+      return res.status(500).json({ message: "Failed to check WhatsApp status" });
+    }
+  });
+
+  // GET /api/whatsapp/messages – list recent messages
+  app.get("/api/whatsapp/messages", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const limit = Math.min(Number(req.query.limit) || 50, 200);
+      const status = req.query.status as string | undefined;
+      const recipientId = req.query.recipientId
+        ? Number(req.query.recipientId)
+        : undefined;
+
+      const messages = await getRecentMessages({
+        limit,
+        status: status as WhatsappMessageStatus | undefined,
+        recipientId,
+      });
+
+      return res.json({ messages, total: messages.length });
+    } catch (err) {
+      console.error("[WhatsApp] Failed to list messages:", err);
+      return res.status(500).json({ message: "Failed to retrieve WhatsApp messages" });
+    }
+  });
+
+  // GET /api/whatsapp/templates – list active templates
+  app.get("/api/whatsapp/templates", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const templates = await getActiveTemplates();
+      return res.json({ templates });
+    } catch (err) {
+      console.error("[WhatsApp] Failed to list templates:", err);
+      return res.status(500).json({ message: "Failed to retrieve WhatsApp templates" });
+    }
+  });
+
+  // POST /api/whatsapp/diary/:diaryId/notify – send homework diary notifications
+  app.post("/api/whatsapp/diary/:diaryId/notify", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const diaryId = Number(req.params.diaryId);
+      if (!Number.isFinite(diaryId) || diaryId <= 0) {
+        return res.status(400).json({ message: "Invalid diaryId" });
+      }
+
+      const useTemplate = req.body?.useTemplate === true;
+      const result = await sendHomeworkDiaryNotifications(diaryId, useTemplate);
+      return res.json(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to send diary notifications";
+      console.error("[WhatsApp] Diary notification failed:", err);
+      return res.status(500).json({ message });
+    }
+  });
+
+  // POST /api/whatsapp/daily-diary/:diaryId/notify – send daily diary notifications
+  app.post("/api/whatsapp/daily-diary/:diaryId/notify", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const diaryId = Number(req.params.diaryId);
+      if (!Number.isFinite(diaryId) || diaryId <= 0) {
+        return res.status(400).json({ message: "Invalid diaryId" });
+      }
+
+      const useTemplate = req.body?.useTemplate === true;
+      const result = await sendDailyDiaryNotifications(diaryId, useTemplate);
+      return res.json(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to send daily diary notifications";
+      console.error("[WhatsApp] Daily diary notification failed:", err);
+      return res.status(500).json({ message });
+    }
+  });
+
+  // POST /api/whatsapp/vouchers/:voucherId/notify – send single voucher notification
+  app.post("/api/whatsapp/vouchers/:voucherId/notify", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const voucherId = Number(req.params.voucherId);
+      if (!Number.isFinite(voucherId) || voucherId <= 0) {
+        return res.status(400).json({ message: "Invalid voucherId" });
+      }
+
+      const { pdfUrl, useTemplate } = req.body ?? {};
+      const result = await sendVoucherNotification({
+        voucherId,
+        pdfUrl: typeof pdfUrl === "string" ? pdfUrl : undefined,
+        useTemplate: useTemplate === true,
+      });
+      return res.json(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to send voucher notification";
+      console.error("[WhatsApp] Voucher notification failed:", err);
+      return res.status(500).json({ message });
+    }
+  });
+
+  // POST /api/whatsapp/consolidated-vouchers/:voucherId/notify – send consolidated voucher notification
+  app.post("/api/whatsapp/consolidated-vouchers/:voucherId/notify", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const consolidatedVoucherId = Number(req.params.voucherId);
+      if (!Number.isFinite(consolidatedVoucherId) || consolidatedVoucherId <= 0) {
+        return res.status(400).json({ message: "Invalid voucherId" });
+      }
+
+      const { pdfUrl, useTemplate } = req.body ?? {};
+      const result = await sendConsolidatedVoucherNotification({
+        consolidatedVoucherId,
+        pdfUrl: typeof pdfUrl === "string" ? pdfUrl : undefined,
+        useTemplate: useTemplate === true,
+      });
+      return res.json(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to send consolidated voucher notification";
+      console.error("[WhatsApp] Consolidated voucher notification failed:", err);
+      return res.status(500).json({ message });
+    }
+  });
+
+  // POST /api/whatsapp/vouchers/bulk-notify – send notifications for multiple vouchers
+  app.post("/api/whatsapp/vouchers/bulk-notify", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const schema = z.object({
+        voucherIds: z.array(z.number().int().positive()).min(1).max(500),
+        pdfUrls: z.record(z.string(), z.string().url()).optional(),
+        useTemplate: z.boolean().optional().default(false),
+      });
+
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          message: parsed.error.errors[0]?.message ?? "Invalid request body",
+        });
+      }
+
+      const result = await sendBulkVoucherNotifications({
+        voucherIds: parsed.data.voucherIds,
+        pdfUrls: parsed.data.pdfUrls
+          ? Object.fromEntries(
+              Object.entries(parsed.data.pdfUrls).map(([k, v]) => [Number(k), v])
+            )
+          : undefined,
+        useTemplate: parsed.data.useTemplate,
+      });
+
+      return res.json(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to send bulk voucher notifications";
+      console.error("[WhatsApp] Bulk voucher notification failed:", err);
+      return res.status(500).json({ message });
+    }
+  });
+
+  // POST /api/whatsapp/fees/:feeId/remind – send fee payment reminder
+  app.post("/api/whatsapp/fees/:feeId/remind", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const feeId = Number(req.params.feeId);
+      if (!Number.isFinite(feeId) || feeId <= 0) {
+        return res.status(400).json({ message: "Invalid feeId" });
+      }
+
+      const useTemplate = req.body?.useTemplate === true;
+      const result = await sendFeeReminder({ feeId, useTemplate });
+      return res.json(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to send fee reminder";
+      console.error("[WhatsApp] Fee reminder failed:", err);
+      return res.status(500).json({ message });
+    }
+  });
+
+  // GET /api/whatsapp/webhook – Meta webhook verification (GET challenge)
+  app.get("/api/whatsapp/webhook", (req, res) => {
+    const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+    const mode = req.query["hub.mode"];
+    const token = req.query["hub.verify_token"];
+    const challenge = req.query["hub.challenge"];
+
+    if (mode === "subscribe" && token === verifyToken) {
+      console.log("[WhatsApp] Webhook verified successfully.");
+      return res.status(200).send(challenge);
+    }
+    console.warn("[WhatsApp] Webhook verification failed — token mismatch.");
+    return res.status(403).json({ message: "Webhook verification failed" });
+  });
+
+  // POST /api/whatsapp/webhook – Meta webhook delivery status updates
+  app.post("/api/whatsapp/webhook", async (req, res) => {
+    try {
+      // Acknowledge immediately (Meta requires 200 within 20 s)
+      res.status(200).json({ status: "ok" });
+
+      const body = req.body as {
+        object?: string;
+        entry?: Array<{
+          changes?: Array<{
+            value?: {
+              statuses?: Array<{
+                id: string;
+                status: string;
+                timestamp: string;
+                errors?: Array<{ code: number; title: string }>;
+              }>;
+            };
+          }>;
+        }>;
+      };
+
+      if (body.object !== "whatsapp_business_account") return;
+
+      for (const entry of body.entry ?? []) {
+        for (const change of entry.changes ?? []) {
+          for (const statusEntry of change.value?.statuses ?? []) {
+            void handleWebhookStatusUpdate({
+              id: statusEntry.id,
+              status: statusEntry.status as "sent" | "delivered" | "read" | "failed",
+              timestamp: statusEntry.timestamp,
+              errors: statusEntry.errors,
+            }).catch((err: unknown) => {
+              console.error("[WhatsApp] Webhook status update failed:", err);
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[WhatsApp] Webhook processing error:", err);
+      // Response already sent — nothing more to do
     }
   });
 
