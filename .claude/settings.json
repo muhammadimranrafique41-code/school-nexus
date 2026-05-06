@@ -1,0 +1,14 @@
+{
+  "mcp": {
+    "servers": {
+      "database-server": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@executeautomation/database-server"
+        ],
+        "transport": "stdio"
+      }
+    }
+  }
+}
