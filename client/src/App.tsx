@@ -20,6 +20,8 @@ import CreateStudent from "./pages/admin/students";
 import CreateTeacher from "./pages/admin/teachers";
 import AdminClasses from "./pages/admin/classes";
 import AdminClassDetail from "./pages/admin/class-detail";
+import AdminSessions from "./pages/admin/sessions";
+import AdminPromotions from "./pages/admin/promotions";
 import AdminTimetable from "./pages/admin/timetable";
 import AdminHomeworkDiary from "./pages/admin/homework-diary";
 import AdminDailyDiary from "./pages/admin/daily-diary";
@@ -87,6 +89,12 @@ function Router() {
       </Route>
       <Route path="/admin/classes/:id">
         <ProtectedRoute allowedRoles={['admin']}><AdminClassDetail /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/sessions">
+        <ProtectedRoute allowedRoles={['admin']}><AdminSessions /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/promotions">
+        <ProtectedRoute allowedRoles={['admin']}><AdminPromotions /></ProtectedRoute>
       </Route>
       <Route path="/admin/timetable">
         <ProtectedRoute allowedRoles={['admin']}><AdminTimetable /></ProtectedRoute>

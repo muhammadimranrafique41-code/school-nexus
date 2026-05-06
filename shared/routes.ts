@@ -2194,6 +2194,143 @@ export const api = {
   },
 } as const;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Academic Sessions & Promotion – route contracts
+// Kept separate from the main `api` object so they can be tree-shaken by
+// clients that don't need them, while still being co-located with all other
+// route definitions.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const academicSessionSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  startDate: z.string(),
+  endDate: z.string(),
+  isCurrent: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+const promotionHistoryItemSchema = z.object({
+  id: z.number(),
+  studentId: z.number(),
+  fromClassId: z.number().nullable(),
+  toClassId: z.number(),
+  academicSessionId: z.number().nullable(),
+  promotedBy: z.number().nullable(),
+  notes: z.string().nullable(),
+  promotionDate: z.string(),
+  createdAt: z.string(),
+  // Joined fields
+  student: z.object({ id: z.number(), name: z.string(), className: z.string().nullable() }).nullable(),
+  fromClass: z.object({ id: z.number(), grade: z.string(), section: z.string(), stream: z.string().nullable() }).nullable(),
+  toClass: z.object({ id: z.number(), grade: z.string(), section: z.string(), stream: z.string().nullable() }).nullable(),
+  session: z.object({ id: z.number(), name: z.string() }).nullable(),
+  promotedByUser: z.object({ id: z.number(), name: z.string() }).nullable(),
+});
+
+export const sessionsApi = {
+  academicSessions: {
+    list: {
+      path: "/api/v1/academic-sessions",
+      method: "GET" as const,
+      responses: { 200: z.array(academicSessionSchema) },
+    },
+    current: {
+      path: "/api/v1/academic-sessions/current",
+      method: "GET" as const,
+      responses: { 200: academicSessionSchema.nullable() },
+    },
+    get: {
+      path: "/api/v1/academic-sessions/:id",
+      method: "GET" as const,
+      responses: { 200: academicSessionSchema },
+    },
+    create: {
+      path: "/api/v1/academic-sessions",
+      method: "POST" as const,
+      input: z.object({
+        name: z.string().trim().min(1).max(20),
+        startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
+        endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
+        isCurrent: z.boolean().optional(),
+      }),
+      responses: { 201: academicSessionSchema },
+    },
+    update: {
+      path: "/api/v1/academic-sessions/:id",
+      method: "PATCH" as const,
+      input: z.object({
+        name: z.string().trim().min(1).max(20).optional(),
+        startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        isCurrent: z.boolean().optional(),
+      }),
+      responses: { 200: academicSessionSchema },
+    },
+    setCurrent: {
+      path: "/api/v1/academic-sessions/:id/set-current",
+      method: "POST" as const,
+      responses: { 200: academicSessionSchema },
+    },
+    delete: {
+      path: "/api/v1/academic-sessions/:id",
+      method: "DELETE" as const,
+      responses: { 200: z.object({ success: z.boolean() }) },
+    },
+  },
+  promotions: {
+    promoteStudent: {
+      path: "/api/v1/promotions/student",
+      method: "POST" as const,
+      input: z.object({
+        studentId: z.number().int().positive(),
+        toClassId: z.number().int().positive(),
+        academicSessionId: z.number().int().positive().optional(),
+        notes: z.string().max(500).optional(),
+        promotionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      }),
+      responses: { 201: promotionHistoryItemSchema },
+    },
+    bulkPromote: {
+      path: "/api/v1/promotions/bulk",
+      method: "POST" as const,
+      input: z.object({
+        fromClassId: z.number().int().positive(),
+        toClassId: z.number().int().positive(),
+        academicSessionId: z.number().int().positive().optional(),
+        notes: z.string().max(500).optional(),
+      }),
+      responses: {
+        200: z.object({
+          promoted: z.array(promotionHistoryItemSchema),
+          skipped: z.array(
+            z.object({
+              studentId: z.number(),
+              name: z.string(),
+              reason: z.string(),
+            })
+          ),
+          promotedCount: z.number(),
+          skippedCount: z.number(),
+        }),
+      },
+    },
+    studentHistory: {
+      path: "/api/v1/promotions/students/:studentId",
+      method: "GET" as const,
+      responses: { 200: z.array(promotionHistoryItemSchema) },
+    },
+    classHistory: {
+      path: "/api/v1/promotions/classes/:classId",
+      method: "GET" as const,
+      responses: { 200: z.array(promotionHistoryItemSchema) },
+    },
+  },
+} as const;
+
+export type SessionsApiRoutes = typeof sessionsApi;
+
 export type ApiRoutes = typeof api;
 
 export const errorSchemas = {

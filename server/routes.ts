@@ -19,6 +19,21 @@ import {
   type InsertFamily,
 } from "../shared/schema.js";
 import { db } from "./db.js";
+import {
+  ClassesServiceError,
+  bulkPromoteClass,
+  createAcademicSession,
+  deleteAcademicSession,
+  enrichPromotionRows,
+  getAcademicSession,
+  getClassPromotionHistory,
+  getCurrentAcademicSession,
+  getStudentPromotionHistory,
+  listAcademicSessions,
+  promoteStudent,
+  setCurrentAcademicSession,
+  updateAcademicSession,
+} from "./services/classesService.js";
 import { AssignTeacherSchema, CreateClassSchema } from "../lib/validators/classes.js";
 import { registerQrAttendanceRoutes } from "./qr-attendance-routes.js";
 import { createSessionMiddleware } from "./session.js";
@@ -37,6 +52,9 @@ import {
 import { LedgerService } from "./services/ledgerService.js";
 import { AuditService } from "./services/auditService.js";
 import { chatWithSchoolAssistant } from "./services/aiService.js";
+import { historyService } from "./services/historyService.js";
+import { hasPermission } from "./middleware/rbac.js";
+import { financeRateLimiterSync, initRateLimiters } from "./middleware/rateLimiter.js";
 import { createPresignedDownload, createPresignedUpload } from "./s3.js";
 import {
   broadcastHomeworkDiaryPublish,
@@ -376,6 +394,9 @@ function buildStudentResultsPayload(records: ResultWithStudent[]) {
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  // Initialise rate limiters (no-op in development, active in production)
+  await initRateLimiters();
+
   // Temporary debug route to fix DB schema issues
   app.get("/api/debug/fix-db", async (req, res) => {
     try {
@@ -3685,6 +3706,350 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid input" });
       if (err instanceof Error) return res.status(400).json({ message: err.message });
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── GET /api/student/history/:studentId ─────────────────────────────────
+  // Returns the complete fee ledger, academic records, and class transitions
+  // for a student.  Requires authentication + student:history permission.
+  // Rate-limited via financeRateLimiterSync.
+  app.get(
+    "/api/student/history/:studentId",
+    financeRateLimiterSync,
+    hasPermission("student:history"),
+    async (req: Request, res: Response) => {
+      const LOG = "[StudentHistory]";
+      try {
+        // ── 1. Validate studentId param ──────────────────────────────────
+        const raw = Array.isArray(req.params.studentId)
+          ? req.params.studentId[0]
+          : req.params.studentId;
+        const studentId = parseInt(raw, 10);
+
+        if (!Number.isFinite(studentId) || studentId <= 0) {
+          return res
+            .status(400)
+            .json({ success: false, error: "Invalid studentId — must be a positive integer." });
+        }
+
+        // ── 2. Verify student exists ─────────────────────────────────────
+        const student = await storage.getUser(studentId);
+        if (!student || student.role !== "student") {
+          return res
+            .status(404)
+            .json({ success: false, error: "Student not found." });
+        }
+
+        // ── 3. Fetch history ─────────────────────────────────────────────
+        console.log(`${LOG} Fetching history for studentId=${studentId}`);
+        const history = await historyService.getStudentHistory(studentId);
+
+        console.log(
+          `${LOG} studentId=${studentId} — ` +
+            `fees=${history.feeHistory.length}, ` +
+            `academic=${history.academicHistory.length}, ` +
+            `transitions=${history.transitions.length}`
+        );
+
+        // ── 4. Respond ───────────────────────────────────────────────────
+        return res.status(200).json({
+          success: true,
+          data: history,
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Internal server error";
+        console.error(`${LOG} Unhandled error:`, err);
+        // Never expose stack traces to the client
+        return res.status(500).json({ success: false, error: "Internal server error" });
+      }
+    }
+  );
+
+  // ── Academic Sessions ────────────────────────────────────────────────────
+
+  // GET /api/v1/academic-sessions
+  app.get("/api/v1/academic-sessions", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const sessions = await listAcademicSessions();
+      return res.json(sessions);
+    } catch (err) {
+      console.error("Failed to list academic sessions", err);
+      return res.status(500).json({ message: "Failed to list academic sessions" });
+    }
+  });
+
+  // GET /api/v1/academic-sessions/current
+  app.get("/api/v1/academic-sessions/current", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+      const session = await getCurrentAcademicSession();
+      return res.json(session);
+    } catch (err) {
+      console.error("Failed to get current academic session", err);
+      return res.status(500).json({ message: "Failed to get current academic session" });
+    }
+  });
+
+  // GET /api/v1/academic-sessions/:id
+  app.get("/api/v1/academic-sessions/:id", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ message: "Invalid session id" });
+      }
+      const session = await getAcademicSession(id);
+      return res.json(session);
+    } catch (err) {
+      if (err instanceof ClassesServiceError) {
+        return res.status(err.statusCode).json({ message: err.message });
+      }
+      console.error("Failed to get academic session", err);
+      return res.status(500).json({ message: "Failed to get academic session" });
+    }
+  });
+
+  // POST /api/v1/academic-sessions
+  app.post("/api/v1/academic-sessions", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const input = z
+        .object({
+          name: z.string().trim().min(1).max(20),
+          startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
+          endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
+          isCurrent: z.boolean().optional(),
+        })
+        .parse(req.body);
+
+      const session = await createAcademicSession(input);
+      return res.status(201).json(session);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      }
+      if (err instanceof ClassesServiceError) {
+        return res.status(err.statusCode).json({ message: err.message });
+      }
+      if (
+        typeof err === "object" &&
+        err !== null &&
+        "code" in err &&
+        (err as { code: string }).code === "23505"
+      ) {
+        return res.status(409).json({ message: "An academic session with this name already exists" });
+      }
+      console.error("Failed to create academic session", err);
+      return res.status(500).json({ message: "Failed to create academic session" });
+    }
+  });
+
+  // PATCH /api/v1/academic-sessions/:id
+  app.patch("/api/v1/academic-sessions/:id", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ message: "Invalid session id" });
+      }
+
+      const input = z
+        .object({
+          name: z.string().trim().min(1).max(20).optional(),
+          startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          isCurrent: z.boolean().optional(),
+        })
+        .parse(req.body);
+
+      const session = await updateAcademicSession(id, input);
+      return res.json(session);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      }
+      if (err instanceof ClassesServiceError) {
+        return res.status(err.statusCode).json({ message: err.message });
+      }
+      console.error("Failed to update academic session", err);
+      return res.status(500).json({ message: "Failed to update academic session" });
+    }
+  });
+
+  // POST /api/v1/academic-sessions/:id/set-current
+  app.post("/api/v1/academic-sessions/:id/set-current", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ message: "Invalid session id" });
+      }
+
+      const session = await setCurrentAcademicSession(id);
+      return res.json(session);
+    } catch (err) {
+      if (err instanceof ClassesServiceError) {
+        return res.status(err.statusCode).json({ message: err.message });
+      }
+      console.error("Failed to set current academic session", err);
+      return res.status(500).json({ message: "Failed to set current academic session" });
+    }
+  });
+
+  // DELETE /api/v1/academic-sessions/:id
+  app.delete("/api/v1/academic-sessions/:id", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ message: "Invalid session id" });
+      }
+
+      await deleteAcademicSession(id);
+      return res.json({ success: true });
+    } catch (err) {
+      if (err instanceof ClassesServiceError) {
+        return res.status(err.statusCode).json({ message: err.message });
+      }
+      console.error("Failed to delete academic session", err);
+      return res.status(500).json({ message: "Failed to delete academic session" });
+    }
+  });
+
+  // ── Student Promotion ────────────────────────────────────────────────────
+
+  // POST /api/v1/promotions/student
+  app.post("/api/v1/promotions/student", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const input = z
+        .object({
+          studentId: z.number().int().positive(),
+          toClassId: z.number().int().positive(),
+          academicSessionId: z.number().int().positive().optional(),
+          notes: z.string().max(500).optional(),
+          promotionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        })
+        .parse(req.body);
+
+      const rawRecord = await promoteStudent({ ...input, promotedBy: user.id });
+
+      // Enrich the raw DB row with joined student/class/session data so the
+      // response matches the PromotionHistoryRecord shape expected by the client.
+      const [enriched] = await enrichPromotionRows([
+        {
+          history: rawRecord,
+          student: null, // enrichPromotionRows will batch-fetch this via promoterIds
+        },
+      ]);
+      return res.status(201).json(enriched);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      }
+      if (err instanceof ClassesServiceError) {
+        return res.status(err.statusCode).json({ message: err.message });
+      }
+      console.error("Failed to promote student", err);
+      return res.status(500).json({ message: "Failed to promote student" });
+    }
+  });
+
+  // POST /api/v1/promotions/bulk
+  app.post("/api/v1/promotions/bulk", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const input = z
+        .object({
+          fromClassId: z.number().int().positive(),
+          toClassId: z.number().int().positive(),
+          academicSessionId: z.number().int().positive().optional(),
+          notes: z.string().max(500).optional(),
+        })
+        .parse(req.body);
+
+      const result = await bulkPromoteClass({ ...input, promotedBy: user.id });
+
+      // Enrich all promoted rows with joined data
+      const enrichedPromoted = await enrichPromotionRows(
+        result.promoted.map((history) => ({ history, student: null }))
+      );
+
+      return res.json({
+        promoted: enrichedPromoted,
+        skipped: result.skipped,
+        promotedCount: enrichedPromoted.length,
+        skippedCount: result.skipped.length,
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid payload" });
+      }
+      if (err instanceof ClassesServiceError) {
+        return res.status(err.statusCode).json({ message: err.message });
+      }
+      console.error("Failed to bulk promote class", err);
+      return res.status(500).json({ message: "Failed to bulk promote class" });
+    }
+  });
+
+  // GET /api/v1/promotions/students/:studentId
+  app.get("/api/v1/promotions/students/:studentId", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+
+      const studentId = Number(req.params.studentId);
+      if (!Number.isFinite(studentId) || studentId <= 0) {
+        return res.status(400).json({ message: "Invalid studentId" });
+      }
+
+      const history = await getStudentPromotionHistory(studentId);
+      return res.json(history);
+    } catch (err) {
+      if (err instanceof ClassesServiceError) {
+        return res.status(err.statusCode).json({ message: err.message });
+      }
+      console.error("Failed to get student promotion history", err);
+      return res.status(500).json({ message: "Failed to get student promotion history" });
+    }
+  });
+
+  // GET /api/v1/promotions/classes/:classId
+  app.get("/api/v1/promotions/classes/:classId", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+
+      const classId = Number(req.params.classId);
+      if (!Number.isFinite(classId) || classId <= 0) {
+        return res.status(400).json({ message: "Invalid classId" });
+      }
+
+      const history = await getClassPromotionHistory(classId);
+      return res.json(history);
+    } catch (err) {
+      if (err instanceof ClassesServiceError) {
+        return res.status(err.statusCode).json({ message: err.message });
+      }
+      console.error("Failed to get class promotion history", err);
+      return res.status(500).json({ message: "Failed to get class promotion history" });
     }
   });
 

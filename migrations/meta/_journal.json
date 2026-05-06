@@ -78,6 +78,55 @@
       "when": 1773600870841,
       "tag": "0010_drop_homework_unique",
       "breakpoints": false
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1773600871841,
+      "tag": "0011_fee_payment_discount",
+      "breakpoints": false
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1773600872841,
+      "tag": "0012_fees_total_discount",
+      "breakpoints": false
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1773600873841,
+      "tag": "0013_finance_voucher_operation_error_log",
+      "breakpoints": false
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1773600874841,
+      "tag": "0014_fee_update_sql",
+      "breakpoints": false
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1773600875841,
+      "tag": "0015_consolidated_voucher_flags",
+      "breakpoints": false
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1773600876841,
+      "tag": "0016_family_management",
+      "breakpoints": false
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1773600877841,
+      "tag": "0017_academic_sessions_and_promotion",
+      "breakpoints": false
     }
   ]
 }

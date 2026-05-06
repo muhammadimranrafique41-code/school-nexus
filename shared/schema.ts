@@ -1014,6 +1014,79 @@ export const classTeachers = pgTable(
   })
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ACADEMIC SESSIONS & PROMOTION HISTORY
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * academic_sessions – one row per school year (e.g. "2024-2025").
+ * At most one session may have is_current = true at any time; this is
+ * enforced by a partial unique index in the migration.
+ */
+export const academicSessions = pgTable(
+  "academic_sessions",
+  {
+    id: serial("id").primaryKey(),
+    /** Human-readable name, e.g. "2024-2025". Must be unique. */
+    name: text("name").notNull().unique(),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date").notNull(),
+    /** Only one session may be current at a time. */
+    isCurrent: boolean("is_current").notNull().default(false),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  }
+);
+
+export const insertAcademicSessionSchema = createInsertSchema(academicSessions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+/**
+ * promotion_history – immutable audit trail of every student class change.
+ * Records who promoted the student, from which class, to which class, and
+ * under which academic session.
+ */
+export const promotionHistory = pgTable(
+  "promotion_history",
+  {
+    id: serial("id").primaryKey(),
+    studentId: integer("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Null when the student is being enrolled for the first time. */
+    fromClassId: integer("from_class_id").references(() => classes.id, {
+      onDelete: "set null",
+    }),
+    toClassId: integer("to_class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "restrict" }),
+    academicSessionId: integer("academic_session_id").references(
+      () => academicSessions.id,
+      { onDelete: "set null" }
+    ),
+    /** Admin or teacher who performed the promotion. */
+    promotedBy: integer("promoted_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    notes: text("notes"),
+    promotionDate: date("promotion_date").notNull().default(sql`CURRENT_DATE`),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  },
+  (table) => ({
+    studentIdx: index("promotion_history_student_idx").on(table.studentId),
+    sessionIdx: index("promotion_history_session_idx").on(table.academicSessionId),
+    toClassIdx: index("promotion_history_to_class_idx").on(table.toClassId),
+  })
+);
+
+export const insertPromotionHistorySchema = createInsertSchema(promotionHistory).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const dailyTeachingPulse = pgTable(
   "daily_teaching_pulse",
   {
@@ -1568,6 +1641,10 @@ export type Class = typeof classes.$inferSelect;
 export type InsertClass = z.infer<typeof insertClassSchema>;
 export type ClassTeacher = typeof classTeachers.$inferSelect;
 export type InsertClassTeacher = z.infer<typeof insertClassTeacherSchema>;
+export type AcademicSession = typeof academicSessions.$inferSelect;
+export type InsertAcademicSession = z.infer<typeof insertAcademicSessionSchema>;
+export type PromotionHistory = typeof promotionHistory.$inferSelect;
+export type InsertPromotionHistory = z.infer<typeof insertPromotionHistorySchema>;
 export type DailyTeachingPulse = typeof dailyTeachingPulse.$inferSelect;
 export type InsertDailyTeachingPulse = z.infer<
   typeof insertDailyTeachingPulseSchema

@@ -1,17 +1,25 @@
 /**
- * Audit Logging Service - Tracks all financial operations
- * Status: Provides comprehensive audit trail
- * 
+ * @file auditService.ts
+ * @description Audit Logging Service — tracks all financial and voucher operations.
+ *
  * Every financial action is logged for:
  * - Compliance and regulatory requirements
  * - Dispute resolution
  * - Fraud detection
  * - Financial reconciliation
+ *
+ * @module server/services/auditService
  */
 
 import { db } from "../db.js";
-import { financeAuditLogs } from "../../shared/schema.js";
-import type { FinanceAuditLog } from "../../shared/schema.js";
+import {
+  financeAuditLogs,
+  consolidatedVoucherAuditLog,
+} from "../../shared/schema.js";
+import type {
+  FinanceAuditLog,
+  ConsolidatedVoucherAuditLogRecord,
+} from "../../shared/schema.js";
 
 export type AuditAction = "create" | "update" | "delete" | "payment" | "adjustment";
 export type AuditEntityType = "fee" | "payment" | "adjustment";
@@ -28,6 +36,37 @@ export interface AuditLogEntry {
   metadata?: Record<string, any>;
   createdBy?: number;
 }
+
+// ── Voucher operation audit types ─────────────────────────────────────────
+
+/** Actions that can be recorded against a consolidated voucher. */
+export type VoucherAuditAction =
+  | "generated"
+  | "regenerated"
+  | "downloaded"
+  | "printed"
+  | "cancelled"
+  | "status_changed";
+
+/** Input for {@link AuditService.logVoucherOperation}. */
+export interface VoucherOperationEntry {
+  /** The `consolidated_vouchers.id` being acted upon. */
+  consolidatedVoucherId: number;
+  /** The `users.id` of the student the voucher belongs to. */
+  studentId: number;
+  /** The action being recorded. */
+  action: VoucherAuditAction;
+  /** Previous voucher status (for status_changed actions). */
+  previousStatus?: string;
+  /** New voucher status (for status_changed actions). */
+  newStatus?: string;
+  /** Freeform context: IP address, batch ID, reason, etc. */
+  metadata?: Record<string, unknown>;
+  /** The `users.id` of the person performing the action. */
+  performedBy?: number;
+}
+
+const LOG = "[AuditService]";
 
 export class AuditService {
   /**
@@ -54,6 +93,131 @@ export class AuditService {
       .returning();
 
     return created;
+  }
+
+  // ── Consolidated Voucher Audit ─────────────────────────────────────────
+
+  /**
+   * Record an audit event against a consolidated voucher.
+   *
+   * Called from `voucherService.ts`:
+   * - Before generating a ZIP → action `"generated"`
+   * - On success → action `"status_changed"` (draft → generated)
+   * - In catch blocks → action `"cancelled"` with error metadata
+   *
+   * @param entry - The voucher operation details to record.
+   * @returns The created audit log row, or `null` if the insert fails
+   *   (failure is logged but never re-thrown to avoid masking the
+   *   primary operation error).
+   */
+  async logVoucherOperation(
+    entry: VoucherOperationEntry
+  ): Promise<ConsolidatedVoucherAuditLogRecord | null> {
+    console.log(
+      `${LOG} logVoucherOperation — voucherId=${entry.consolidatedVoucherId} ` +
+        `action=${entry.action} studentId=${entry.studentId}`
+    );
+
+    try {
+      const timestamp = new Date().toISOString();
+
+      const [created] = await db
+        .insert(consolidatedVoucherAuditLog)
+        .values({
+          consolidatedVoucherId: entry.consolidatedVoucherId,
+          studentId: entry.studentId,
+          action: entry.action,
+          previousStatus: entry.previousStatus ?? null,
+          newStatus: entry.newStatus ?? null,
+          metadata: entry.metadata ?? null,
+          performedBy: entry.performedBy ?? null,
+          createdAt: timestamp,
+        })
+        .returning();
+
+      return created ?? null;
+    } catch (err: unknown) {
+      // Audit failures must never crash the primary operation
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`${LOG} logVoucherOperation failed (non-fatal): ${msg}`);
+      return null;
+    }
+  }
+
+  /**
+   * Convenience wrapper: log a voucher generation start event.
+   *
+   * @param consolidatedVoucherId - The voucher being generated.
+   * @param studentId             - The student the voucher belongs to.
+   * @param performedBy           - The user triggering the generation.
+   * @param metadata              - Optional extra context (batch ID, etc.).
+   */
+  async logVoucherStart(
+    consolidatedVoucherId: number,
+    studentId: number,
+    performedBy?: number,
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    await this.logVoucherOperation({
+      consolidatedVoucherId,
+      studentId,
+      action: "generated",
+      newStatus: "draft",
+      performedBy,
+      metadata,
+    });
+  }
+
+  /**
+   * Convenience wrapper: log a successful voucher generation.
+   *
+   * @param consolidatedVoucherId - The voucher that was generated.
+   * @param studentId             - The student the voucher belongs to.
+   * @param performedBy           - The user who triggered the generation.
+   * @param metadata              - Optional extra context.
+   */
+  async logVoucherComplete(
+    consolidatedVoucherId: number,
+    studentId: number,
+    performedBy?: number,
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    await this.logVoucherOperation({
+      consolidatedVoucherId,
+      studentId,
+      action: "status_changed",
+      previousStatus: "draft",
+      newStatus: "generated",
+      performedBy,
+      metadata,
+    });
+  }
+
+  /**
+   * Convenience wrapper: log a voucher generation error.
+   *
+   * @param consolidatedVoucherId - The voucher that failed.
+   * @param studentId             - The student the voucher belongs to.
+   * @param error                 - The error that occurred.
+   * @param performedBy           - The user who triggered the generation.
+   */
+  async logVoucherError(
+    consolidatedVoucherId: number,
+    studentId: number,
+    error: unknown,
+    performedBy?: number
+  ): Promise<void> {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+
+    await this.logVoucherOperation({
+      consolidatedVoucherId,
+      studentId,
+      action: "cancelled",
+      newStatus: "cancelled",
+      performedBy,
+      metadata: { error: errorMessage },
+    });
   }
 
   /**

@@ -10,9 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { getFeeStatusClassName } from "@/lib/finance";
+import { StudentHistory } from "@/components/student/StudentHistory";
 import {
   ArrowLeft, Edit2, GraduationCap, MapPin, Phone, CalendarDays,
-  CheckCircle2, XCircle, TrendingUp, Banknote, QrCode
+  CheckCircle2, XCircle, TrendingUp, Banknote, QrCode, ClockIcon
 } from "lucide-react";
 
 // ── Avatar initials ───────────────────────────────────────────────────────
@@ -151,6 +152,10 @@ export default function AdminStudentProfile() {
             <TabsTrigger value="attendance" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none px-6 shadow-none">Attendance</TabsTrigger>
             <TabsTrigger value="fees" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none px-6 shadow-none">Fees & Billing</TabsTrigger>
             <TabsTrigger value="results" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none px-6 shadow-none">Results</TabsTrigger>
+            <TabsTrigger value="history" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none px-6 shadow-none flex items-center gap-1.5">
+              <ClockIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              History
+            </TabsTrigger>
           </TabsList>
 
           {/* OVERVIEW TAB */}
@@ -363,6 +368,24 @@ export default function AdminStudentProfile() {
                     ))}
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* HISTORY TAB */}
+          <TabsContent value="history" className="pt-6">
+            <Card className="shadow-none border-slate-200">
+              <CardHeader className="pb-3 border-b border-slate-100">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <ClockIcon className="h-4 w-4 text-indigo-500" aria-hidden="true" />
+                  Student History
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500">
+                  Complete fee ledger, academic records, and class transitions for this student.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-5">
+                <StudentHistory studentId={studentId} />
               </CardContent>
             </Card>
           </TabsContent>

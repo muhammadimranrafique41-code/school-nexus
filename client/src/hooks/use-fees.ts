@@ -4,6 +4,30 @@ import { z } from "zod";
 import { useUser } from "./use-auth";
 import { getResponseErrorMessage } from "@/lib/utils";
 
+// ── Retry helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Determine whether a TanStack Query retry should be attempted.
+ *
+ * Retries up to `maxRetries` times for network errors and 5xx responses.
+ * Never retries 4xx client errors (bad request, auth, not found, etc.).
+ */
+function shouldRetry(failureCount: number, error: unknown, maxRetries = 3): boolean {
+  if (failureCount >= maxRetries) return false;
+  const message = error instanceof Error ? error.message : String(error);
+  // Do not retry client errors (4xx)
+  if (/\b4\d{2}\b/.test(message)) return false;
+  return true;
+}
+
+/**
+ * Exponential back-off delay for retries (capped at 30 s).
+ * Formula: min(1000 * 2^attempt, 30000) ms.
+ */
+function retryDelay(attempt: number): number {
+  return Math.min(1000 * 2 ** attempt, 30_000);
+}
+
 export type FinanceReportFilters = z.input<typeof api.fees.report.input>;
 export type BillingProfileRecord = z.infer<typeof api.fees.profiles.list.responses[200]>[number];
 export type FinanceReportRecord = z.infer<typeof api.fees.report.responses[200]>;
@@ -64,14 +88,21 @@ export function useFees() {
         headers["x-user-id"] = String(user.id);
       }
 
-      const res = await fetch(api.fees.list.path, {
-        headers,
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch fees"));
-      return api.fees.list.responses[200].parse(await res.json());
+      try {
+        const res = await fetch(api.fees.list.path, {
+          headers,
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch fees"));
+        return api.fees.list.responses[200].parse(await res.json());
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to fetch fees";
+        throw new Error(message);
+      }
     },
     enabled: !!user,
+    retry: shouldRetry,
+    retryDelay,
   });
 }
 
@@ -79,11 +110,18 @@ export function useFee(id?: number) {
   return useQuery({
     queryKey: [api.fees.detail.path, id],
     queryFn: async () => {
-      const res = await fetch(buildUrl(api.fees.detail.path, { id: id as number }), { credentials: "include" });
-      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch invoice"));
-      return api.fees.detail.responses[200].parse(await res.json());
+      try {
+        const res = await fetch(buildUrl(api.fees.detail.path, { id: id as number }), { credentials: "include" });
+        if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch invoice"));
+        return api.fees.detail.responses[200].parse(await res.json());
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to fetch invoice";
+        throw new Error(message);
+      }
     },
     enabled: typeof id === "number" && Number.isFinite(id),
+    retry: shouldRetry,
+    retryDelay,
   });
 }
 
@@ -93,10 +131,17 @@ export function useFeePayments(filters?: z.input<typeof api.fees.payments.list.i
   return useQuery({
     queryKey: [api.fees.payments.list.path, parsedFilters],
     queryFn: async () => {
-      const res = await fetch(buildFeePaymentsUrl(parsedFilters), { credentials: "include" });
-      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch payments"));
-      return api.fees.payments.list.responses[200].parse(await res.json());
+      try {
+        const res = await fetch(buildFeePaymentsUrl(parsedFilters), { credentials: "include" });
+        if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch payments"));
+        return api.fees.payments.list.responses[200].parse(await res.json());
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to fetch payments";
+        throw new Error(message);
+      }
     },
+    retry: shouldRetry,
+    retryDelay,
   });
 }
 
@@ -116,10 +161,17 @@ export function useFeeBalanceSummary() {
   return useQuery({
     queryKey: [api.fees.balances.summary.path],
     queryFn: async () => {
-      const res = await fetch(api.fees.balances.summary.path, { credentials: "include" });
-      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch balance summary"));
-      return api.fees.balances.summary.responses[200].parse(await res.json());
+      try {
+        const res = await fetch(api.fees.balances.summary.path, { credentials: "include" });
+        if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch balance summary"));
+        return api.fees.balances.summary.responses[200].parse(await res.json());
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to fetch balance summary";
+        throw new Error(message);
+      }
     },
+    retry: shouldRetry,
+    retryDelay,
   });
 }
 
@@ -127,10 +179,17 @@ export function useOverdueBalances() {
   return useQuery({
     queryKey: [api.fees.balances.overdue.path],
     queryFn: async () => {
-      const res = await fetch(api.fees.balances.overdue.path, { credentials: "include" });
-      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch overdue balances"));
-      return api.fees.balances.overdue.responses[200].parse(await res.json());
+      try {
+        const res = await fetch(api.fees.balances.overdue.path, { credentials: "include" });
+        if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch overdue balances"));
+        return api.fees.balances.overdue.responses[200].parse(await res.json());
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to fetch overdue balances";
+        throw new Error(message);
+      }
     },
+    retry: shouldRetry,
+    retryDelay,
   });
 }
 
