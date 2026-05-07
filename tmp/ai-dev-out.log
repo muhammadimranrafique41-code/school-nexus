@@ -1,0 +1,16 @@
+
+> rest-express@1.0.0 dev
+> cross-env NODE_ENV=development tsx server/index.ts
+
+[dotenv@17.3.1] injecting env (4) from .env.local -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2
+[dotenv@17.3.1] injecting env (0) from .env.local -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+[dotenv@17.3.1] injecting env (0) from .env.local -- tip: ⚙️  override existing env vars with { override: true }
+Checking database schema alignment...
+Database schema alignment successful.
+[RateLimiter] Rate limiters initialised.
+[RateLimiter] Rate limiters initialised.
+[2m1:49:13 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m Re-optimizing dependencies because lockfile has changed
+1:49:14 AM [express] serving on port 5000
+[2m2:04:25 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css[22m
+[2m2:08:25 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css[22m
+[2m2:08:40 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css[22m

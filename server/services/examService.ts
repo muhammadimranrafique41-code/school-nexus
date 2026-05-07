@@ -536,28 +536,46 @@ export async function computeMATAggregate(classId: number, academicSessionId: nu
 }
 
 export async function listExamSessions(classId?: number): Promise<ExamSessionWithSubjects[]> {
-  const sessionRows = await db
-    .select({
-      exam: examSessions,
-      classGrade: classes.grade,
-      classSection: classes.section,
-      classStream: classes.stream,
-      academicYear: academicSessions.name,
-    })
-    .from(examSessions)
-    .innerJoin(classes, eq(examSessions.classId, classes.id))
-    .innerJoin(academicSessions, eq(examSessions.academicSessionId, academicSessions.id))
-    .where(classId ? eq(examSessions.classId, classId) : undefined)
-    .orderBy(asc(examSessions.startDate));
-  const subjectRows = sessionRows.length
-    ? await db.select().from(examSubjects).where(inArray(examSubjects.examSessionId, sessionRows.map((row) => row.exam.id))).orderBy(asc(examSubjects.sortOrder))
-    : [];
-  return sessionRows.map((row) => ({
-    ...row.exam,
-    className: classLabel({ grade: row.classGrade, section: row.classSection, stream: row.classStream }),
-    academicYear: row.academicYear,
-    subjects: subjectRows.filter((subject) => subject.examSessionId === row.exam.id),
-  }));
+  try {
+    const sessionRows = await db
+      .select({
+        exam: examSessions,
+        classGrade: classes.grade,
+        classSection: classes.section,
+        classStream: classes.stream,
+        academicYear: academicSessions.name,
+      })
+      .from(examSessions)
+      .innerJoin(classes, eq(examSessions.classId, classes.id))
+      .innerJoin(academicSessions, eq(examSessions.academicSessionId, academicSessions.id))
+      .where(classId ? eq(examSessions.classId, classId) : undefined)
+      .orderBy(asc(examSessions.startDate));
+    const subjectRows = sessionRows.length
+      ? await db.select().from(examSubjects).where(inArray(examSubjects.examSessionId, sessionRows.map((row) => row.exam.id))).orderBy(asc(examSubjects.sortOrder))
+      : [];
+    return sessionRows.map((row) => ({
+      ...row.exam,
+      className: classLabel({ grade: row.classGrade, section: row.classSection, stream: row.classStream }),
+      academicYear: row.academicYear,
+      subjects: subjectRows.filter((subject) => subject.examSessionId === row.exam.id),
+    }));
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    // Check if it's a missing table error
+    if (message.includes('relation "exam_sessions" does not exist') || message.includes('exam_sessions')) {
+      throw new AppError(
+        "Examination management tables are not initialized. Please run database migrations.",
+        "EXAM_TABLES_NOT_FOUND",
+        500
+      );
+    }
+    // Re-throw other errors
+    throw new AppError(
+      `Failed to list exam sessions: ${message}`,
+      "EXAM_SESSION_LIST_ERROR",
+      500
+    );
+  }
 }
 
 export async function getMarkEntryRows(subjectId: number): Promise<MarkEntryStudent[]> {

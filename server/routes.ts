@@ -52,6 +52,28 @@ import {
 import { LedgerService } from "./services/ledgerService.js";
 import { AuditService } from "./services/auditService.js";
 import { chatWithSchoolAssistant } from "./services/aiService.js";
+import { AppError } from "./errors.js";
+import {
+  bulkUpsertMarks,
+  calculateExamStatistics,
+  computeMATAggregate,
+  createExamSession,
+  getMarkEntryRows,
+  getStudentMarksheetData,
+  listExamSessions,
+} from "./services/examService.js";
+import {
+  generateBulkMarksheetPDF,
+  generateSingleMarksheetPDF,
+  type SchoolInfo,
+} from "./services/marksheetService.js";
+import {
+  bulkMarksSchema,
+  createExamSessionSchema,
+  examSessionListQuerySchema,
+  marksheetQuerySchema,
+  matAggregateQuerySchema,
+} from "./validators/examValidators.js";
 import {
   financeService,
 } from "./services/financeService.js";
@@ -125,6 +147,31 @@ const sendApiSuccess = <T>(res: Response, data: T, message?: string, statusCode 
   res.status(statusCode).json({ success: true, data, message });
 
 const sendApiError = (res: Response, statusCode: number, error: string) => res.status(statusCode).json({ success: false, error });
+
+const sendStructuredError = (res: Response, error: unknown): void => {
+  if (error instanceof z.ZodError) {
+    res.status(422).json({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: error.errors[0]?.message ?? "Invalid request payload", details: error.flatten() },
+    });
+    return;
+  }
+  if (error instanceof AppError) {
+    res.status(error.statusCode).json({
+      success: false,
+      error: { code: error.code, message: error.message, details: error.details },
+    });
+    return;
+  }
+  console.error("Unhandled API error", error);
+  res.status(500).json({ success: false, error: { code: "INTERNAL_SERVER_ERROR", message: "Internal server error" } });
+};
+
+const asyncHandler =
+  (handler: (req: Request, res: Response) => Promise<void>) =>
+  (req: Request, res: Response): void => {
+    handler(req, res).catch((error: unknown) => sendStructuredError(res, error));
+  };
 
 const sendHomeworkSuccess = <T>(res: Response, data: T, meta?: Record<string, unknown>, statusCode = 200) =>
   res.status(statusCode).json({ data, error: null, meta });
@@ -4580,6 +4627,128 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Response already sent — nothing more to do
     }
   });
+
+  // Examination Management ------------------------------------------------
+  const getSchoolInfo = async (): Promise<Partial<SchoolInfo>> => {
+    const settings = await storage.getPublicSchoolSettings().catch(() => null);
+    return {
+      name: settings?.schoolInformation?.schoolName ?? settings?.schoolInformation?.shortName ?? "School Nexus",
+      address: settings?.schoolInformation?.schoolAddress ?? "",
+      phone: settings?.schoolInformation?.schoolPhone ?? "",
+    };
+  };
+
+  app.get(
+    "/api/exams/sessions",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+      const query = examSessionListQuerySchema.parse(req.query);
+      sendApiSuccess(res, await listExamSessions(query.classId));
+    })
+  );
+
+  app.post(
+    "/api/exams/sessions",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const input = createExamSessionSchema.parse(req.body);
+      sendApiSuccess(res, await createExamSession({ ...input, createdBy: user.id }), undefined, 201);
+    })
+  );
+
+  app.get(
+    "/api/exams/sessions/:id/statistics",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+      const id = parseNumberValue(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) throw new AppError("Invalid exam session id", "INVALID_EXAM_SESSION_ID", 422);
+      sendApiSuccess(res, await calculateExamStatistics(id));
+    })
+  );
+
+  app.get(
+    "/api/exams/sessions/:id/marksheet/:studentId",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+      const id = parseNumberValue(req.params.id);
+      const studentId = parseNumberValue(req.params.studentId);
+      if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(studentId) || studentId <= 0) {
+        throw new AppError("Invalid marksheet identifiers", "INVALID_MARKSHEET_IDENTIFIERS", 422);
+      }
+      sendApiSuccess(res, await getStudentMarksheetData(id, studentId));
+    })
+  );
+
+  app.get(
+    "/api/exams/subjects/:subjectId/marks",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+      const subjectId = parseNumberValue(req.params.subjectId);
+      if (!Number.isFinite(subjectId) || subjectId <= 0) throw new AppError("Invalid subject id", "INVALID_SUBJECT_ID", 422);
+      sendApiSuccess(res, await getMarkEntryRows(subjectId));
+    })
+  );
+
+  app.post(
+    "/api/exams/subjects/:subjectId/marks",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+      const subjectId = parseNumberValue(req.params.subjectId);
+      if (!Number.isFinite(subjectId) || subjectId <= 0) throw new AppError("Invalid subject id", "INVALID_SUBJECT_ID", 422);
+      const input = bulkMarksSchema.parse(req.body);
+      sendApiSuccess(
+        res,
+        await bulkUpsertMarks(
+          subjectId,
+          input.entries.map((entry) => ({ ...entry, enteredBy: user.id }))
+        )
+      );
+    })
+  );
+
+  app.get(
+    "/api/exams/mat-aggregate",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+      const query = matAggregateQuerySchema.parse(req.query);
+      sendApiSuccess(res, await computeMATAggregate(query.classId, query.academicSessionId, query.bestOf, query.outOf));
+    })
+  );
+
+  app.get(
+    "/api/marksheets/single",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+      const query = marksheetQuerySchema.parse(req.query);
+      if (!query.studentId) throw new AppError("studentId is required", "STUDENT_ID_REQUIRED", 422);
+      const pdf = await generateSingleMarksheetPDF(query.examSessionId, query.studentId, await getSchoolInfo());
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", 'inline; filename="marksheet.pdf"');
+      res.send(pdf);
+    })
+  );
+
+  app.get(
+    "/api/marksheets/bulk",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+      const query = marksheetQuerySchema.parse(req.query);
+      if (!query.studentIds.length) throw new AppError("studentIds are required", "STUDENT_IDS_REQUIRED", 422);
+      const pdf = await generateBulkMarksheetPDF(query.examSessionId, query.studentIds, await getSchoolInfo());
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", 'inline; filename="marksheets.pdf"');
+      res.send(pdf);
+    })
+  );
 
   return httpServer;
 }

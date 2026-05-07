@@ -53,6 +53,7 @@ const adminSections: SidebarSection[] = [
       { title: "Classes", url: "/admin/classes", icon: BookOpen, matchUrls: ["/admin/classes", "/admin/classes/:id"] },
       { title: "Academic Sessions", url: "/admin/sessions", icon: CalendarDays },
       { title: "Promotions", url: "/admin/promotions", icon: ArrowUpCircle },
+      { title: "Examination", url: "/examination", icon: GraduationCap, badge: "New" },
       { title: "Schedule Builder", url: "/admin/timetable", icon: LayoutGrid },
       { title: "Homework Diary", url: "/admin/homework-diary", icon: Notebook, badge: "New" },
       { title: "QR Attendance", url: "/admin/qr-attendance", icon: QrCode, badge: "New" },
@@ -91,6 +92,7 @@ const teacherSections: SidebarSection[] = [
     items: [
       { title: "Attendance Marking", url: "/teacher/attendance", icon: CalendarDays, badge: "Live", pulse: true },
       { title: "Homework Diary", url: "/teacher/homework-dairy", icon: Notebook, badge: "New" },
+      { title: "Examination", url: "/examination", icon: GraduationCap, badge: "New" },
       { title: "My Timetable", url: "/teacher/timetable", icon: LayoutGrid },
       { title: "My QR Card", url: "/teacher/qr-card", icon: QrCode, badge: "QR" },
       { title: "QR Attendance", url: "/teacher/qr-attendance", icon: ScanLine, badge: "QR" },

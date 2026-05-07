@@ -10,6 +10,7 @@ import {
   families,
   fees,
   financeVouchers,
+  examSessions,
   homeworkAssignments,
   homeworkDiary,
   parentWallets,
@@ -142,6 +143,7 @@ async function collectGroundedContext(user: User) {
     submissionRows,
     walletRows,
     recentWalletTxRows,
+    examRows,
   ] = await Promise.all([
     db.select().from(classes),
     db.select().from(users).where(eq(users.role, "student")),
@@ -161,6 +163,7 @@ async function collectGroundedContext(user: User) {
       .from(walletTransactions)
       .orderBy(desc(walletTransactions.createdAt))
       .limit(20),
+    db.select().from(examSessions).orderBy(desc(examSessions.startDate)),
   ]);
 
   const scopedClassIds = new Set(scope.classIds);
@@ -321,6 +324,41 @@ async function collectGroundedContext(user: User) {
     .sort((left, right) => left.dueDate.localeCompare(right.dueDate))
     .slice(0, 12);
 
+  const now = new Date();
+  const scopedExamRows = examRows.filter((exam) => scope.role === "admin" || scopedClassIds.has(exam.classId));
+  const upcomingExams = scopedExamRows
+    .filter((exam) => new Date(exam.startDate).getTime() >= now.getTime())
+    .sort((left, right) => new Date(left.startDate).getTime() - new Date(right.startDate).getTime())
+    .slice(0, 8)
+    .map((exam) => {
+      const classRow = classById.get(exam.classId);
+      return {
+        id: exam.id,
+        title: exam.title,
+        examType: exam.examType,
+        monthLabel: exam.monthLabel,
+        className: classRow ? buildClassLabel(classRow) : `Class #${exam.classId}`,
+        startDate: exam.startDate instanceof Date ? exam.startDate.toISOString() : String(exam.startDate),
+        endDate: exam.endDate instanceof Date ? exam.endDate.toISOString() : String(exam.endDate),
+        totalMarks: exam.totalMarks,
+      };
+    });
+  const recentCompletedExam = scopedExamRows
+    .filter((exam) => exam.isResultDeclared || new Date(exam.endDate).getTime() < now.getTime())
+    .sort((left, right) => new Date(right.endDate).getTime() - new Date(left.endDate).getTime())
+    .slice(0, 1)
+    .map((exam) => {
+      const classRow = classById.get(exam.classId);
+      return {
+        id: exam.id,
+        title: exam.title,
+        examType: exam.examType,
+        className: classRow ? buildClassLabel(classRow) : `Class #${exam.classId}`,
+        endDate: exam.endDate instanceof Date ? exam.endDate.toISOString() : String(exam.endDate),
+        isResultDeclared: exam.isResultDeclared,
+      };
+    })[0] ?? null;
+
   return {
     scope,
     generatedAt: new Date().toISOString(),
@@ -339,6 +377,7 @@ async function collectGroundedContext(user: User) {
       // ── NEW wallet sources ──────────────────────────────────────────────
       "parent_wallets",
       "wallet_transactions",
+      "exam_sessions",
     ],
     summary: {
       totals: {
@@ -385,6 +424,10 @@ async function collectGroundedContext(user: User) {
         byClass: homeworkByClass,
         assignments: homeworkDetails,
       },
+      examinations: {
+        upcomingExams,
+        recentCompletedExam,
+      },
     },
   };
 }
@@ -396,6 +439,7 @@ function buildFallbackAnswer(question: string, context: Awaited<ReturnType<typeo
   const wantsFinance = /fee|finance|voucher|wallet|overdue|paid|collection|balance/.test(lowerQuestion);
   const wantsHomework = /homework|assignment|diary|submission|pending|task/.test(lowerQuestion);
   const wantsClasses = /class|teacher|student|size|status|homeroom/.test(lowerQuestion);
+  const wantsExams = /exam|test|marksheet|result|grade|mat|half.year|annual|top|pass rate/.test(lowerQuestion);
 
   if (isGreeting) {
     return `Hello! I'm the Schooliee AI Assistant. How can I help you today?`;
@@ -404,7 +448,7 @@ function buildFallbackAnswer(question: string, context: Awaited<ReturnType<typeo
   const lines: string[] = [];
   lines.push(`I checked live records scoped to ${context.scope.role === "admin" ? "all classes" : context.scope.classNames.join(", ") || "your assigned classes"}.`);
 
-  if (!wantsAttendance && !wantsFinance && !wantsHomework && !wantsClasses) {
+  if (!wantsAttendance && !wantsFinance && !wantsHomework && !wantsClasses && !wantsExams) {
     lines.push(`Snapshot: ${context.summary.totals.students} students across ${context.summary.totals.classes} classes.`);
   }
 
@@ -463,6 +507,18 @@ function buildFallbackAnswer(question: string, context: Awaited<ReturnType<typeo
     }
   }
 
+  if (wantsExams) {
+    const examinations = context.summary.examinations;
+    lines.push(
+      examinations.upcomingExams.length
+        ? `Upcoming exams: ${examinations.upcomingExams.slice(0, 5).map((exam) => `${exam.title} for ${exam.className} on ${exam.startDate.slice(0, 10)}`).join("; ")}.`
+        : "No upcoming exams were found in scope.",
+    );
+    if (examinations.recentCompletedExam) {
+      lines.push(`Recent completed exam: ${examinations.recentCompletedExam.title} for ${examinations.recentCompletedExam.className}, ended ${examinations.recentCompletedExam.endDate.slice(0, 10)}.`);
+    }
+  }
+
   return lines.join("\n\n");
 }
 
@@ -490,7 +546,7 @@ async function askOpenRouter(input: AiChatInput, context: Awaited<ReturnType<typ
           {
             role: "system",
             content:
-              "You are the Schooliee AI School Assistant. Respond naturally to greetings, pleasantries, and general school‑related questions. Use the provided JSON context for factual answers about attendance, fees, homework, classes, etc., but feel free to answer off‑topic or general inquiries with your general knowledge. If you lack sufficient data, politely indicate that you don't have the information.",
+              "You are the Schooliee AI School Assistant. Respond naturally to greetings, pleasantries, and general school-related questions. Use the provided JSON context for factual answers about attendance, fees, homework, classes, examinations, etc., but feel free to answer off-topic or general inquiries with your general knowledge. Pakistani examination context: MAT means Monthly Assessment Test, HALF_YEARLY means Half-Yearly Examination, and ANNUAL means Annual Examination. Standard grading follows A+ 90-100, A 80-89, B 70-79, C 60-69, D 50-59, E 40-49, F below 40. If you lack sufficient data, politely indicate that you don't have the information.",
           },
           ...input.history.slice(-8),
           {
