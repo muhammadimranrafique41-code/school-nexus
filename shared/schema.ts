@@ -14,6 +14,7 @@ import {
   uuid,
   varchar,
   pgEnum,
+  decimal,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -1777,6 +1778,97 @@ export type ConsolidatedVoucherWithMeta = ConsolidatedVoucherRecord & {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SMART WALLET SYSTEM
+// Architecture note:
+//   • parentWallets is student-scoped (one row per student user).
+//     The legacy families.walletBalance is kept for backward-compat but
+//     parentWallets is the authoritative source for the new system.
+//   • walletTransactions is an append-only audit log — never updated/deleted.
+//   • Concurrency: all balance mutations must happen inside a Drizzle
+//     db.transaction() with a SELECT … FOR UPDATE on the wallet row to
+//     acquire a row-level lock before any arithmetic.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * parentWallets — one row per student.
+ * balance         : spendable credit (always >= 0 enforced in app logic).
+ * pendingDeductions: amount reserved for in-flight fee applications
+ *                    (set before the transaction commits, cleared after).
+ */
+export const parentWallets = pgTable(
+  "parent_wallets",
+  {
+    id: serial("id").primaryKey(),
+    /** FK → users.id where role = 'student' */
+    studentId: integer("student_id")
+      .notNull()
+      .unique()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Spendable balance in PKR (2 decimal places) */
+    balance: decimal("balance", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    /** Amount reserved for in-flight deductions (optimistic locking helper) */
+    pendingDeductions: decimal("pending_deductions", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    studentIdIdx: uniqueIndex("parent_wallets_student_id_idx").on(table.studentId),
+  })
+);
+
+/**
+ * walletTransactions — immutable audit log for every wallet balance change.
+ * type values:
+ *   deposit      : cash/card/bank top-up by admin
+ *   fee_payment  : wallet balance used to pay a fee
+ *   refund       : reversal of a fee_payment back to wallet
+ *   adjustment   : manual correction by admin
+ */
+export const walletTransactionTypeEnum = [
+  "deposit",
+  "fee_payment",
+  "refund",
+  "adjustment",
+] as const;
+export type WalletTransactionType = (typeof walletTransactionTypeEnum)[number];
+
+export const walletTransactions = pgTable(
+  "wallet_transactions",
+  {
+    id: serial("id").primaryKey(),
+    walletId: integer("wallet_id")
+      .notNull()
+      .references(() => parentWallets.id, { onDelete: "cascade" }),
+    /** Positive = credit (deposit/refund), Negative = debit (fee_payment) */
+    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+    type: text("type")
+      .$type<WalletTransactionType>()
+      .notNull(),
+    /** feeId for fee_payment/refund; feePaymentId for refund; null for deposit/adjustment */
+    referenceId: integer("reference_id"),
+    /** Human-readable note (auto-generated or admin-supplied) */
+    description: text("description"),
+    /** Admin who triggered the transaction */
+    createdBy: integer("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    walletIdIdx: index("wallet_transactions_wallet_id_idx").on(table.walletId),
+    typeIdx: index("wallet_transactions_type_idx").on(table.type),
+    createdAtIdx: index("wallet_transactions_created_at_idx").on(table.createdAt),
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WHATSAPP NOTIFICATION TABLES
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1894,3 +1986,72 @@ export type WhatsappTemplate = typeof whatsappTemplates.$inferSelect;
 export type InsertWhatsappTemplate = z.infer<
   typeof insertWhatsappTemplateSchema
 >;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WALLET SYSTEM — RELATIONS, INSERT SCHEMAS & TYPES
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const parentWalletsRelations = relations(parentWallets, ({ one, many }) => ({
+  student: one(users, {
+    fields: [parentWallets.studentId],
+    references: [users.id],
+  }),
+  transactions: many(walletTransactions),
+}));
+
+export const walletTransactionsRelations = relations(walletTransactions, ({ one }) => ({
+  wallet: one(parentWallets, {
+    fields: [walletTransactions.walletId],
+    references: [parentWallets.id],
+  }),
+  createdByUser: one(users, {
+    fields: [walletTransactions.createdBy],
+    references: [users.id],
+  }),
+}));
+
+// ── Insert schemas ────────────────────────────────────────────────────────────
+
+export const insertParentWalletSchema = createInsertSchema(parentWallets).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export const insertWalletTransactionSchema = createInsertSchema(walletTransactions).omit({
+  id: true,
+  createdAt: true,
+});
+
+// ── Zod validation for API inputs ─────────────────────────────────────────────
+
+export const depositWalletSchema = z.object({
+  studentId: z.number().int().positive(),
+  amount: z.number().positive("Deposit amount must be positive"),
+  description: z.string().max(255).optional(),
+  createdBy: z.number().int().positive().optional(),
+});
+
+export const payFeeSchema = z.object({
+  feeId: z.number().int().positive(),
+  amount: z.number().positive("Payment amount must be positive"),
+  /** 'wallet' triggers parentWallet deduction; others go through feePayments only */
+  paymentMethod: z.enum(["cash", "card", "wallet", "bank"]),
+  receiptNumber: z.string().max(50).optional(),
+  notes: z.string().max(500).optional(),
+  createdBy: z.number().int().positive().optional(),
+});
+
+// ── Drizzle types ─────────────────────────────────────────────────────────────
+
+export type ParentWallet = typeof parentWallets.$inferSelect;
+export type InsertParentWallet = z.infer<typeof insertParentWalletSchema>;
+export type WalletTransaction = typeof walletTransactions.$inferSelect;
+export type InsertWalletTransaction = z.infer<typeof insertWalletTransactionSchema>;
+
+export type DepositWalletInput = z.infer<typeof depositWalletSchema>;
+export type PayFeeInput = z.infer<typeof payFeeSchema>;
+
+/** Wallet with its recent transactions (used in student-statement endpoint) */
+export type ParentWalletWithTransactions = ParentWallet & {
+  transactions?: WalletTransaction[];
+};

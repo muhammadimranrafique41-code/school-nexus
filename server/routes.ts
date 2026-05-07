@@ -53,6 +53,13 @@ import { LedgerService } from "./services/ledgerService.js";
 import { AuditService } from "./services/auditService.js";
 import { chatWithSchoolAssistant } from "./services/aiService.js";
 import {
+  financeService,
+} from "./services/financeService.js";
+import {
+  depositWalletSchema,
+  payFeeSchema,
+} from "../shared/schema.js";
+import {
   getActiveTemplates,
   getRecentMessages,
   handleWebhookStatusUpdate,
@@ -2118,6 +2125,165 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(500).json({ message: "Internal server error" });
     }
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SMART WALLET SYSTEM ENDPOINTS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * POST /api/finance/deposit
+   * Top-up a student's parentWallet.
+   *
+   * Body: { studentId, amount, description?, createdBy? }
+   * Returns: { wallet, transaction, previousBalance, newBalance }
+   */
+  app.post("/api/finance/deposit", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const input = depositWalletSchema.parse({
+        ...req.body,
+        createdBy: req.body.createdBy ?? user.id,
+      });
+
+      // Ensure the target student exists
+      const student = await storage.getUser(input.studentId);
+      if (!student || student.role !== "student") {
+        return res.status(400).json({ message: "Invalid studentId — must be an active student" });
+      }
+
+      const result = await financeService.depositToWallet(input);
+      res.status(201).json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      }
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  /**
+   * POST /api/finance/pay-fee
+   * Process a fee payment (supports partial payments and wallet method).
+   *
+   * Body: { feeId, amount, paymentMethod, receiptNumber?, notes? }
+   * paymentMethod: "cash" | "card" | "bank" | "wallet"
+   * Returns: { fee, payment, walletTransaction?, ledgerEntryId? }
+   */
+  app.post("/api/finance/pay-fee", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const input = payFeeSchema.parse({
+        ...req.body,
+        createdBy: req.body.createdBy ?? user.id,
+      });
+
+      // If wallet payment, ensure wallet exists for the fee's student
+      if (input.paymentMethod === "wallet") {
+        const fee = await storage.getFee(input.feeId);
+        if (!fee) return res.status(404).json({ message: "Fee not found" });
+        await financeService.ensureWallet(fee.studentId);
+      }
+
+      const result = await financeService.processPayment(input);
+      res.status(201).json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      }
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  /**
+   * POST /api/finance/apply-wallet/:studentId
+   * FIFO auto-apply wallet balance to all outstanding fees for a student.
+   *
+   * Returns: { appliedCount, totalApplied, remainingWalletBalance, results[] }
+   */
+  app.post("/api/finance/apply-wallet/:studentId", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const studentId = parseNumberValue(req.params.studentId);
+      if (isNaN(studentId)) return res.status(400).json({ message: "Invalid studentId" });
+
+      const student = await storage.getUser(studentId);
+      if (!student || student.role !== "student") {
+        return res.status(404).json({ message: "Student not found" });
+      }
+
+      const result = await financeService.applyWalletToFees(studentId);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  /**
+   * GET /api/finance/student-statement/:id
+   * Return a unified JSON of fees (with payments), wallet balance, and wallet history.
+   *
+   * Returns: StudentStatement
+   */
+  app.get("/api/finance/student-statement/:id", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin", "student"]);
+      if (!user) return;
+
+      const studentId = parseNumberValue(req.params.id);
+      if (isNaN(studentId)) return res.status(400).json({ message: "Invalid student id" });
+
+      // Students can only view their own statement
+      if (user.role === "student" && user.id !== studentId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const statement = await financeService.getStudentStatement(studentId);
+      res.json(statement);
+    } catch (err) {
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  /**
+   * GET /api/finance/wallet/:studentId
+   * Get the current wallet balance and recent transactions for a student.
+   *
+   * Returns: { wallet, recentTransactions }
+   */
+  app.get("/api/finance/wallet/:studentId", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin", "student"]);
+      if (!user) return;
+
+      const studentId = parseNumberValue(req.params.studentId);
+      if (isNaN(studentId)) return res.status(400).json({ message: "Invalid studentId" });
+
+      // Students can only view their own wallet
+      if (user.role === "student" && user.id !== studentId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const wallet = await financeService.getWallet(studentId);
+      res.json({ wallet });
+    } catch (err) {
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // END SMART WALLET SYSTEM ENDPOINTS
+  // ─────────────────────────────────────────────────────────────────────────
 
   app.get(api.fees.adjustments.list.path, async (req, res) => {
     const user = await requireRole(req, res, ["admin"]);

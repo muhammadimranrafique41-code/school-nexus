@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Layout } from "@/components/layout";
 import { useFees, useStudentBalance } from "@/hooks/use-fees";
+import { useStudentWallet, useStudentStatement } from "@/hooks/use-wallet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -11,9 +12,11 @@ import {
   Banknote, CalendarDays, Download, FileDown, Loader2,
   ReceiptText, AlertTriangle, CheckCircle2, Clock4,
   TrendingUp, CreditCard, ChevronDown, ChevronRight,
-  Wallet,
+  Wallet, ExternalLink,
 } from "lucide-react";
 import { useState } from "react";
+import { Link } from "wouter";
+import { WalletStatusCard } from "@/components/finance/WalletStatusCard";
 
 /* ─── helpers ────────────────────────────────────────────────────── */
 function getReminderMessage(daysUntilDue: number) {
@@ -54,6 +57,8 @@ function PayProgress({ paid, total }: { paid: number; total: number }) {
 export default function StudentFees() {
   const { data: fees, isLoading } = useFees();
   const { data: studentBalance } = useStudentBalance();
+  const { data: wallet, isLoading: walletLoading } = useStudentWallet();
+  const { data: statement } = useStudentStatement();
   const [expandedInvoice, setExpandedInvoice] = useState<number | null>(null);
 
   /* ── derived data ── */
@@ -187,11 +192,70 @@ export default function StudentFees() {
             ))}
           </div>
 
-          {/* ── Two-column middle section ── */}
-          <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+          {/* ── Wallet status card ── */}
+          <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+            <WalletStatusCard
+              wallet={wallet ?? null}
+              transactions={statement?.walletTransactions?.slice(0, 5)}
+              isLoading={walletLoading}
+              actions={
+                <Link href="/student/statement">
+                  <button className="flex items-center gap-1 rounded-lg border border-white/30 bg-white/20 px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-white/30 transition-colors">
+                    <ExternalLink className="h-3 w-3" /> Full Statement
+                  </button>
+                </Link>
+              }
+            />
 
-            {/* Payment reminders */}
+            {/* Balance summary (moved here from below) */}
             <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+              <div className="px-5 pt-5 pb-3 border-b border-slate-50">
+                <h2 className="text-sm font-bold text-slate-900">Balance Summary</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Current billing position</p>
+              </div>
+              <div className="p-4 space-y-2">
+                {[
+                  { label: "Total Billed", value: formatCurrency(studentBalance?.totalBilled ?? totalBilled), bold: false },
+                  { label: "Total Paid", value: formatCurrency(studentBalance?.totalPaid ?? totalPaid), bold: false, green: true },
+                  { label: "Outstanding", value: formatCurrency(studentBalance?.outstandingBalance ?? outstandingBalance), bold: true },
+                  { label: "Overdue Balance", value: formatCurrency(studentBalance?.overdueBalance ?? overdueInvoices.reduce((s, i) => s + i.remainingBalance, 0)), bold: false, red: overdueInvoices.length > 0 },
+                ].map(row => (
+                  <div key={row.label}
+                    className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-2.5">
+                    <p className="text-xs text-slate-600">{row.label}</p>
+                    <p className={`text-sm font-bold ${row.green ? "text-emerald-600" : row.red ? "text-red-600" : row.bold ? "text-slate-900" : "text-slate-700"}`}>
+                      {row.value}
+                    </p>
+                  </div>
+                ))}
+
+                {/* Paid progress bar */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-3 mt-1 space-y-1.5">
+                  <div className="flex justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Payment Progress</p>
+                    <p className="text-[10px] font-bold text-slate-500">
+                      {totalBilled > 0 ? Math.round((totalPaid / totalBilled) * 100) : 0}% cleared
+                    </p>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className="h-full rounded-full bg-emerald-400 transition-all"
+                      style={{ width: `${totalBilled > 0 ? Math.min(100, (totalPaid / totalBilled) * 100) : 0}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-2.5 text-xs text-slate-500 leading-relaxed">
+                  {studentBalance?.nextDueDate
+                    ? `Next payment due · ${formatDate(studentBalance.nextDueDate, "MMMM dd, yyyy")}`
+                    : "No upcoming invoice due dates."}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Payment reminders (full width now that balance summary moved up) ── */}
+          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-50">
                 <div>
                   <h2 className="text-sm font-bold text-slate-900">Payment Reminders</h2>
@@ -256,53 +320,6 @@ export default function StudentFees() {
                 )}
               </div>
             </div>
-
-            {/* Balance summary */}
-            <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
-              <div className="px-5 pt-5 pb-3 border-b border-slate-50">
-                <h2 className="text-sm font-bold text-slate-900">Balance Summary</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Current billing position</p>
-              </div>
-              <div className="p-4 space-y-2">
-                {[
-                  { label: "Total Billed", value: formatCurrency(studentBalance?.totalBilled ?? totalBilled), bold: false },
-                  { label: "Total Paid", value: formatCurrency(studentBalance?.totalPaid ?? totalPaid), bold: false, green: true },
-                  { label: "Outstanding", value: formatCurrency(studentBalance?.outstandingBalance ?? outstandingBalance), bold: true },
-                  { label: "Overdue Balance", value: formatCurrency(studentBalance?.overdueBalance ?? overdueInvoices.reduce((s, i) => s + i.remainingBalance, 0)), bold: false, red: overdueInvoices.length > 0 },
-                ].map(row => (
-                  <div key={row.label}
-                    className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-2.5">
-                    <p className="text-xs text-slate-600">{row.label}</p>
-                    <p className={`text-sm font-bold ${row.green ? "text-emerald-600" : row.red ? "text-red-600" : row.bold ? "text-slate-900" : "text-slate-700"}`}>
-                      {row.value}
-                    </p>
-                  </div>
-                ))}
-
-                {/* Paid progress bar */}
-                <div className="rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-3 mt-1 space-y-1.5">
-                  <div className="flex justify-between">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Payment Progress</p>
-                    <p className="text-[10px] font-bold text-slate-500">
-                      {totalBilled > 0 ? Math.round((totalPaid / totalBilled) * 100) : 0}% cleared
-                    </p>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-slate-200">
-                    <div
-                      className="h-full rounded-full bg-emerald-400 transition-all"
-                      style={{ width: `${totalBilled > 0 ? Math.min(100, (totalPaid / totalBilled) * 100) : 0}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-2.5 text-xs text-slate-500 leading-relaxed">
-                  {studentBalance?.nextDueDate
-                    ? `Next payment due · ${formatDate(studentBalance.nextDueDate, "MMMM dd, yyyy")}`
-                    : "No upcoming invoice due dates."}
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* ── Invoice Register — DESKTOP TABLE / MOBILE CARDS ── */}
           <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">

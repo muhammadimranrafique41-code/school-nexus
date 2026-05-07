@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db.js";
 import * as dotenv from "dotenv";
 dotenv.config({ path: ".env.local" }); // <-- ensure .env.local is loaded before any process.env access
@@ -12,8 +12,10 @@ import {
   financeVouchers,
   homeworkAssignments,
   homeworkDiary,
+  parentWallets,
   studentSubmissions,
   users,
+  walletTransactions,
   type User,
 } from "../../shared/schema.js";
 
@@ -138,6 +140,8 @@ async function collectGroundedContext(user: User) {
     diaryRows,
     assignmentRows,
     submissionRows,
+    walletRows,
+    recentWalletTxRows,
   ] = await Promise.all([
     db.select().from(classes),
     db.select().from(users).where(eq(users.role, "student")),
@@ -149,6 +153,14 @@ async function collectGroundedContext(user: User) {
     db.select().from(homeworkDiary),
     db.select().from(homeworkAssignments),
     db.select().from(studentSubmissions),
+    // ── NEW: per-student wallets ──────────────────────────────────────────
+    db.select().from(parentWallets),
+    // ── NEW: last 20 wallet transactions for AI context ───────────────────
+    db
+      .select()
+      .from(walletTransactions)
+      .orderBy(desc(walletTransactions.createdAt))
+      .limit(20),
   ]);
 
   const scopedClassIds = new Set(scope.classIds);
@@ -160,6 +172,12 @@ async function collectGroundedContext(user: User) {
   const scopedAssignmentIds = new Set(scopedAssignments.map((assignment) => assignment.id));
   const scopedFees = feeRows.filter((fee) => scopedStudentIds.has(fee.studentId) && !fee.deletedAt);
   const scopedFeeIds = new Set(scopedFees.map((fee) => fee.id));
+
+  // ── NEW: wallet data scoped to visible students ───────────────────────────
+  const scopedWallets = walletRows.filter((w) => scopedStudentIds.has(w.studentId));
+  const scopedWalletIds = new Set(scopedWallets.map((w) => w.id));
+  // Filter recent transactions to wallets in scope
+  const scopedWalletTxs = recentWalletTxRows.filter((tx) => scopedWalletIds.has(tx.walletId));
 
   const studentById = new Map(scopedStudents.map((student) => [student.id, student]));
   const teacherById = new Map(teacherRows.map((teacher) => [teacher.id, teacher]));
@@ -225,7 +243,32 @@ async function collectGroundedContext(user: User) {
   const openFees = scopedFees.filter((fee) => numeric(fee.remainingBalance) > 0 && financeOpenStatuses.has(fee.status));
   const scopedVouchers = voucherRows.filter((voucher) => scopedFeeIds.has(voucher.feeId));
   const scopedFamilies = familyRows.filter((family) => scopedFamilyIds.has(family.id) || scope.role === "admin");
-  const walletBalanceTotal = scopedFamilies.reduce((sum, family) => sum + numeric(family.walletBalance), 0);
+
+  // ── NEW: walletBalanceTotal from parentWallets (authoritative source) ─────
+  // Falls back to families.walletBalance sum if no parentWallet rows exist yet
+  // (backward-compat during migration period).
+  const walletBalanceTotalNew = scopedWallets.reduce(
+    (sum, w) => sum + numeric(w.balance),
+    0
+  );
+  const walletBalanceLegacy = scopedFamilies.reduce(
+    (sum, family) => sum + numeric(family.walletBalance),
+    0
+  );
+  const walletBalanceTotal = walletBalanceTotalNew > 0 ? walletBalanceTotalNew : walletBalanceLegacy;
+
+  // ── NEW: overdueAmount from fees remaining balances ───────────────────────
+  const overdueAmount = scopedFees
+    .filter((fee) => numeric(fee.remainingBalance) > 0 && (fee.status === "Overdue" || fee.dueDate < today))
+    .reduce((sum, fee) => sum + numeric(fee.remainingBalance), 0);
+
+  // ── NEW: recent wallet transactions summary for AI context ────────────────
+  const recentWalletTransactionsSummary = scopedWalletTxs.slice(0, 10).map((tx) => ({
+    type: tx.type,
+    amount: numeric(tx.amount),
+    description: tx.description ?? "",
+    createdAt: tx.createdAt instanceof Date ? tx.createdAt.toISOString() : String(tx.createdAt),
+  }));
 
   const familyFinance = scopedFamilies
     .map((family) => {
@@ -293,6 +336,9 @@ async function collectGroundedContext(user: User) {
       "homework_diary",
       "homework_assignments",
       "student_submissions",
+      // ── NEW wallet sources ──────────────────────────────────────────────
+      "parent_wallets",
+      "wallet_transactions",
     ],
     summary: {
       totals: {
@@ -307,13 +353,33 @@ async function collectGroundedContext(user: User) {
         totalBilled,
         totalPaid,
         totalOutstanding,
-        overdueAmount: overdueFees.reduce((sum, fee) => sum + numeric(fee.remainingBalance), 0),
+        /** overdueAmount: sum of remainingBalance for all overdue fees */
+        overdueAmount,
         openInvoices: openFees.length,
         overdueInvoices: overdueFees.length,
         generatedVouchers: scopedVouchers.length,
+        /**
+         * walletBalanceTotal: summed from parentWallets (new authoritative source).
+         * Falls back to families.walletBalance during migration period.
+         */
         walletBalanceTotal,
         collectionRate: percent(totalPaid, totalBilled),
         families: familyFinance,
+        /** Per-student wallet summary for AI context */
+        studentWallets: scopedWallets
+          .filter((w) => numeric(w.balance) > 0)
+          .map((w) => {
+            const student = scopedStudents.find((s) => s.id === w.studentId);
+            return {
+              studentId: w.studentId,
+              studentName: student?.name ?? `Student #${w.studentId}`,
+              balance: numeric(w.balance),
+            };
+          })
+          .sort((a, b) => b.balance - a.balance)
+          .slice(0, 10),
+        /** Last 10 wallet transactions across all scoped students */
+        recentWalletTransactions: recentWalletTransactionsSummary,
       },
       homework: {
         byClass: homeworkByClass,
@@ -367,6 +433,19 @@ function buildFallbackAnswer(question: string, context: Awaited<ReturnType<typeo
     lines.push(
       `Finance: billed ${money(finance.totalBilled)}, paid ${money(finance.totalPaid)}, outstanding ${money(finance.totalOutstanding)}, overdue ${money(finance.overdueAmount)}, collection rate ${finance.collectionRate}%, vouchers generated ${finance.generatedVouchers}.`,
     );
+    if (finance.walletBalanceTotal > 0) {
+      lines.push(`Total wallet credit held: ${money(finance.walletBalanceTotal)}.`);
+    }
+    if (finance.studentWallets && finance.studentWallets.length > 0) {
+      lines.push(
+        `Top student wallet balances: ${finance.studentWallets.slice(0, 5).map((w) => `${w.studentName} ${money(w.balance)}`).join("; ")}.`
+      );
+    }
+    if (finance.recentWalletTransactions && finance.recentWalletTransactions.length > 0) {
+      lines.push(
+        `Recent wallet activity: ${finance.recentWalletTransactions.slice(0, 5).map((tx) => `${tx.type} ${money(Math.abs(tx.amount))}${tx.description ? ` (${tx.description.slice(0, 60)})` : ""}`).join("; ")}.`
+      );
+    }
     if (finance.families.length) {
       lines.push(`Largest family balances: ${finance.families.slice(0, 5).map((row) => `${row.familyName} outstanding ${money(row.outstanding)}, overdue ${money(row.overdue)}, wallet ${money(row.walletBalance)}`).join("; ")}.`);
     }

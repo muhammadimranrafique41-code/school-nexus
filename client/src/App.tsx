@@ -14,6 +14,8 @@ import AdminFinance from "./pages/admin/finance";
 import BulkVouchersPage from "./pages/admin/finance/BulkVouchersPage";
 import MonthSelectorPage from "./pages/admin/finance/vouchers/MonthSelectorPage";
 import StudentPreviewPage from "./pages/admin/finance/vouchers/StudentPreviewPage";
+import WalletManagementHub from "./pages/admin/finance/WalletManagementHub";
+import StudentStatementPage from "./pages/admin/finance/StudentStatementPage";
 import AdminQrAttendance from "./pages/admin/qr-attendance";
 import AdminSettings from "./pages/admin/settings";
 import CreateStudent from "./pages/admin/students";
@@ -103,6 +105,12 @@ function Router() {
       <Route path="/admin/timetable">
         <ProtectedRoute allowedRoles={['admin']}><AdminTimetable /></ProtectedRoute>
       </Route>
+      <Route path="/admin/finance/wallets">
+        <ProtectedRoute allowedRoles={['admin']}><WalletManagementHub /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/finance/statement/:studentId">
+        <ProtectedRoute allowedRoles={['admin']}><StudentStatementPage /></ProtectedRoute>
+      </Route>
       <Route path="/admin/finance/bulk-print">
         <ProtectedRoute allowedRoles={['admin']}><BulkVouchersPage /></ProtectedRoute>
       </Route>
@@ -184,6 +192,9 @@ function Router() {
       </Route>
       <Route path="/student/fees">
         <ProtectedRoute allowedRoles={['student']}><StudentFees /></ProtectedRoute>
+      </Route>
+      <Route path="/student/statement">
+        <ProtectedRoute allowedRoles={['student']}><StudentStatementPage /></ProtectedRoute>
       </Route>
       <Route path="/student/family">
         <ProtectedRoute allowedRoles={['student']}><StudentFamilyPage /></ProtectedRoute>
