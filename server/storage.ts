@@ -144,6 +144,15 @@ const generatedSlots = [
   { periodLabel: "Period 7", startTime: "12:15", endTime: "12:55" },
 ] as const;
 
+function isPostgresUniqueViolation(error: unknown) {
+  const err = error as { code?: unknown; cause?: { code?: unknown } } | null;
+  return err?.code === "23505" || err?.cause?.code === "23505";
+}
+
+function buildFamilyVoucherInvoiceNumberSql() {
+  return sql<string>`concat('FAM-', to_char(current_date, 'YYYYMMDD'), '-', lpad(nextval('family_fees_id_seq'::regclass)::text, 8, '0'))`;
+}
+
 type RuntimeSettingsState = {
   current: SchoolSettings;
   versions: SchoolSettingsVersion[];
@@ -2477,11 +2486,13 @@ export class DatabaseStorage implements IStorage {
     });
 
     const allFees = await this.getFees();
+    const sortedMonths = [...input.billingMonths].sort();
     const generated: Array<{
       familyId: number;
       invoiceNumber: string;
       totalAmount: number;
     }> = [];
+    const batchInvoiceNumbers = new Set<string>();
 
     for (const family of targetFamilies) {
       const studentIds = new Set(family.siblings.map((sibling) => sibling.id));
@@ -2498,72 +2509,97 @@ export class DatabaseStorage implements IStorage {
         (sum, fee) => sum + fee.remainingBalance,
         0
       );
-      const [created] = await db
-        .insert(familyFees)
-        .values({
-          familyId: family.id,
-          invoiceNumber: buildDocumentNumber("FAM", family.id),
-          billingMonth: [...input.billingMonths].sort()[0] ?? timestamp.slice(0, 7),
-          billingPeriod: input.billingMonths.map((month) => formatBillingPeriod(month)).join(", "),
-          dueDate: buildDueDateForBillingMonth(
-            [...input.billingMonths].sort().at(-1) ?? timestamp.slice(0, 7),
-            10
-          ),
-          totalAmount,
-          paidAmount: 0,
-          remainingBalance: totalAmount,
-          status: "Unpaid",
-          studentCount: family.siblings.length,
-          summary: {
-            totalPreviousDues: eligibleFees
-              .filter((fee) => !input.billingMonths.includes(fee.billingMonth))
-              .reduce((sum, fee) => sum + fee.remainingBalance, 0),
-            totalCurrentFees: eligibleFees
-              .filter((fee) => input.billingMonths.includes(fee.billingMonth))
-              .reduce((sum, fee) => sum + fee.remainingBalance, 0),
-            totalAmount,
-            previousDueCount: eligibleFees.filter(
-              (fee) => !input.billingMonths.includes(fee.billingMonth)
-            ).length,
-            currentFeeCount: eligibleFees.filter((fee) =>
-              input.billingMonths.includes(fee.billingMonth)
-            ).length,
-            studentCount: family.siblings.length,
-            previousDueStudents: new Set(
-              eligibleFees
-                .filter((fee) => !input.billingMonths.includes(fee.billingMonth))
-                .map((fee) => fee.studentId)
-            ).size,
-            currentFeeStudents: new Set(
-              eligibleFees
-                .filter((fee) => input.billingMonths.includes(fee.billingMonth))
-                .map((fee) => fee.studentId)
-            ).size,
-            monthRange: {
-              earliest: [...input.billingMonths].sort()[0] ?? timestamp.slice(0, 7),
-              latest:
-                [...input.billingMonths].sort().at(-1) ?? timestamp.slice(0, 7),
-            },
-          },
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        })
-        .returning();
 
-      if (eligibleFees.length) {
-        await db.insert(familyFeeItems).values(
-          eligibleFees.map((fee) => ({
-            familyFeeId: created.id,
-            feeId: fee.id,
-            studentId: fee.studentId,
-            createdAt: timestamp,
-          }))
+      // The invoice number is generated from PostgreSQL's serial sequence inside
+      // the insert, so concurrent requests cannot reserve the same value.
+      const voucherValues = {
+        familyId: family.id,
+        billingMonth: sortedMonths[0] ?? timestamp.slice(0, 7),
+        billingPeriod: input.billingMonths.map((month) => formatBillingPeriod(month)).join(", "),
+        dueDate: buildDueDateForBillingMonth(sortedMonths.at(-1) ?? timestamp.slice(0, 7), 10),
+        totalAmount,
+        paidAmount: 0,
+        remainingBalance: totalAmount,
+        status: "Unpaid" as const,
+        studentCount: family.siblings.length,
+        summary: {
+          totalPreviousDues: eligibleFees
+            .filter((fee) => !input.billingMonths.includes(fee.billingMonth))
+            .reduce((sum, fee) => sum + fee.remainingBalance, 0),
+          totalCurrentFees: eligibleFees
+            .filter((fee) => input.billingMonths.includes(fee.billingMonth))
+            .reduce((sum, fee) => sum + fee.remainingBalance, 0),
+          totalAmount,
+          previousDueCount: eligibleFees.filter(
+            (fee) => !input.billingMonths.includes(fee.billingMonth)
+          ).length,
+          currentFeeCount: eligibleFees.filter((fee) =>
+            input.billingMonths.includes(fee.billingMonth)
+          ).length,
+          studentCount: family.siblings.length,
+          previousDueStudents: new Set(
+            eligibleFees
+              .filter((fee) => !input.billingMonths.includes(fee.billingMonth))
+              .map((fee) => fee.studentId)
+          ).size,
+          currentFeeStudents: new Set(
+            eligibleFees
+              .filter((fee) => input.billingMonths.includes(fee.billingMonth))
+              .map((fee) => fee.studentId)
+          ).size,
+          monthRange: {
+            earliest: sortedMonths[0] ?? timestamp.slice(0, 7),
+            latest: sortedMonths.at(-1) ?? timestamp.slice(0, 7),
+          },
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+
+      let created: typeof familyFees.$inferSelect | undefined;
+      const maxAttempts = 3;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          created = await db.transaction(async (tx) => {
+            const [row] = await tx
+              .insert(familyFees)
+              .values({ ...voucherValues, invoiceNumber: buildFamilyVoucherInvoiceNumberSql() })
+              .returning();
+            if (!row) throw new Error(`Failed to create family voucher for family ${family.id}`);
+            await tx.insert(familyFeeItems).values(
+              eligibleFees.map((fee) => ({
+                familyFeeId: row.id,
+                feeId: fee.id,
+                studentId: fee.studentId,
+                createdAt: timestamp,
+              }))
+            );
+            return row;
+          });
+          break;
+        } catch (err) {
+          if (isPostgresUniqueViolation(err) && attempt < maxAttempts) {
+            console.warn(
+              `[generateFamilyVouchers] invoice number unique violation for family ${family.id}, attempt ${attempt}/${maxAttempts}; retrying`
+            );
+            continue;
+          }
+          throw err;
+        }
+      }
+      if (!created) {
+        throw new Error(
+          `Failed to generate a unique invoice number for family ${family.id} after ${maxAttempts} attempts`
         );
       }
+      if (batchInvoiceNumbers.has(created.invoiceNumber)) {
+        throw new Error(`Duplicate family voucher invoice generated in batch: ${created.invoiceNumber}`);
+      }
+      batchInvoiceNumbers.add(created.invoiceNumber);
 
       generated.push({
         familyId: family.id,
-        invoiceNumber: created.invoiceNumber,
+        invoiceNumber: created!.invoiceNumber,
         totalAmount,
       });
     }

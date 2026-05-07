@@ -1,9 +1,9 @@
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowRight, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, X } from "lucide-react";
 import { useMonthSelector } from "@/hooks/use-consolidated-vouchers";
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -24,6 +24,21 @@ export default function MonthSelectorPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
+      {/* Back button */}
+      <div className="mb-4">
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className="gap-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 -ml-2 focus-visible:ring-2 focus-visible:ring-indigo-500"
+        >
+          <Link href="/admin/finance">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Finance
+          </Link>
+        </Button>
+      </div>
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

@@ -3629,6 +3629,81 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // GET /api/fees/vouchers/family/:familyId/pdf  — streams A4 two-copy PDF
+  app.get("/api/fees/vouchers/family/:familyId/pdf", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const familyId = parseNumberValue(req.params.familyId);
+      if (Number.isNaN(familyId)) return res.status(400).json({ message: "Invalid family id" });
+
+      const rawMonths = req.query.billingMonths;
+      const billingMonths = (Array.isArray(rawMonths) ? rawMonths : [rawMonths]).filter(
+        (month): month is string => typeof month === "string" && /^\d{4}-\d{2}$/.test(month)
+      );
+      if (billingMonths.length === 0) {
+        return res.status(400).json({ message: "billingMonths is required" });
+      }
+
+      const payload = await buildFamilyVoucherPayload(familyId, billingMonths);
+      if (!payload) return res.status(404).json({ message: "Family not found" });
+
+      const settings = await storage.getPublicSchoolSettings();
+      const schoolName = settings?.schoolInformation?.schoolName ?? "School Management System";
+      const schoolAddress = (settings?.schoolInformation?.schoolAddress as string | undefined) ?? undefined;
+
+      const { generateFamilyVoucherPdf } = await import("./services/voucherService.js");
+
+      const guardianDetails = payload.family.guardianDetails as Record<string, any> | undefined;
+      const guardianName =
+        guardianDetails?.primary?.name ??
+        guardianDetails?.secondary?.name ??
+        null;
+      const guardianPhone =
+        guardianDetails?.primary?.phone ??
+        guardianDetails?.secondary?.phone ??
+        null;
+
+      const pdfBuffer = await generateFamilyVoucherPdf({
+        familyName: payload.family.name,
+        guardianName,
+        guardianPhone,
+        voucherNumber: payload.voucherNumber,
+        generatedAt: payload.generatedAt,
+        dueDate: payload.dueDate,
+        billingMonths,
+        siblings: payload.siblings.map((s) => ({
+          studentName: s.studentName,
+          className: s.className,
+          previousDues: s.previousDues.map((f) => ({
+            feeType: f.feeType,
+            billingPeriod: f.billingPeriod,
+            remainingBalance: f.remainingBalance,
+          })),
+          currentFees: s.currentFees.map((f) => ({
+            feeType: f.feeType,
+            billingPeriod: f.billingPeriod,
+            remainingBalance: f.remainingBalance,
+          })),
+          total: s.total,
+        })),
+        summary: payload.summary,
+        schoolName,
+        schoolAddress,
+      });
+
+      const safeFamily = payload.family.name.replace(/[^A-Za-z0-9]+/g, "-").toLowerCase();
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="family-voucher-${safeFamily}.pdf"`);
+      res.setHeader("Content-Length", pdfBuffer.length);
+      res.end(pdfBuffer);
+    } catch (err) {
+      console.error("family voucher PDF error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post(api.fees.vouchers.generateFamilyVouchers.path, async (req, res) => {
     try {
       const user = await requireRole(req, res, ["admin"]);
@@ -3641,6 +3716,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message ?? "Invalid input" });
+      if (isUniqueViolation(err)) return res.status(409).json({ message: "A family voucher invoice number already exists. Please retry." });
       if (err instanceof Error) return res.status(400).json({ message: err.message });
       res.status(500).json({ message: "Internal server error" });
     }

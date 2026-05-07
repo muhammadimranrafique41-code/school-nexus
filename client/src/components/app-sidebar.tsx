@@ -1,6 +1,6 @@
 import {
   BookOpen, Users, LayoutDashboard, Calculator,
-  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle
+  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle, ReceiptText, Wallet
 } from "lucide-react";
 import {
   Sidebar,
@@ -62,7 +62,18 @@ const adminSections: SidebarSection[] = [
     label: "Finance",
     items: [
       { title: "Finance", url: "/admin/finance", icon: Calculator },
-      { title: "Bulk Print Vouchers", url: "/admin/finance/bulk-print", icon: Printer, badge: "New" },
+      { title: "Wallets", url: "/admin/finance/wallets", icon: Wallet },
+      {
+        title: "Family Voucher Generator",
+        url: "/admin/finance/vouchers/generate",
+        icon: ReceiptText,
+        matchUrls: [
+          "/admin/finance/vouchers/generate",
+          "/admin/finance/vouchers/preview",
+        ],
+        badge: "New",
+      },
+      { title: "Bulk Print Vouchers", url: "/admin/finance/bulk-print", icon: Printer },
     ],
   },
 ];

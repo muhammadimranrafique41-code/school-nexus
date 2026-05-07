@@ -1059,6 +1059,104 @@ export const insertAcademicSessionSchema = createInsertSchema(academicSessions).
   updatedAt: true,
 });
 
+// Examination Management - Pakistani Curriculum System
+export const gradeScales = pgTable("grade_scales", {
+  id: serial("id").primaryKey(),
+  grade: text("grade").notNull().unique(),
+  minPercentage: numeric("min_percentage", { precision: 5, scale: 2 }).notNull(),
+  maxPercentage: numeric("max_percentage", { precision: 5, scale: 2 }).notNull(),
+  gpaPoints: numeric("gpa_points", { precision: 3, scale: 2 }).notNull(),
+  division: text("division").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export const examSessions = pgTable(
+  "exam_sessions",
+  {
+    id: serial("id").primaryKey(),
+    academicSessionId: integer("academic_session_id").notNull().references(() => academicSessions.id, { onDelete: "restrict" }),
+    classId: integer("class_id").notNull().references(() => classes.id, { onDelete: "cascade" }),
+    examType: text("exam_type").notNull(),
+    monthLabel: text("month_label"),
+    title: text("title").notNull(),
+    startDate: timestamp("start_date").notNull(),
+    endDate: timestamp("end_date").notNull(),
+    totalMarks: integer("total_marks").notNull(),
+    passingMarks: integer("passing_marks").notNull(),
+    isResultDeclared: boolean("is_result_declared").notNull().default(false),
+    declaredAt: timestamp("declared_at"),
+    createdBy: integer("created_by").notNull().references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueSessionPerClass: uniqueIndex("uq_exam_session").on(table.academicSessionId, table.classId, table.examType, table.monthLabel),
+    classIdx: index("idx_exam_session_class").on(table.classId),
+  })
+);
+
+export const examSubjects = pgTable(
+  "exam_subjects",
+  {
+    id: serial("id").primaryKey(),
+    examSessionId: integer("exam_session_id").notNull().references(() => examSessions.id, { onDelete: "cascade" }),
+    subjectName: text("subject_name").notNull(),
+    subjectCode: text("subject_code"),
+    maxTheoryMarks: integer("max_theory_marks").notNull(),
+    maxPracticalMarks: integer("max_practical_marks").notNull().default(0),
+    examDate: timestamp("exam_date").notNull(),
+    examTime: text("exam_time"),
+    venue: text("venue"),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (table) => ({
+    sessionIdx: index("idx_exam_subject_session").on(table.examSessionId),
+  })
+);
+
+export const examMarks = pgTable(
+  "exam_marks",
+  {
+    id: serial("id").primaryKey(),
+    examSubjectId: integer("exam_subject_id").notNull().references(() => examSubjects.id, { onDelete: "cascade" }),
+    studentId: integer("student_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    theoryMarks: numeric("theory_marks", { precision: 5, scale: 2 }),
+    practicalMarks: numeric("practical_marks", { precision: 5, scale: 2 }),
+    totalObtained: numeric("total_obtained", { precision: 5, scale: 2 }),
+    grade: text("grade"),
+    isAbsent: boolean("is_absent").notNull().default(false),
+    isExempted: boolean("is_exempted").notNull().default(false),
+    remarks: text("remarks"),
+    enteredBy: integer("entered_by").references(() => users.id),
+    enteredAt: timestamp("entered_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueMark: uniqueIndex("uq_exam_mark").on(table.examSubjectId, table.studentId),
+    studentIdx: index("idx_exam_marks_student").on(table.studentId),
+  })
+);
+
+export const examAttendance = pgTable(
+  "exam_attendance",
+  {
+    id: serial("id").primaryKey(),
+    examSessionId: integer("exam_session_id").notNull().references(() => examSessions.id, { onDelete: "cascade" }),
+    studentId: integer("student_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    totalDays: integer("total_days").notNull().default(0),
+    presentDays: integer("present_days").notNull().default(0),
+  },
+  (table) => ({
+    uniqueAttendance: uniqueIndex("uq_exam_attendance").on(table.examSessionId, table.studentId),
+  })
+);
+
+export const insertGradeScaleSchema = createInsertSchema(gradeScales).omit({ id: true });
+export const insertExamSessionSchema = createInsertSchema(examSessions).omit({ id: true, createdAt: true, updatedAt: true, declaredAt: true });
+export const insertExamSubjectSchema = createInsertSchema(examSubjects).omit({ id: true });
+export const insertExamMarkSchema = createInsertSchema(examMarks).omit({ id: true, enteredAt: true, updatedAt: true });
+export const insertExamAttendanceSchema = createInsertSchema(examAttendance).omit({ id: true });
+
 /**
  * promotion_history – immutable audit trail of every student class change.
  * Records who promoted the student, from which class, to which class, and
@@ -1316,6 +1414,57 @@ export const studentSubmissions = pgTable(
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIZZLE RELATIONS
 // ─────────────────────────────────────────────────────────────────────────────
+
+export const examSessionsRelations = relations(examSessions, ({ one, many }) => ({
+  academicSession: one(academicSessions, {
+    fields: [examSessions.academicSessionId],
+    references: [academicSessions.id],
+  }),
+  class: one(classes, {
+    fields: [examSessions.classId],
+    references: [classes.id],
+  }),
+  createdBy: one(users, {
+    fields: [examSessions.createdBy],
+    references: [users.id],
+  }),
+  subjects: many(examSubjects),
+  attendance: many(examAttendance),
+}));
+
+export const examSubjectsRelations = relations(examSubjects, ({ one, many }) => ({
+  examSession: one(examSessions, {
+    fields: [examSubjects.examSessionId],
+    references: [examSessions.id],
+  }),
+  marks: many(examMarks),
+}));
+
+export const examMarksRelations = relations(examMarks, ({ one }) => ({
+  subject: one(examSubjects, {
+    fields: [examMarks.examSubjectId],
+    references: [examSubjects.id],
+  }),
+  student: one(users, {
+    fields: [examMarks.studentId],
+    references: [users.id],
+  }),
+  enteredBy: one(users, {
+    fields: [examMarks.enteredBy],
+    references: [users.id],
+  }),
+}));
+
+export const examAttendanceRelations = relations(examAttendance, ({ one }) => ({
+  examSession: one(examSessions, {
+    fields: [examAttendance.examSessionId],
+    references: [examSessions.id],
+  }),
+  student: one(users, {
+    fields: [examAttendance.studentId],
+    references: [users.id],
+  }),
+}));
 
 export const homeworkAssignmentsRelations = relations(
   homeworkAssignments,
@@ -1673,6 +1822,17 @@ export type ClassTeacher = typeof classTeachers.$inferSelect;
 export type InsertClassTeacher = z.infer<typeof insertClassTeacherSchema>;
 export type AcademicSession = typeof academicSessions.$inferSelect;
 export type InsertAcademicSession = z.infer<typeof insertAcademicSessionSchema>;
+export type SelectAcademicSession = AcademicSession;
+export type SelectGradeScale = typeof gradeScales.$inferSelect;
+export type InsertGradeScale = typeof gradeScales.$inferInsert;
+export type SelectExamSession = typeof examSessions.$inferSelect;
+export type InsertExamSession = typeof examSessions.$inferInsert;
+export type SelectExamSubject = typeof examSubjects.$inferSelect;
+export type InsertExamSubject = typeof examSubjects.$inferInsert;
+export type SelectExamMark = typeof examMarks.$inferSelect;
+export type InsertExamMark = typeof examMarks.$inferInsert;
+export type SelectExamAttendance = typeof examAttendance.$inferSelect;
+export type InsertExamAttendance = typeof examAttendance.$inferInsert;
 export type PromotionHistory = typeof promotionHistory.$inferSelect;
 export type InsertPromotionHistory = z.infer<typeof insertPromotionHistorySchema>;
 export type DailyTeachingPulse = typeof dailyTeachingPulse.$inferSelect;

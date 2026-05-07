@@ -1,6 +1,6 @@
 import { useLocation, useSearch } from "wouter";
 import { useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, Loader2, Printer, Search } from "lucide-react";
+import { AlertCircle, ArrowLeft, ExternalLink, Loader2, Printer, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -241,6 +241,20 @@ export default function StudentPreviewPage() {
                     >
                       <Printer className="mr-1.5 h-3.5 w-3.5" />
                       Preview
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="bg-violet-600 hover:bg-violet-700 text-white"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        navigate(
+                          `/admin/finance/vouchers/family/${family.familyId}?months=${billingMonths.join(",")}`
+                        );
+                      }}
+                    >
+                      <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                      Open Voucher
                     </Button>
                   </div>
                 </button>

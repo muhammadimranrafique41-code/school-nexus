@@ -1217,3 +1217,441 @@ export function clearJobZip(jobId: number) {
   jobProgress.delete(jobId);
   jobSubscribers.delete(jobId);
 }
+
+// ============================================================================
+// FAMILY VOUCHER PDF — A4 Portrait, Two-Copy Layout (Student Copy + School Copy)
+// Monochrome design: borders only, no fills, printer-friendly
+// ============================================================================
+
+export type FamilyVoucherPdfParams = {
+  familyName: string;
+  guardianName: string | null | undefined;
+  guardianPhone: string | null | undefined;
+  voucherNumber: string;
+  generatedAt: string;
+  dueDate: string;
+  billingMonths: string[];
+  siblings: Array<{
+    studentName: string;
+    className: string | null | undefined;
+    previousDues: Array<{
+      feeType: string;
+      billingPeriod: string;
+      remainingBalance: number;
+    }>;
+    currentFees: Array<{
+      feeType: string;
+      billingPeriod: string;
+      remainingBalance: number;
+    }>;
+    total: number;
+  }>;
+  summary: {
+    previousDuesTotal: number;
+    currentMonthsTotal: number;
+    grossTotal: number;
+    discount: number;
+    netPayable: number;
+    lateFee: number;
+    payableWithinDate: number;
+    payableAfterDueDate: number;
+    amountInWords: string;
+  };
+  schoolName: string;
+  schoolAddress: string | null | undefined;
+};
+
+// ── Monochrome design constants ───────────────────────────────────────────────
+const BLACK = "#000000";
+const LIGHT_GRAY = "#e0e0e0";
+const FONT_MONO = "Courier";
+const FONT_MONO_BOLD = "Courier-Bold";
+
+/** Format a number as "PKR X,XXX" — no trailing .00 for whole numbers */
+function pkrFormat(amount: number): string {
+  const rounded = Math.round(amount * 100) / 100;
+  if (Number.isInteger(rounded)) {
+    return `PKR ${rounded.toLocaleString("en-PK")}`;
+  }
+  return `PKR ${rounded.toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** Draw a stroked rectangle (no fill) */
+function strokeRect(
+  doc: InstanceType<typeof PDFDocument>,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
+  doc.rect(x, y, w, h).stroke(BLACK);
+}
+
+/**
+ * Renders one "copy" (Student Copy or School Copy) of the family voucher
+ * onto the PDFKit document at the given Y offset.
+ * Monochrome design — black borders only, no color fills.
+ */
+function renderFamilyVoucherCopy(
+  doc: InstanceType<typeof PDFDocument>,
+  params: FamilyVoucherPdfParams,
+  copyLabel: "STUDENT COPY" | "SCHOOL COPY",
+  startY: number,
+): void {
+  const pageWidth = doc.page.width;
+  const margin = 36;
+  const contentWidth = pageWidth - margin * 2;
+
+  let y = startY;
+
+  // ── Header ───────────────────────────────────────────────────────────────
+  const headerH = 44;
+  strokeRect(doc, margin, y, contentWidth, headerH);
+
+  // Copy label (top-right, inside header)
+  const pillW = 88;
+  const pillX = margin + contentWidth - pillW - 6;
+  const pillY = y + 5;
+  strokeRect(doc, pillX, pillY, pillW, 13);
+  doc.fillColor(BLACK).fontSize(6.5).font(FONT_MONO_BOLD)
+    .text(copyLabel, pillX, pillY + 3, { width: pillW, align: "center", lineBreak: false });
+
+  // School name (single line, no wrap)
+  doc.fillColor(BLACK).fontSize(12).font(FONT_MONO_BOLD)
+    .text(params.schoolName, margin + 8, y + 7, {
+      width: contentWidth - pillW - 20,
+      align: "left",
+      lineBreak: false,
+      ellipsis: true,
+    });
+  if (params.schoolAddress) {
+    doc.fillColor(BLACK).fontSize(6.5).font(FONT_MONO)
+      .text(params.schoolAddress, margin + 8, y + 22, {
+        width: contentWidth - pillW - 20,
+        lineBreak: false,
+        ellipsis: true,
+      });
+  }
+  y += headerH;
+
+  // ── Sub-header: "FAMILY FEE PAYMENT VOUCHER" ─────────────────────────────
+  strokeRect(doc, margin, y, contentWidth, 16);
+  doc.fillColor(BLACK).fontSize(8).font(FONT_MONO_BOLD)
+    .text("FAMILY FEE PAYMENT VOUCHER", margin, y + 4, {
+      width: contentWidth,
+      align: "center",
+      lineBreak: false,
+    });
+  y += 16;
+
+  // ── Info row: Family | Voucher | Due Date ─────────────────────────────────
+  const infoH = 32;
+  strokeRect(doc, margin, y, contentWidth, infoH);
+
+  const col = contentWidth / 3;
+  const infoItems = [
+    { label: "FAMILY", value: params.familyName },
+    { label: "VOUCHER NO.", value: params.voucherNumber },
+    {
+      label: "DUE DATE",
+      value: new Date(params.dueDate).toLocaleDateString("en-PK", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }),
+    },
+  ];
+  infoItems.forEach((item, i) => {
+    const x = margin + i * col + 6;
+    doc.fillColor(BLACK).fontSize(6).font(FONT_MONO_BOLD)
+      .text(item.label, x, y + 4, { lineBreak: false });
+    doc.fillColor(BLACK).fontSize(8).font(FONT_MONO_BOLD)
+      .text(item.value, x, y + 13, { width: col - 12, lineBreak: false, ellipsis: true });
+    if (i < 2) {
+      doc.moveTo(margin + (i + 1) * col, y).lineTo(margin + (i + 1) * col, y + infoH).stroke(BLACK);
+    }
+  });
+  y += infoH;
+
+  // ── Guardian strip ────────────────────────────────────────────────────────
+  if (params.guardianName || params.guardianPhone) {
+    strokeRect(doc, margin, y, contentWidth, 14);
+    const guardianText = [
+      params.guardianName ? `Guardian: ${params.guardianName}` : null,
+      params.guardianPhone ? `Phone: ${params.guardianPhone}` : null,
+    ]
+      .filter(Boolean)
+      .join("   |   ");
+    doc.fillColor(BLACK).fontSize(6.5).font(FONT_MONO)
+      .text(guardianText, margin + 6, y + 3, {
+        width: contentWidth - 12,
+        lineBreak: false,
+        ellipsis: true,
+      });
+    y += 14;
+  }
+
+  y += 4;
+
+  // ── Siblings table ────────────────────────────────────────────────────────
+  doc.fillColor(BLACK).fontSize(6).font(FONT_MONO_BOLD)
+    .text("STUDENT-WISE BREAKDOWN", margin, y, { lineBreak: false });
+  y += 7;
+
+  // Table header row
+  const colWidths = [120, 90, 80, 80, 80];
+  const colHeaders = ["Student / Class", "Fee Type", "Period", "Amount", "Balance"];
+  const tableHeaderH = 13;
+
+  // Header background: light gray fill
+  doc.rect(margin, y, contentWidth, tableHeaderH).fill(LIGHT_GRAY);
+  strokeRect(doc, margin, y, contentWidth, tableHeaderH);
+
+  let cx = margin;
+  colHeaders.forEach((header, i) => {
+    doc.fillColor(BLACK).fontSize(6).font(FONT_MONO_BOLD)
+      .text(header, cx + 4, y + 3, {
+        width: colWidths[i] - 8,
+        align: i >= 3 ? "right" : "left",
+        lineBreak: false,
+      });
+    if (i < colHeaders.length - 1) {
+      doc.moveTo(cx + colWidths[i], y).lineTo(cx + colWidths[i], y + tableHeaderH).stroke(BLACK);
+    }
+    cx += colWidths[i];
+  });
+  y += tableHeaderH;
+
+  // Sibling rows
+  for (const sibling of params.siblings) {
+    const allFees = [
+      ...sibling.previousDues.map((f) => ({ ...f, type: "prev" as const })),
+      ...sibling.currentFees.map((f) => ({ ...f, type: "curr" as const })),
+    ];
+    if (allFees.length === 0) continue;
+
+    const rowH = 12;
+
+    // Student name row — light gray fill
+    doc.rect(margin, y, contentWidth, rowH).fill(LIGHT_GRAY);
+    strokeRect(doc, margin, y, contentWidth, rowH);
+    doc.fillColor(BLACK).fontSize(7).font(FONT_MONO_BOLD)
+      .text(
+        `${sibling.studentName}  (${sibling.className ?? "—"})`,
+        margin + 4,
+        y + 2.5,
+        { width: contentWidth - 8, lineBreak: false, ellipsis: true },
+      );
+    y += rowH;
+
+    // Fee rows
+    allFees.forEach((fee) => {
+      const isOverdue = fee.type === "prev";
+      const amtLabel = pkrFormat(fee.remainingBalance);
+      const typeLabel = fee.feeType + (isOverdue ? " *" : "");
+
+      strokeRect(doc, margin, y, contentWidth, rowH);
+
+      cx = margin;
+      // col 0: blank
+      doc.moveTo(cx + colWidths[0], y).lineTo(cx + colWidths[0], y + rowH).stroke(BLACK);
+      cx += colWidths[0];
+      // col 1: fee type
+      doc.fillColor(BLACK).fontSize(6).font(FONT_MONO)
+        .text(typeLabel, cx + 4, y + 2.5, { width: colWidths[1] - 8, lineBreak: false, ellipsis: true });
+      doc.moveTo(cx + colWidths[1], y).lineTo(cx + colWidths[1], y + rowH).stroke(BLACK);
+      cx += colWidths[1];
+      // col 2: period
+      doc.fillColor(BLACK).fontSize(6).font(FONT_MONO)
+        .text(fee.billingPeriod, cx + 4, y + 2.5, { width: colWidths[2] - 8, lineBreak: false });
+      doc.moveTo(cx + colWidths[2], y).lineTo(cx + colWidths[2], y + rowH).stroke(BLACK);
+      cx += colWidths[2];
+      // col 3: amount
+      doc.fillColor(BLACK).fontSize(6).font(FONT_MONO)
+        .text(amtLabel, cx + 4, y + 2.5, { width: colWidths[3] - 8, align: "right", lineBreak: false });
+      doc.moveTo(cx + colWidths[3], y).lineTo(cx + colWidths[3], y + rowH).stroke(BLACK);
+      cx += colWidths[3];
+      // col 4: balance
+      doc.fillColor(BLACK).fontSize(6).font(FONT_MONO_BOLD)
+        .text(amtLabel, cx + 4, y + 2.5, { width: colWidths[4] - 8, align: "right", lineBreak: false });
+
+      y += rowH;
+    });
+
+    // Sibling subtotal row
+    const subtotalH = 13;
+    strokeRect(doc, margin, y, contentWidth, subtotalH);
+    doc.fillColor(BLACK).fontSize(6.5).font(FONT_MONO_BOLD)
+      .text(`Subtotal — ${sibling.studentName}:`, margin + 4, y + 3, {
+        width: contentWidth - 100,
+        lineBreak: false,
+        ellipsis: true,
+      });
+    doc.fillColor(BLACK).fontSize(7).font(FONT_MONO_BOLD)
+      .text(pkrFormat(sibling.total), margin + contentWidth - 100, y + 3, {
+        width: 92,
+        align: "right",
+        lineBreak: false,
+      });
+    y += subtotalH;
+    y += 2;
+  }
+
+  // Overdue note
+  if (params.siblings.some((s) => s.previousDues.length > 0)) {
+    doc.fillColor(BLACK).fontSize(6).font(FONT_MONO)
+      .text("* Previous dues / overdue amounts", margin, y, { lineBreak: false });
+    y += 8;
+  }
+
+  // ── Summary box ───────────────────────────────────────────────────────────
+  y += 2;
+  const summaryBoxH = 62;
+  strokeRect(doc, margin, y, contentWidth, summaryBoxH);
+
+  // Vertical divider splitting summary into left/right halves
+  const halfW = contentWidth / 2;
+  doc.moveTo(margin + halfW, y).lineTo(margin + halfW, y + summaryBoxH).stroke(BLACK);
+
+  // Left: breakdown rows
+  const leftX = margin + 8;
+  const summaryRows: Array<[string, number]> = [
+    ["PREVIOUS DUES", params.summary.previousDuesTotal],
+    ["CURRENT MONTH(S)", params.summary.currentMonthsTotal],
+    ["GROSS TOTAL", params.summary.grossTotal],
+    ["DISCOUNT", params.summary.discount],
+  ];
+  let sy = y + 5;
+  summaryRows.forEach(([label, value]) => {
+    doc.fillColor(BLACK).fontSize(6).font(FONT_MONO_BOLD)
+      .text(label, leftX, sy, { lineBreak: false });
+    doc.fillColor(BLACK).fontSize(6).font(FONT_MONO)
+      .text(pkrFormat(value), leftX + 2, sy, { width: halfW - 20, align: "right", lineBreak: false });
+    sy += 12;
+  });
+
+  // Right: net payable (large)
+  const rightX = margin + halfW + 8;
+  doc.fillColor(BLACK).fontSize(6).font(FONT_MONO_BOLD)
+    .text("NET PAYABLE", rightX, y + 5, { lineBreak: false });
+  doc.fillColor(BLACK).fontSize(16).font(FONT_MONO_BOLD)
+    .text(pkrFormat(params.summary.netPayable), rightX, y + 14, {
+      width: halfW - 16,
+      align: "right",
+      lineBreak: false,
+    });
+
+  // Late fee note (right side, bottom)
+  if (params.summary.lateFee > 0) {
+    doc.fillColor(BLACK).fontSize(5.5).font(FONT_MONO)
+      .text(
+        `After due date: ${pkrFormat(params.summary.payableAfterDueDate)} (incl. ${pkrFormat(params.summary.lateFee)} late fee)`,
+        rightX,
+        y + 40,
+        { width: halfW - 16, align: "right", lineBreak: false },
+      );
+  }
+
+  y += summaryBoxH;
+
+  // ── Amount in words strip ─────────────────────────────────────────────────
+  // Use two separate text() calls at explicit coordinates — never use
+  // { continued: true } as it advances the PDFKit cursor and can trigger
+  // a new page if the text wraps beyond the clipped region.
+  strokeRect(doc, margin, y, contentWidth, 14);
+  doc.fillColor(BLACK).fontSize(6).font(FONT_MONO_BOLD)
+    .text("IN WORDS:", margin + 6, y + 4, { lineBreak: false });
+  // Truncate amountInWords to a single line to prevent overflow
+  const wordsText = params.summary.amountInWords ?? "";
+  doc.fillColor(BLACK).fontSize(6).font(FONT_MONO)
+    .text(wordsText, margin + 58, y + 4, {
+      width: contentWidth - 66,
+      lineBreak: false,
+      ellipsis: true,
+    });
+  y += 14;
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  y += 2;
+  strokeRect(doc, margin, y, contentWidth, 14);
+  doc.fillColor(BLACK).fontSize(5.5).font(FONT_MONO)
+    .text(
+      `Generated: ${new Date(params.generatedAt).toLocaleString("en-PK")}   |   ${params.voucherNumber}   |   Computer-generated — no signature required.`,
+      margin + 6,
+      y + 4,
+      { width: contentWidth - 12, align: "center", lineBreak: false, ellipsis: true },
+    );
+}
+
+/**
+ * Generates an A4 PDF with two copies per page:
+ *   Top half  → STUDENT COPY  (clipped to 0..halfH)
+ *   Bottom half → SCHOOL COPY (clipped to halfH..pageH)
+ * Separated by a dashed cut-line at the exact midpoint.
+ * Monochrome design — safe for black-and-white printers.
+ *
+ * A4 = 595.28 × 841.89 pt  →  halfH ≈ 420.94 pt
+ * Each copy starts at topY + 8pt padding and is clipped to its half.
+ */
+export function generateFamilyVoucherPdf(params: FamilyVoucherPdfParams): Promise<Buffer> {
+  return new Promise<Buffer>((resolve, reject) => {
+    // bufferPages:true lets us inspect/trim pages before flushing to the stream.
+    // This is the only reliable way to prevent PDFKit from emitting extra pages
+    // that were auto-added when a text cursor exceeded the page height.
+    const doc = new PDFDocument({ size: "A4", margin: 0, autoFirstPage: true, bufferPages: true });
+    const chunks: Buffer[] = [];
+
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    const pageW = doc.page.width;   // 595.28 pt
+    const pageH = doc.page.height;  // 841.89 pt
+    const halfH = pageH / 2;        // 420.94 pt
+
+    // ── TOP HALF: Student Copy ────────────────────────────────────────────
+    // Clip to [0, 0, pageW, halfH] so content never bleeds into bottom half
+    doc.save();
+    doc.rect(0, 0, pageW, halfH).clip();
+    renderFamilyVoucherCopy(doc, params, "STUDENT COPY", 6);
+    doc.restore();
+
+    // ── Cut line at exact midpoint ────────────────────────────────────────
+    const cutY = halfH;
+    doc.save();
+    doc.dash(5, { space: 3 });
+    doc.moveTo(16, cutY).lineTo(pageW - 16, cutY).stroke(BLACK);
+    doc.restore();
+
+    // Cut-here label centred on the cut line
+    const labelText = "--- Cut here ---";
+    const labelW = 80;
+    doc.fillColor(BLACK).fontSize(6.5).font(FONT_MONO)
+      .text(labelText, pageW / 2 - labelW / 2, cutY - 4.5, {
+        width: labelW,
+        align: "center",
+        lineBreak: false,
+      });
+
+    // ── BOTTOM HALF: School Copy ──────────────────────────────────────────
+    // Clip to [0, halfH, pageW, pageH] so content never bleeds upward
+    doc.save();
+    doc.rect(0, halfH, pageW, halfH).clip();
+    renderFamilyVoucherCopy(doc, params, "SCHOOL COPY", halfH + 6);
+    doc.restore();
+
+    // ── Flush only page 1 ─────────────────────────────────────────────────
+    // With bufferPages:true, pages are held in memory until flushPages().
+    // We switch to page 1 and flush exactly 1 page, discarding any extras
+    // that PDFKit auto-added when text cursors exceeded the page boundary.
+    const range = doc.bufferedPageRange(); // { start, count }
+    if (range.count > 1) {
+      // Switch back to page index 0 (the only page we want)
+      doc.switchToPage(range.start);
+    }
+    // Flush exactly 1 page
+    doc.flushPages();
+
+    doc.end();
+  });
+}

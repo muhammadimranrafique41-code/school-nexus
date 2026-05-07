@@ -14,6 +14,7 @@ import AdminFinance from "./pages/admin/finance";
 import BulkVouchersPage from "./pages/admin/finance/BulkVouchersPage";
 import MonthSelectorPage from "./pages/admin/finance/vouchers/MonthSelectorPage";
 import StudentPreviewPage from "./pages/admin/finance/vouchers/StudentPreviewPage";
+import FamilyVoucherPage from "./pages/admin/finance/vouchers/FamilyVoucherPage";
 import WalletManagementHub from "./pages/admin/finance/WalletManagementHub";
 import StudentStatementPage from "./pages/admin/finance/StudentStatementPage";
 import AdminQrAttendance from "./pages/admin/qr-attendance";
@@ -113,6 +114,9 @@ function Router() {
       </Route>
       <Route path="/admin/finance/bulk-print">
         <ProtectedRoute allowedRoles={['admin']}><BulkVouchersPage /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/finance/vouchers/family/:familyId">
+        <ProtectedRoute allowedRoles={['admin']}><FamilyVoucherPage /></ProtectedRoute>
       </Route>
       <Route path="/admin/finance/vouchers/preview">
         <ProtectedRoute allowedRoles={['admin']}><StudentPreviewPage /></ProtectedRoute>
