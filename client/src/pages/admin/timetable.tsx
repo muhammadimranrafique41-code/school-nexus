@@ -128,7 +128,7 @@ function TimetableListView({ onSelect }: { onSelect: (id: number) => void }) {
                   <SelectItem value="__none__" disabled>All classes have timetables</SelectItem>
                 ) : availClasses.map((c) => (
                   <SelectItem key={c.id} value={String(c.id)}>
-                    {c.grade}-{c.section}{c.stream ? `-${c.stream}` : ""} ({c.academicYear})
+                    {c.grade}-{c.section} ({c.academicYear})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -160,7 +160,7 @@ function TimetableListView({ onSelect }: { onSelect: (id: number) => void }) {
             {(timetables ?? []).map((tt: any) => {
               const cls = tt.class;
               const name = cls
-                ? `${cls.grade}-${cls.section}${cls.stream ? `-${cls.stream}` : ""}`
+                ? `${cls.grade}-${cls.section}`
                 : `Class ${tt.classId}`;
               const isPublished = tt.status === "published";
 

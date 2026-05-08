@@ -3,12 +3,19 @@ import { z } from "zod";
 export const CreateClassSchema = z.object({
   grade: z.string().min(1).max(10),
   section: z.string().min(1).max(5),
-  stream: z.string().max(20).optional(),
   academicYear: z
     .string()
     .regex(/^\d{4}-\d{4}$/, "Academic year must be in the format YYYY-YYYY"),
   capacity: z.coerce.number().int().min(20).max(60),
 });
+
+export const CreateSubjectSchema = z.object({
+  name: z.string().min(1, "Subject name is required").max(100),
+  code: z.string().max(30).optional(),
+  description: z.string().max(500).optional(),
+});
+
+export const UpdateSubjectSchema = CreateSubjectSchema.partial();
 
 export const AssignTeacherSchema = z.object({
   teacherId: z.coerce.number().int().positive(),

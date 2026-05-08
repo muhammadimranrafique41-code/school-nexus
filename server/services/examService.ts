@@ -150,13 +150,35 @@ const toNumber = (value: unknown): number => {
 
 const round2 = (value: number): number => Math.round(value * 100) / 100;
 
+// classLabel: "Grade-9 A" — stream/subject is intentionally excluded from class identity
 const classLabel = (row: { grade: string; section: string; stream?: string | null }): string =>
-  `${row.grade} ${row.section}${row.stream ? ` - ${row.stream}` : ""}`.trim();
+  `${row.grade} ${row.section}`.trim();
 
-const classKeys = (row: { grade: string; section: string; stream?: string | null }): string[] => [
-  classLabel(row),
-  `${row.grade}-${row.section}${row.stream ? `-${row.stream}` : ""}`.trim(),
-];
+const classKeys = (row: { grade: string; section: string; stream?: string | null }): string[] => {
+  const base = classLabel(row); // "Grade-9 A"
+  const gradeNum = row.grade.replace(/^Grade-?/i, "").trim(); // "9"
+  const variations: string[] = [
+    // Primary canonical form (no stream/subject)
+    base,                                                          // "Grade-9 A"
+    `${row.grade}-${row.section}`.trim(),                          // "Grade-9-A"
+    `${row.grade}${row.section}`.trim(),                           // "Grade-9A"
+
+    // Without "Grade" prefix (legacy data)
+    `${gradeNum}-${row.section}`.trim(),                           // "9-A"
+    `${gradeNum} ${row.section}`.trim(),                           // "9 A"
+    `${gradeNum}${row.section}`.trim(),                            // "9A"
+
+    // Legacy formats that included stream — kept for backward compat
+    ...(row.stream ? [
+      `${base} - ${row.stream}`.trim(),                            // "Grade-9 A - Urdu"
+      `${row.grade}-${row.section}-${row.stream}`.trim(),          // "Grade-9-A-Urdu"
+      `${row.grade} ${row.section} ${row.stream}`.trim(),          // "Grade-9 A Urdu"
+    ] : []),
+  ];
+
+  // Remove duplicates and empty strings
+  return [...new Set(variations.filter(v => v.length > 0))];
+};
 
 async function getSessionOrThrow(examSessionId: number): Promise<SelectExamSession> {
   const [session] = await db.select().from(examSessions).where(eq(examSessions.id, examSessionId)).limit(1);
@@ -173,8 +195,24 @@ async function getSubjectOrThrow(subjectId: number): Promise<SelectExamSubject> 
 async function getClassStudents(classId: number): Promise<Array<typeof users.$inferSelect>> {
   const [classRow] = await db.select().from(classes).where(eq(classes.id, classId)).limit(1);
   if (!classRow) throw new AppError("Class not found", "CLASS_NOT_FOUND", 404);
+
+  // Build all possible class_name keys for this class (canonical + legacy variants)
   const keys = classKeys(classRow);
-  return db.select().from(users).where(and(eq(users.role, "student"), inArray(users.className, keys)));
+
+  // Primary: match by canonical label (e.g. "Grade-9 A")
+  // Also match any legacy variants that may still exist in the DB
+  const studentRows = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.role, "student"), inArray(users.className, keys)));
+
+  // De-duplicate by student id (in case multiple keys match the same student)
+  const seen = new Set<number>();
+  return studentRows.filter((s) => {
+    if (seen.has(s.id)) return false;
+    seen.add(s.id);
+    return true;
+  });
 }
 
 export async function createExamSession(payload: CreateExamSessionPayload): Promise<ExamSessionWithSubjects> {
@@ -397,7 +435,6 @@ export async function getStudentMarksheetData(examSessionId: number, studentId: 
       academicYear: academicSessions.name,
       classGrade: classes.grade,
       classSection: classes.section,
-      classStream: classes.stream,
     })
     .from(examSessions)
     .innerJoin(academicSessions, eq(examSessions.academicSessionId, academicSessions.id))
@@ -452,7 +489,7 @@ export async function getStudentMarksheetData(examSessionId: number, studentId: 
       fatherName: student.fatherName ?? "",
       rollNo: student.rollNumber ?? "",
       admissionNo: String(student.id),
-      className: `${session.classGrade}${session.classStream ? ` - ${session.classStream}` : ""}`,
+      className: `${session.classGrade} ${session.classSection}`.trim(),
       section: session.classSection,
     },
     examSession: {
@@ -542,7 +579,6 @@ export async function listExamSessions(classId?: number): Promise<ExamSessionWit
         exam: examSessions,
         classGrade: classes.grade,
         classSection: classes.section,
-        classStream: classes.stream,
         academicYear: academicSessions.name,
       })
       .from(examSessions)
@@ -555,7 +591,7 @@ export async function listExamSessions(classId?: number): Promise<ExamSessionWit
       : [];
     return sessionRows.map((row) => ({
       ...row.exam,
-      className: classLabel({ grade: row.classGrade, section: row.classSection, stream: row.classStream }),
+      className: classLabel({ grade: row.classGrade, section: row.classSection }),
       academicYear: row.academicYear,
       subjects: subjectRows.filter((subject) => subject.examSessionId === row.exam.id),
     }));

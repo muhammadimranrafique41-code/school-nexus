@@ -577,12 +577,19 @@ const classSchema = z.object({
   id: z.number(),
   grade: z.string(),
   section: z.string(),
-  stream: z.string().nullable().optional(),
   academicYear: z.string(),
   capacity: z.number(),
   currentCount: z.number(),
   homeroomTeacherId: z.number().nullable().optional(),
   status: z.string(),
+});
+
+const subjectSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  code: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  createdAt: z.string().or(z.date()).optional(),
 });
 
 const classTeacherSchema = z.object({
@@ -1381,6 +1388,46 @@ export const api = {
         responses: {
           200: z.array(classTeacherSchema),
         },
+      },
+    },
+  },
+  subjects: {
+    list: {
+      path: "/api/v1/subjects",
+      method: "GET" as const,
+      responses: {
+        200: z.array(subjectSchema),
+      },
+    },
+    create: {
+      path: "/api/v1/subjects",
+      method: "POST" as const,
+      input: z.object({
+        name: z.string().min(1).max(100),
+        code: z.string().max(30).nullable().optional(),
+        description: z.string().max(500).nullable().optional(),
+      }),
+      responses: {
+        201: subjectSchema,
+      },
+    },
+    update: {
+      path: "/api/v1/subjects/:id",
+      method: "PUT" as const,
+      input: z.object({
+        name: z.string().min(1).max(100).optional(),
+        code: z.string().max(30).nullable().optional(),
+        description: z.string().max(500).nullable().optional(),
+      }),
+      responses: {
+        200: subjectSchema,
+      },
+    },
+    delete: {
+      path: "/api/v1/subjects/:id",
+      method: "DELETE" as const,
+      responses: {
+        204: z.null(),
       },
     },
   },

@@ -23,6 +23,7 @@ import CreateStudent from "./pages/admin/students";
 import CreateTeacher from "./pages/admin/teachers";
 import AdminClasses from "./pages/admin/classes";
 import AdminClassDetail from "./pages/admin/class-detail";
+import AdminSubjects from "./pages/admin/subjects";
 import AdminSessions from "./pages/admin/sessions";
 import AdminPromotions from "./pages/admin/promotions";
 import AdminTimetable from "./pages/admin/timetable";
@@ -97,6 +98,9 @@ function Router() {
       </Route>
       <Route path="/admin/classes/:id">
         <ProtectedRoute allowedRoles={['admin']}><AdminClassDetail /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/subjects">
+        <ProtectedRoute allowedRoles={['admin']}><AdminSubjects /></ProtectedRoute>
       </Route>
       <Route path="/admin/sessions">
         <ProtectedRoute allowedRoles={['admin']}><AdminSessions /></ProtectedRoute>

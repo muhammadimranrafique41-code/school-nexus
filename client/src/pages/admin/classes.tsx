@@ -1,5 +1,4 @@
 import { Layout } from "@/components/layout";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -88,7 +87,8 @@ export default function AdminClasses() {
   const form = useForm<z.infer<typeof CreateClassSchema>>({
     resolver: zodResolver(CreateClassSchema),
     defaultValues: {
-      grade: "", section: "", stream: "",
+      grade: "",
+      section: "",
       academicYear: settings?.academicConfiguration.currentAcademicYear ?? "",
       capacity: 40,
     },
@@ -100,7 +100,7 @@ export default function AdminClasses() {
       setSearchYear(values.academicYear);
       toast({ title: "Class created", description: "The class has been created successfully." });
       setIsCreateOpen(false);
-      form.reset({ grade: "", section: "", stream: "", academicYear: values.academicYear, capacity: 40 });
+      form.reset({ grade: "", section: "", academicYear: values.academicYear, capacity: 40 });
     } catch (error: any) {
       toast({ title: "Unable to create class", description: error?.message ?? "Something went wrong", variant: "destructive" });
     }
@@ -118,7 +118,7 @@ export default function AdminClasses() {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-slate-900">Classes</h1>
-              <p className="text-[12px] text-slate-400">View and manage classes by grade, section, stream, and academic year.</p>
+              <p className="text-[12px] text-slate-400">View and manage classes by grade, section, and academic year.</p>
             </div>
           </div>
           <Button size="sm" onClick={() => setIsCreateOpen(true)} className="self-start sm:self-auto">
@@ -191,17 +191,17 @@ export default function AdminClasses() {
 
           {/* Table */}
           <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-[600px] border-collapse text-sm">
+            <table className="w-full min-w-[520px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  {["Grade", "Section", "Stream", "Academic year", "Enrolled", "Status", ""].map((h, i) => (
+                  {["Grade", "Section", "Academic year", "Enrolled", "Status", ""].map((h, i) => (
                     <th
                       key={i}
                       className={cn(
                         "px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400",
                         i === 0 && "pl-4 text-left",
-                        i === 6 && "pr-4 text-right",
-                        i > 0 && i < 6 && "text-left",
+                        i === 5 && "pr-4 text-right",
+                        i > 0 && i < 5 && "text-left",
                       )}
                     >
                       {h}
@@ -212,13 +212,13 @@ export default function AdminClasses() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="py-14 text-center">
+                    <td colSpan={6} className="py-14 text-center">
                       <Loader2 className="mx-auto h-5 w-5 animate-spin text-indigo-500" />
                     </td>
                   </tr>
                 ) : paginated.pageItems.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-14 text-center text-[13px] text-slate-400">
+                    <td colSpan={6} className="py-14 text-center text-[13px] text-slate-400">
                       No classes found for the selected filters.
                     </td>
                   </tr>
@@ -246,15 +246,6 @@ export default function AdminClasses() {
                         <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-[12px] font-bold text-slate-700">
                           {item.section}
                         </span>
-                      </td>
-
-                      {/* Stream */}
-                      <td className="px-3 py-2.5">
-                        {item.stream ? (
-                          <span className="text-[12px] font-medium text-slate-600">{item.stream}</span>
-                        ) : (
-                          <span className="text-[12px] text-slate-300">—</span>
-                        )}
                       </td>
 
                       {/* Academic year */}
@@ -326,7 +317,7 @@ export default function AdminClasses() {
           open={isCreateOpen}
           onOpenChange={(open) => {
             setIsCreateOpen(open);
-            if (!open) form.reset({ grade: "", section: "", stream: "", academicYear: settings?.academicConfiguration.currentAcademicYear ?? "", capacity: 40 });
+            if (!open) form.reset({ grade: "", section: "", academicYear: settings?.academicConfiguration.currentAcademicYear ?? "", capacity: 40 });
           }}
         >
           <DialogContent className="sm:max-w-md">
@@ -340,7 +331,7 @@ export default function AdminClasses() {
                   <FormField control={form.control} name="grade" render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-xs font-medium text-slate-700">Grade</FormLabel>
-                      <FormControl><Input className="h-8 text-sm" placeholder="Grade 10" {...field} /></FormControl>
+                      <FormControl><Input className="h-8 text-sm" placeholder="Grade-10" {...field} /></FormControl>
                       <FormMessage className="text-[11px]" />
                     </FormItem>
                   )} />
@@ -354,13 +345,6 @@ export default function AdminClasses() {
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <FormField control={form.control} name="stream" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium text-slate-700">Stream <span className="text-slate-400">(optional)</span></FormLabel>
-                      <FormControl><Input className="h-8 text-sm" placeholder="Science" {...field} /></FormControl>
-                      <FormMessage className="text-[11px]" />
-                    </FormItem>
-                  )} />
                   <FormField control={form.control} name="academicYear" render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-xs font-medium text-slate-700">Academic year</FormLabel>
@@ -368,15 +352,14 @@ export default function AdminClasses() {
                       <FormMessage className="text-[11px]" />
                     </FormItem>
                   )} />
+                  <FormField control={form.control} name="capacity" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium text-slate-700">Capacity</FormLabel>
+                      <FormControl><Input type="number" min={20} max={60} className="h-8 text-sm" {...field} /></FormControl>
+                      <FormMessage className="text-[11px]" />
+                    </FormItem>
+                  )} />
                 </div>
-
-                <FormField control={form.control} name="capacity" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-xs font-medium text-slate-700">Capacity</FormLabel>
-                    <FormControl><Input type="number" min={20} max={60} className="h-8 text-sm" {...field} /></FormControl>
-                    <FormMessage className="text-[11px]" />
-                  </FormItem>
-                )} />
 
                 {/* Summary preview */}
                 {form.watch("grade") && form.watch("section") && (
@@ -384,7 +367,6 @@ export default function AdminClasses() {
                     <BookOpen className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
                     <span className="text-[12px] font-semibold text-indigo-700">
                       {form.watch("grade")}-{form.watch("section")}
-                      {form.watch("stream") ? `-${form.watch("stream")}` : ""}
                       {form.watch("academicYear") ? ` · ${form.watch("academicYear")}` : ""}
                     </span>
                   </div>

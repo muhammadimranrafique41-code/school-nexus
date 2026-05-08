@@ -49,8 +49,6 @@ export interface AcademicRecordRow {
   className: string | null;
   /** Derived: classes.grade */
   classGrade: string | null;
-  /** Derived: classes.stream */
-  classStream: string | null;
   /** Derived: users.name */
   studentName: string | null;
 }
@@ -108,7 +106,6 @@ export class AcademicRecordService {
           updatedAt: academicRecords.updatedAt,
           className: classes.section,
           classGrade: classes.grade,
-          classStream: classes.stream,
           studentName: users.name,
         })
         .from(academicRecords)
@@ -157,7 +154,6 @@ export class AcademicRecordService {
           updatedAt: academicRecords.updatedAt,
           className: classes.section,
           classGrade: classes.grade,
-          classStream: classes.stream,
           studentName: users.name,
         })
         .from(academicRecords)

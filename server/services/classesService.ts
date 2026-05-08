@@ -82,19 +82,18 @@ export type BulkPromoteInput = {
 
 export type PromotionHistoryRecord = PromotionHistory & {
   student: Pick<User, "id" | "name" | "className"> | null;
-  fromClass: Pick<Class, "id" | "grade" | "section" | "stream"> | null;
-  toClass: Pick<Class, "id" | "grade" | "section" | "stream"> | null;
+  fromClass: Pick<Class, "id" | "grade" | "section"> | null;
+  toClass: Pick<Class, "id" | "grade" | "section"> | null;
   promotedByUser: Pick<User, "id" | "name"> | null;
   session: Pick<AcademicSession, "id" | "name"> | null;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helper: build a human-readable class label ("Grade 10 A" / "Grade 10 A - Science")
-// Mirrors the buildClassLabel convention used in routes.ts and aiService.ts.
+// Helper: build a human-readable class label ("Grade 10 A")
 // ─────────────────────────────────────────────────────────────────────────────
 
-function classLabel(cls: Pick<Class, "grade" | "section" | "stream">): string {
-  return `${cls.grade} ${cls.section}${cls.stream ? ` - ${cls.stream}` : ""}`.trim();
+function classLabel(cls: Pick<Class, "grade" | "section">): string {
+  return `${cls.grade} ${cls.section}`.trim();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,16 +128,28 @@ export async function getAcademicSession(id: number): Promise<AcademicSession> {
 }
 
 /**
- * Get the currently active academic session, or null if none is marked current.
+ * Get the currently active academic session.
+ * Returns the session marked is_current=true, or falls back to the most
+ * recently started session if none is explicitly marked current.
  */
 export async function getCurrentAcademicSession(): Promise<AcademicSession | null> {
-  const [row] = await db
+  // Try the explicitly-marked current session first
+  const [current] = await db
     .select()
     .from(academicSessions)
     .where(eq(academicSessions.isCurrent, true))
     .limit(1);
 
-  return row ?? null;
+  if (current) return current;
+
+  // Fallback: return the most recently started session
+  const [latest] = await db
+    .select()
+    .from(academicSessions)
+    .orderBy(desc(academicSessions.startDate))
+    .limit(1);
+
+  return latest ?? null;
 }
 
 /**

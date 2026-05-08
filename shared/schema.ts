@@ -978,7 +978,26 @@ export const schoolSettingsAuditLogs = pgTable("school_settings_audit_logs", {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CLASSES (unchanged)
+// SUBJECTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const subjects = pgTable(
+  "subjects",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull(),
+    code: text("code"),
+    description: text("description"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueNameIdx: uniqueIndex("subjects_name_idx").on(table.name),
+    uniqueCodeIdx: uniqueIndex("subjects_code_idx").on(table.code),
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLASSES
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const classes = pgTable(
@@ -987,7 +1006,6 @@ export const classes = pgTable(
     id: serial("id").primaryKey(),
     grade: text("grade").notNull(),
     section: text("section").notNull(),
-    stream: text("stream"),
     academicYear: text("academic_year").notNull(),
     capacity: integer("capacity").notNull().default(40),
     currentCount: integer("current_count").notNull().default(0),
@@ -998,10 +1016,9 @@ export const classes = pgTable(
     status: text("status").notNull().default("active"),
   },
   (table) => ({
-    uniqueClassIdx: uniqueIndex("classes_grade_section_stream_year_idx").on(
+    uniqueClassIdx: uniqueIndex("classes_grade_section_year_idx").on(
       table.grade,
       table.section,
-      table.stream,
       table.academicYear
     ),
   })

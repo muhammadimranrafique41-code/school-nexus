@@ -80,7 +80,6 @@ export interface AcademicHistoryItem {
   sessionEnd: string | null;
   /** Derived from classes.grade + classes.section */
   className: string | null;
-  classStream: string | null;
 }
 
 /** A single class-transition record joined with from/to class names. */
@@ -182,7 +181,6 @@ export class HistoryService {
               ELSE NULL
             END
           `,
-          classStream: classes.stream,
         })
         .from(academicRecords)
         .leftJoin(classes, eq(classes.id, academicRecords.classId))

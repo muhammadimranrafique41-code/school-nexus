@@ -76,7 +76,7 @@ async function resolveGuardianContacts(
 
   if (!classRow) return [];
 
-  const className = `${classRow.grade} ${classRow.section}${classRow.stream ? ` - ${classRow.stream}` : ""}`.trim();
+  const className = `${classRow.grade} ${classRow.section}`.trim();
 
   // Fetch all active students in this class by className string
   const studentRows = await db
@@ -199,7 +199,7 @@ export async function sendHomeworkDiaryNotifications(
     .limit(1);
 
   const className = classRow
-    ? `${classRow.grade} ${classRow.section}${classRow.stream ? ` - ${classRow.stream}` : ""}`.trim()
+    ? `${classRow.grade} ${classRow.section}`.trim()
     : `Class #${diary.classId}`;
 
   const dateStr = typeof diary.date === "string" ? diary.date : String(diary.date);
@@ -358,7 +358,7 @@ export async function sendDailyDiaryNotifications(
     .limit(1);
 
   const className = classRow
-    ? `${classRow.grade} ${classRow.section}${classRow.stream ? ` - ${classRow.stream}` : ""}`.trim()
+    ? `${classRow.grade} ${classRow.section}`.trim()
     : `Class #${diaryRow.classId}`;
 
   const dateStr =

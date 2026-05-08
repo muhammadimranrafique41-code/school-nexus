@@ -25,7 +25,7 @@ export function ExamScheduleTab() {
             <SelectTrigger className="w-56"><SelectValue placeholder="Filter by class" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Classes</SelectItem>
-              {classes.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.grade} {item.section}{item.stream ? ` - ${item.stream}` : ""}</SelectItem>)}
+              {classes.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.grade} {item.section}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>

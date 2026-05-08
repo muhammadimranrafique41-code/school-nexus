@@ -65,7 +65,7 @@ export function ScheduleExamModal({ classes, academicSessions }: { classes: Clas
             <Label>Class</Label>
             <Select value={String(form.classId)} onValueChange={(value) => setForm({ ...form, classId: Number(value) })}>
               <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>{classes.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.grade} {item.section}{item.stream ? ` - ${item.stream}` : ""}</SelectItem>)}</SelectContent>
+              <SelectContent>{classes.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.grade} {item.section}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className="space-y-2">

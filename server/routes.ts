@@ -35,6 +35,13 @@ import {
   updateAcademicSession,
 } from "./services/classesService.js";
 import { AssignTeacherSchema, CreateClassSchema } from "../lib/validators/classes.js";
+import {
+  SubjectServiceError,
+  createSubject,
+  deleteSubject,
+  listSubjects,
+  updateSubject,
+} from "./services/subjectService.js";
 import { registerQrAttendanceRoutes } from "./qr-attendance-routes.js";
 import { createSessionMiddleware } from "./session.js";
 import { storage } from "./storage.ts";
@@ -179,11 +186,12 @@ const sendHomeworkSuccess = <T>(res: Response, data: T, meta?: Record<string, un
 const sendHomeworkError = (res: Response, statusCode: number, error: string, meta?: Record<string, unknown>) =>
   res.status(statusCode).json({ data: null, error, meta });
 
-const buildClassLabel = (record: { grade: string; section: string; stream?: string | null }) =>
-  `${record.grade} ${record.section}${record.stream ? ` - ${record.stream}` : ""}`.trim();
+// buildClassLabel: stream/subject intentionally excluded from class identity label
+const buildClassLabel = (record: { grade: string | null; section: string | null; stream?: string | null }) =>
+  `${record.grade ?? ""} ${record.section ?? ""}`.trim();
 
-const buildClassNameKey = (record: { grade: string; section: string; stream?: string | null }) =>
-  `${record.grade}-${record.section}${record.stream ? `-${record.stream}` : ""}`.trim();
+const buildClassNameKey = (record: { grade: string | null; section: string | null; stream?: string | null }) =>
+  `${record.grade ?? ""}-${record.section ?? ""}`.trim();
 
 const normalizeClassKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
 const normalizeGradeOnly = (value: string) => normalizeClassKey(value).replace(/^grade/, "");
@@ -198,7 +206,6 @@ const findClassByNameKey = async (className: string | null) => {
       id: classes.id,
       grade: classes.grade,
       section: classes.section,
-      stream: classes.stream,
       academicYear: classes.academicYear,
       capacity: classes.capacity,
       currentCount: classes.currentCount,
@@ -237,7 +244,6 @@ const homeworkListStmt = db
     classIdRef: classes.id,
     classGrade: classes.grade,
     classSection: classes.section,
-    classStream: classes.stream,
     classAcademicYear: classes.academicYear,
     classCapacity: classes.capacity,
     classCurrentCount: classes.currentCount,
@@ -288,7 +294,6 @@ const studentHomeworkListStmt = db
     teacherName: users.name,
     classGrade: classes.grade,
     classSection: classes.section,
-    classStream: classes.stream,
     classAcademicYear: classes.academicYear,
     classCapacity: classes.capacity,
     classCurrentCount: classes.currentCount,
@@ -344,7 +349,6 @@ const homeworkDetailStmt = db
     classIdRef: classes.id,
     classGrade: classes.grade,
     classSection: classes.section,
-    classStream: classes.stream,
     classAcademicYear: classes.academicYear,
     classCapacity: classes.capacity,
     classCurrentCount: classes.currentCount,
@@ -1368,8 +1372,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const matchedClass = allClasses.find((c) => {
         const cGrade = c.grade ?? "";
         const cSection = c.section ?? "";
-        const cStream = c.stream ? `-${c.stream}` : "";
-        const fullName = `${cGrade}-${cSection}${cStream}`;
+        const fullName = `${cGrade}-${cSection}`;
         
         // 1. Literal match check
         if (fullName === className) return true;
@@ -1575,7 +1578,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           classId: classes.id,
           grade: classes.grade,
           section: classes.section,
-          stream: classes.stream,
           academicYear: classes.academicYear,
           capacity: classes.capacity,
           currentCount: classes.currentCount,
@@ -1597,7 +1599,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         id: record.classId,
         grade: record.grade,
         section: record.section,
-        stream: record.stream,
         academicYear: record.academicYear,
         capacity: record.capacity,
         currentCount: record.currentCount,
@@ -1645,7 +1646,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             id: row.classIdRef,
             grade: row.classGrade,
             section: row.classSection,
-            stream: row.classStream,
             academicYear: row.classAcademicYear,
             capacity: row.classCapacity,
             currentCount: row.classCurrentCount,
@@ -1754,7 +1754,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           id: record.classIdRef,
           grade: record.classGrade,
           section: record.classSection,
-          stream: record.classStream,
           academicYear: record.classAcademicYear,
           capacity: record.classCapacity,
           currentCount: record.classCurrentCount,
@@ -2733,7 +2732,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         .values({
           grade: input.grade,
           section: input.section,
-          stream: input.stream,
           academicYear: input.academicYear,
           capacity: input.capacity,
           currentCount: 0,
@@ -2869,6 +2867,83 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ─── Subject Management ────────────────────────────────────────────────────
+
+  // GET /api/v1/subjects
+  app.get("/api/v1/subjects", async (req, res) => {
+    try {
+      const user = await requireUser(req, res);
+      if (!user) return;
+      const rows = await listSubjects();
+      res.json(rows);
+    } catch (err) {
+      console.error("Failed to list subjects", err);
+      res.status(500).json({ message: "Failed to list subjects" });
+    }
+  });
+
+  // POST /api/v1/subjects
+  app.post("/api/v1/subjects", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const input = z.object({
+        name: z.string().min(1).max(100),
+        code: z.string().max(30).nullable().optional(),
+        description: z.string().max(500).nullable().optional(),
+      }).parse(req.body);
+      const subject = await createSubject(input);
+      res.status(201).json(subject);
+    } catch (err) {
+      if (err instanceof SubjectServiceError) {
+        return res.status(err.status).json({ message: err.message });
+      }
+      console.error("Failed to create subject", err);
+      res.status(500).json({ message: "Failed to create subject" });
+    }
+  });
+
+  // PUT /api/v1/subjects/:id
+  app.put("/api/v1/subjects/:id", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid subject id" });
+      const input = z.object({
+        name: z.string().min(1).max(100).optional(),
+        code: z.string().max(30).nullable().optional(),
+        description: z.string().max(500).nullable().optional(),
+      }).parse(req.body);
+      const subject = await updateSubject(id, input);
+      res.json(subject);
+    } catch (err) {
+      if (err instanceof SubjectServiceError) {
+        return res.status(err.status).json({ message: err.message });
+      }
+      console.error("Failed to update subject", err);
+      res.status(500).json({ message: "Failed to update subject" });
+    }
+  });
+
+  // DELETE /api/v1/subjects/:id
+  app.delete("/api/v1/subjects/:id", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid subject id" });
+      await deleteSubject(id);
+      res.status(204).send();
+    } catch (err) {
+      if (err instanceof SubjectServiceError) {
+        return res.status(err.status).json({ message: err.message });
+      }
+      console.error("Failed to delete subject", err);
+      res.status(500).json({ message: "Failed to delete subject" });
+    }
+  });
+
   // ─── Timetable Management ──────────────────────────────────────────────────
   
   // GET /api/v1/timetables/settings — common settings for all roles
@@ -2958,7 +3033,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       for (const tt of published) {
         const classRow = (await db.select().from(classes).where(eq(classes.id, tt.classId)).limit(1))[0];
         if (!classRow) continue;
-        const className = `${classRow.grade}-${classRow.section}${classRow.stream ? `-${classRow.stream}` : ""}`;
+        const className = `${classRow.grade}-${classRow.section}`;
         const rows = await db
           .select()
           .from(periodsTable)

@@ -47,8 +47,7 @@ export default function AdminClassDetail() {
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h1 className="text-3xl font-display font-bold">
-              {current.grade} {current.section}{" "}
-              {current.stream ? <span className="text-muted-foreground">• {current.stream}</span> : null}
+              {current.grade} {current.section}
             </h1>
             <p className="mt-1 text-muted-foreground">
               Academic year {current.academicYear}. Capacity {current.currentCount}/{current.capacity}.

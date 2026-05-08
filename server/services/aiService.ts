@@ -50,11 +50,12 @@ type AiChatResult = {
 const attendedStatuses = new Set(["Present", "Late", "Excused"]);
 const financeOpenStatuses = new Set(["Unpaid", "Partially Paid", "Overdue"]);
 
+// stream/subject intentionally excluded from class identity label
 const buildClassLabel = (record: { grade: string; section: string; stream?: string | null }) =>
-  `${record.grade} ${record.section}${record.stream ? ` - ${record.stream}` : ""}`.trim();
+  `${record.grade} ${record.section}`.trim();
 
 const buildClassKey = (record: { grade: string; section: string; stream?: string | null }) =>
-  `${record.grade}-${record.section}${record.stream ? `-${record.stream}` : ""}`.trim();
+  `${record.grade}-${record.section}`.trim();
 
 const normalizeClass = (value: string | null | undefined) =>
   (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");

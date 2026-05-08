@@ -1,6 +1,6 @@
 import {
   BookOpen, Users, LayoutDashboard, Calculator,
-  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle, ReceiptText, Wallet
+  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle, ReceiptText, Wallet, BookMarked
 } from "lucide-react";
 import {
   Sidebar,
@@ -51,6 +51,7 @@ const adminSections: SidebarSection[] = [
       { title: "Students", url: "/admin/students", icon: GraduationCap },
       { title: "Families", url: "/admin/families", icon: Users },
       { title: "Classes", url: "/admin/classes", icon: BookOpen, matchUrls: ["/admin/classes", "/admin/classes/:id"] },
+      { title: "Subjects", url: "/admin/subjects", icon: BookMarked },
       { title: "Academic Sessions", url: "/admin/sessions", icon: CalendarDays },
       { title: "Promotions", url: "/admin/promotions", icon: ArrowUpCircle },
       { title: "Examination", url: "/examination", icon: GraduationCap, badge: "New" },

@@ -4,7 +4,10 @@ import type { ApiResponse, ExamSession, ExamStatistics } from "../types";
 
 export function useExamSessions(classId?: number) {
   const query = classId ? `?classId=${classId}` : "";
-  return useQuery<ApiResponse<ExamSession[]>>({ queryKey: [`/api/exams/sessions${query}`] });
+  return useQuery<ApiResponse<ExamSession[]>>({ 
+    queryKey: [`/api/exams/sessions${query}`],
+    staleTime: 30000, // Cache for 30 seconds to avoid refetching
+  });
 }
 
 export function useCreateExamSession() {

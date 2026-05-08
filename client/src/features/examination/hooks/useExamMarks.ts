@@ -4,8 +4,8 @@ import type { ApiResponse, MarkEntryStudent } from "../types";
 
 export function useExamMarks(subjectId?: number) {
   return useQuery<ApiResponse<MarkEntryStudent[]>>({
-    queryKey: [`/api/exams/subjects/${subjectId}/marks`],
-    enabled: Boolean(subjectId),
+    queryKey: [`/api/exams/subjects/${subjectId ?? 0}/marks`],
+    enabled: Boolean(subjectId && subjectId > 0),
   });
 }
 
