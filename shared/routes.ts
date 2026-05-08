@@ -1154,6 +1154,11 @@ export const api = {
         input: insertSalaryStructureInputSchema,
         responses: { 201: salaryStructureSchema },
       },
+      get: {
+        path: "/api/staff/:id/salary-structure",
+        method: "GET",
+        responses: { 200: salaryStructureSchema },
+      },
     },
     processSalary: {
       path: "/api/staff/:id/process-salary",

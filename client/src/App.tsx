@@ -25,6 +25,7 @@ import AdminStaff from "./pages/admin/staff";
 import AdminStaffSalary from "./pages/admin/staff-salary";
 import AdminStaffLoans from "./pages/admin/staff-loans";
 import AdminStaffAttendance from "./pages/admin/staff-attendance";
+import PayrollPage from "./pages/payroll-page";
 import AdminClasses from "./pages/admin/classes";
 import AdminClassDetail from "./pages/admin/class-detail";
 import AdminSubjects from "./pages/admin/subjects";
@@ -166,6 +167,9 @@ function Router() {
       </Route>
       <Route path="/admin/staff-attendance">
         <ProtectedRoute allowedRoles={['admin']}><AdminStaffAttendance /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/payroll-dashboard">
+        <ProtectedRoute allowedRoles={['admin']}><PayrollPage /></ProtectedRoute>
       </Route>
 
       {/* Teacher Routes */}

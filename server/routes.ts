@@ -4820,6 +4820,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/staff/:id/salary-structure", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const { staffService } = await import("./services/staffService.js");
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid staff id" });
+      const structure = await staffService.getCurrentSalaryStructure(id);
+      if (!structure) return res.status(404).json({ message: "Salary structure not found" });
+      res.json(structure);
+    } catch (err) {
+      console.error("Failed to get salary structure", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post("/api/staff/:id/loans", async (req, res) => {
     try {
       const user = await requireRole(req, res, ["admin"]);

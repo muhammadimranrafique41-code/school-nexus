@@ -135,6 +135,20 @@ export function useSalaryPayments(staffId: number) {
   });
 }
 
+/* ---------- Salary Structure ---------- */
+
+export function useSalaryStructure(staffId: number) {
+  return useQuery({
+    queryKey: [api.staff.salaryStructure.path, staffId],
+    queryFn: async () => {
+      const res = await fetch(buildUrl(api.staff.salaryStructure.path, { id: staffId }), { credentials: "include" });
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch salary structure"));
+      return api.staff.salaryStructure.responses[200].parse(await res.json());
+    },
+    enabled: !!staffId,
+  });
+}
+
 /* ---------- Loan Management ---------- */
 
 export function useCreateStaffLoan() {

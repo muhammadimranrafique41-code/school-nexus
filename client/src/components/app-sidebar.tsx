@@ -49,6 +49,7 @@ const adminSections: SidebarSection[] = [
     items: [
       { title: "Teachers", url: "/admin/teachers", icon: Briefcase },
         { title: "Staff", url: "/admin/staff", icon: Briefcase },
+        { title: "Payroll Dashboard", url: "/admin/payroll-dashboard", icon: Calculator },
       { title: "Students", url: "/admin/students", icon: GraduationCap },
       { title: "Families", url: "/admin/families", icon: Users },
       { title: "Classes", url: "/admin/classes", icon: BookOpen, matchUrls: ["/admin/classes", "/admin/classes/:id"] },

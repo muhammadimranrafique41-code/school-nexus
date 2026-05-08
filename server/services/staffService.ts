@@ -13,7 +13,7 @@ import {
   type InsertSalaryPayment,
   type InsertStaffLoan,
   type InsertLoanRepayment,
-} from "../shared/schema.js";
+} from "../../shared/schema.js";
 
 export class StaffService {
   async createStaff(data: InsertStaff) {
@@ -141,10 +141,14 @@ export class StaffService {
   }
 
   async getAttendance(staffId: number, fromDate?: string, toDate?: string) {
-    let query = db.select().from(staffAttendance).where(eq(staffAttendance.staffId, staffId));
-    if (fromDate) query = query.where(sql`${staffAttendance.attendanceDate} >= ${fromDate}`) as any;
-    if (toDate) query = query.where(sql`${staffAttendance.attendanceDate} <= ${toDate}`) as any;
-    return query.orderBy(desc(staffAttendance.attendanceDate));
+    const conditions = [eq(staffAttendance.staffId, staffId)];
+    if (fromDate) conditions.push(sql`${staffAttendance.attendanceDate} >= ${fromDate}`);
+    if (toDate) conditions.push(sql`${staffAttendance.attendanceDate} <= ${toDate}`);
+    return db
+      .select()
+      .from(staffAttendance)
+      .where(and(...conditions))
+      .orderBy(desc(staffAttendance.attendanceDate));
   }
 }
 
