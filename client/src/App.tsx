@@ -21,6 +21,10 @@ import AdminQrAttendance from "./pages/admin/qr-attendance";
 import AdminSettings from "./pages/admin/settings";
 import CreateStudent from "./pages/admin/students";
 import CreateTeacher from "./pages/admin/teachers";
+import AdminStaff from "./pages/admin/staff";
+import AdminStaffSalary from "./pages/admin/staff-salary";
+import AdminStaffLoans from "./pages/admin/staff-loans";
+import AdminStaffAttendance from "./pages/admin/staff-attendance";
 import AdminClasses from "./pages/admin/classes";
 import AdminClassDetail from "./pages/admin/class-detail";
 import AdminSubjects from "./pages/admin/subjects";
@@ -149,6 +153,19 @@ function Router() {
       </Route>
       <Route path="/admin">
         <ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/staff">
+        <ProtectedRoute allowedRoles={['admin']}><AdminStaff /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/staff-salary">
+        <ProtectedRoute allowedRoles={['admin']}><AdminStaffSalary /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/staff-loans">
+        <ProtectedRoute allowedRoles={['admin']}><AdminStaffLoans /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/staff-attendance">
+        <ProtectedRoute allowedRoles={['admin']}><AdminStaffAttendance /></ProtectedRoute>
       </Route>
 
       {/* Teacher Routes */}

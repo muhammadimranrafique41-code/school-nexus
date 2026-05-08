@@ -4703,6 +4703,206 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // STAFF & EMPLOYEE MANAGEMENT
+  // ─────────────────────────────────────────────────────────────────────────
+
+  app.get("/api/staff", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const { staffService } = await import("./services/staffService.js");
+      const filters = { status: req.query.status as string, staffType: req.query.staffType as string };
+      const records = await staffService.listStaff(filters);
+      res.json(records);
+    } catch (err) {
+      console.error("Failed to list staff", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/staff", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const { staffService } = await import("./services/staffService.js");
+      const { insertStaffSchema } = await import("../shared/schema.js");
+      const input = insertStaffSchema.parse(req.body);
+      const created = await staffService.createStaff(input);
+      res.status(201).json(created);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message });
+      console.error("Failed to create staff", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/staff/:id", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const { staffService } = await import("./services/staffService.js");
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid staff id" });
+      const record = await staffService.getStaff(id);
+      if (!record) return res.status(404).json({ message: "Staff not found" });
+      res.json(record);
+    } catch (err) {
+      console.error("Failed to get staff", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/staff/:id", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const { staffService } = await import("./services/staffService.js");
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid staff id" });
+      const updated = await staffService.updateStaff(id, req.body);
+      if (!updated) return res.status(404).json({ message: "Staff not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("Failed to update staff", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/staff/:id/salary-structure", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const { staffService } = await import("./services/staffService.js");
+      const { insertSalaryStructureSchema } = await import("../shared/schema.js");
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid staff id" });
+      const input = insertSalaryStructureSchema.parse({ ...req.body, staffId: id });
+      const created = await staffService.createSalaryStructure(input);
+      res.status(201).json(created);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message });
+      console.error("Failed to create salary structure", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/staff/:id/process-salary", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const { staffService } = await import("./services/staffService.js");
+      const { insertSalaryPaymentSchema } = await import("../shared/schema.js");
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid staff id" });
+      const input = insertSalaryPaymentSchema.parse({ ...req.body, staffId: id, processedBy: user.id });
+      const payment = await staffService.processSalary(input);
+      res.status(201).json(payment);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message });
+      console.error("Failed to process salary", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/staff/:id/salary-payments", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const { staffService } = await import("./services/staffService.js");
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid staff id" });
+      const payments = await staffService.getSalaryPayments(id);
+      res.json(payments);
+    } catch (err) {
+      console.error("Failed to get salary payments", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/staff/:id/loans", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const { staffService } = await import("./services/staffService.js");
+      const { insertStaffLoanSchema } = await import("../shared/schema.js");
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid staff id" });
+      const input = insertStaffLoanSchema.parse({ ...req.body, staffId: id, approvedBy: user.id });
+      const loan = await staffService.createLoan(input);
+      res.status(201).json(loan);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message });
+      console.error("Failed to create loan", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/staff/:id/loans", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const { staffService } = await import("./services/staffService.js");
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid staff id" });
+      const loans = await staffService.getStaffLoans(id);
+      res.json(loans);
+    } catch (err) {
+      console.error("Failed to get loans", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/staff/loans/:loanId/repayments", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const { staffService } = await import("./services/staffService.js");
+      const { insertLoanRepaymentSchema } = await import("../shared/schema.js");
+      const loanId = parseNumberValue(req.params.loanId);
+      if (Number.isNaN(loanId)) return res.status(400).json({ message: "Invalid loan id" });
+      const input = insertLoanRepaymentSchema.parse({ ...req.body, loanId });
+      const repayment = await staffService.recordLoanRepayment(input);
+      res.status(201).json(repayment);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message });
+      console.error("Failed to record repayment", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/staff/:id/attendance", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const { staffService } = await import("./services/staffService.js");
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid staff id" });
+      const { date, status, checkIn, checkOut } = req.body;
+      const record = await staffService.markAttendance(id, date, status, checkIn, checkOut);
+      res.json(record);
+    } catch (err) {
+      console.error("Failed to mark attendance", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/staff/:id/attendance", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const { staffService } = await import("./services/staffService.js");
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid staff id" });
+      const { fromDate, toDate } = req.query;
+      const records = await staffService.getAttendance(id, fromDate as string, toDate as string);
+      res.json(records);
+    } catch (err) {
+      console.error("Failed to get attendance", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Examination Management ------------------------------------------------
   const getSchoolInfo = async (): Promise<Partial<SchoolInfo>> => {
     const settings = await storage.getPublicSchoolSettings().catch(() => null);

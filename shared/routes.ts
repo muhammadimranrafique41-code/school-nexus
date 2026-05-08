@@ -822,6 +822,175 @@ const aiChatResponseSchema = z.object({
   generatedAt: z.string(),
 });
 
+// ── Staff Management Schemas ──────────────────────────────────────────────────
+
+const staffSchema = z.object({
+  id: z.number(),
+  userId: z.number().nullable().optional(),
+  employeeId: z.string(),
+  firstName: z.string(),
+  lastName: z.string(),
+  email: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  dateOfBirth: z.string().nullable().optional(),
+  gender: z.string().nullable().optional(),
+  staffType: z.string(),
+  designation: z.string().nullable().optional(),
+  department: z.string().nullable().optional(),
+  joiningDate: z.string(),
+  leavingDate: z.string().nullable().optional(),
+  status: z.string(),
+  bankName: z.string().nullable().optional(),
+  bankAccountNumber: z.string().nullable().optional(),
+  ifscCode: z.string().nullable().optional(),
+  panNumber: z.string().nullable().optional(),
+  emergencyContactName: z.string().nullable().optional(),
+  emergencyContactPhone: z.string().nullable().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+const salaryStructureSchema = z.object({
+  id: z.number(),
+  staffId: z.number(),
+  basicSalary: z.number(),
+  allowances: z.record(z.string(), z.number()).nullable().optional(),
+  deductions: z.record(z.string(), z.number()).nullable().optional(),
+  effectiveFrom: z.string(),
+  effectiveTo: z.string().nullable().optional(),
+  createdAt: z.string(),
+});
+
+const salaryPaymentSchema = z.object({
+  id: z.number(),
+  staffId: z.number(),
+  paymentMonth: z.string(),
+  grossSalary: z.number(),
+  totalDeductions: z.number(),
+  netSalary: z.number(),
+  paymentDate: z.string(),
+  paymentMethod: z.string().nullable().optional(),
+  transactionId: z.string().nullable().optional(),
+  remarks: z.string().nullable().optional(),
+  processedBy: z.number().nullable().optional(),
+  createdAt: z.string(),
+});
+
+const staffLoanSchema = z.object({
+  id: z.number(),
+  staffId: z.number(),
+  loanType: z.string(),
+  amount: z.number(),
+  approvedDate: z.string(),
+  monthlyInstallment: z.number().nullable().optional(),
+  totalInstallments: z.number().nullable().optional(),
+  installmentsPaid: z.number(),
+  outstandingBalance: z.number().nullable().optional(),
+  interestRate: z.number(),
+  status: z.string(),
+  approvedBy: z.number().nullable().optional(),
+  remarks: z.string().nullable().optional(),
+  createdAt: z.string(),
+});
+
+const loanRepaymentSchema = z.object({
+  id: z.number(),
+  loanId: z.number(),
+  amount: z.number(),
+  repaymentDate: z.string(),
+  salaryPaymentId: z.number().nullable().optional(),
+  remarks: z.string().nullable().optional(),
+  createdAt: z.string(),
+});
+
+const staffAttendanceSchema = z.object({
+  id: z.number(),
+  staffId: z.number(),
+  attendanceDate: z.string(),
+  status: z.string(),
+  checkIn: z.string().nullable().optional(),
+  checkOut: z.string().nullable().optional(),
+  remarks: z.string().nullable().optional(),
+});
+
+const insertStaffInputSchema = z.object({
+  userId: z.number().nullable().optional(),
+  employeeId: z.string().min(1, "Employee ID is required"),
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().email().optional().nullable(),
+  phone: z.string().optional().nullable(),
+  address: z.string().optional().nullable(),
+  dateOfBirth: z.string().optional().nullable(),
+  gender: z.enum(["Male", "Female", "Other"]).optional().nullable(),
+  staffType: z.enum(["teaching", "non-teaching"]),
+  designation: z.string().optional().nullable(),
+  department: z.string().optional().nullable(),
+  joiningDate: z.string().min(1, "Joining date is required"),
+  leavingDate: z.string().optional().nullable(),
+  status: z.string().optional().default("active"),
+  bankName: z.string().optional().nullable(),
+  bankAccountNumber: z.string().optional().nullable(),
+  ifscCode: z.string().optional().nullable(),
+  panNumber: z.string().optional().nullable(),
+  emergencyContactName: z.string().optional().nullable(),
+  emergencyContactPhone: z.string().optional().nullable(),
+});
+
+const insertSalaryStructureInputSchema = z.object({
+  staffId: z.number(),
+  basicSalary: z.number().positive("Basic salary must be positive"),
+  allowances: z.record(z.string(), z.number()).optional().nullable(),
+  deductions: z.record(z.string(), z.number()).optional().nullable(),
+  effectiveFrom: z.string().min(1, "Effective from date is required"),
+  effectiveTo: z.string().optional().nullable(),
+});
+
+const insertSalaryPaymentInputSchema = z.object({
+  staffId: z.number(),
+  paymentMonth: z.string().min(1, "Payment month is required"),
+  grossSalary: z.number().positive("Gross salary must be positive"),
+  totalDeductions: z.number().default(0),
+  netSalary: z.number().positive("Net salary must be positive"),
+  paymentDate: z.string().min(1, "Payment date is required"),
+  paymentMethod: z.string().optional().nullable(),
+  transactionId: z.string().optional().nullable(),
+  remarks: z.string().optional().nullable(),
+  processedBy: z.number().optional(),
+});
+
+const insertStaffLoanInputSchema = z.object({
+  staffId: z.number(),
+  loanType: z.string().min(1, "Loan type is required"),
+  amount: z.number().positive("Loan amount must be positive"),
+  approvedDate: z.string().min(1, "Approved date is required"),
+  monthlyInstallment: z.number().optional().nullable(),
+  totalInstallments: z.number().optional().nullable(),
+  outstandingBalance: z.number().optional().nullable(),
+  interestRate: z.number().default(0),
+  status: z.string().optional().default("active"),
+  approvedBy: z.number().optional(),
+  remarks: z.string().optional().nullable(),
+});
+
+const insertLoanRepaymentInputSchema = z.object({
+  loanId: z.number(),
+  amount: z.number().positive("Repayment amount must be positive"),
+  repaymentDate: z.string().min(1, "Repayment date is required"),
+  salaryPaymentId: z.number().optional().nullable(),
+  remarks: z.string().optional().nullable(),
+});
+
+const insertStaffAttendanceInputSchema = z.object({
+  staffId: z.number(),
+  attendanceDate: z.string().min(1, "Attendance date is required"),
+  status: z.enum(["Present", "Absent", "Late", "Excused"]),
+  checkIn: z.string().optional().nullable(),
+  checkOut: z.string().optional().nullable(),
+  remarks: z.string().optional().nullable(),
+});
+
 export const api = {
   auth: {
     login: {
@@ -953,6 +1122,81 @@ export const api = {
       path: "/api/teachers",
       method: "GET",
       responses: { 200: z.array(userSchema) },
+    },
+  },
+  staff: {
+    list: {
+      path: "/api/staff",
+      method: "GET",
+      responses: { 200: z.array(staffSchema) },
+    },
+    create: {
+      path: "/api/staff",
+      method: "POST",
+      input: insertStaffInputSchema,
+      responses: { 201: staffSchema },
+    },
+    get: {
+      path: "/api/staff/:id",
+      method: "GET",
+      responses: { 200: staffSchema },
+    },
+    update: {
+      path: "/api/staff/:id",
+      method: "PUT",
+      input: insertStaffInputSchema.partial(),
+      responses: { 200: staffSchema },
+    },
+    salaryStructure: {
+      create: {
+        path: "/api/staff/:id/salary-structure",
+        method: "POST",
+        input: insertSalaryStructureInputSchema,
+        responses: { 201: salaryStructureSchema },
+      },
+    },
+    processSalary: {
+      path: "/api/staff/:id/process-salary",
+      method: "POST",
+      input: insertSalaryPaymentInputSchema,
+      responses: { 201: salaryPaymentSchema },
+    },
+    salaryPayments: {
+      path: "/api/staff/:id/salary-payments",
+      method: "GET",
+      responses: { 200: z.array(salaryPaymentSchema) },
+    },
+    loans: {
+      create: {
+        path: "/api/staff/:id/loans",
+        method: "POST",
+        input: insertStaffLoanInputSchema,
+        responses: { 201: staffLoanSchema },
+      },
+      list: {
+        path: "/api/staff/:id/loans",
+        method: "GET",
+        responses: { 200: z.array(staffLoanSchema) },
+      },
+      repayment: {
+        path: "/api/staff/loans/:loanId/repayments",
+        method: "POST",
+        input: insertLoanRepaymentInputSchema,
+        responses: { 201: loanRepaymentSchema },
+      },
+    },
+    attendance: {
+      create: {
+        path: "/api/staff/:id/attendance",
+        method: "POST",
+        input: insertStaffAttendanceInputSchema,
+        responses: { 201: staffAttendanceSchema },
+      },
+      list: {
+        path: "/api/staff/:id/attendance",
+        method: "GET",
+        responses: { 200: z.array(staffAttendanceSchema) },
+      },
     },
   },
   academics: {

@@ -2165,6 +2165,134 @@ export type InsertWhatsappTemplate = z.infer<
 >;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// STAFF & EMPLOYEE MANAGEMENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const staff = pgTable("staff", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+  employeeId: varchar("employee_id", { length: 50 }).notNull().unique(),
+  firstName: varchar("first_name", { length: 100 }).notNull(),
+  lastName: varchar("last_name", { length: 100 }).notNull(),
+  email: varchar("email", { length: 255 }).unique(),
+  phone: varchar("phone", { length: 20 }),
+  address: text("address"),
+  dateOfBirth: date("date_of_birth"),
+  gender: varchar("gender", { length: 10 }),
+  staffType: varchar("staff_type", { length: 50 }).notNull(),
+  designation: varchar("designation", { length: 100 }),
+  department: varchar("department", { length: 100 }),
+  joiningDate: date("joining_date").notNull(),
+  leavingDate: date("leaving_date"),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  bankName: varchar("bank_name", { length: 100 }),
+  bankAccountNumber: varchar("bank_account_number", { length: 50 }),
+  ifscCode: varchar("ifsc_code", { length: 20 }),
+  panNumber: varchar("pan_number", { length: 20 }),
+  emergencyContactName: varchar("emergency_contact_name", { length: 100 }),
+  emergencyContactPhone: varchar("emergency_contact_phone", { length: 20 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const salaryStructures = pgTable("salary_structures", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull().references(() => staff.id, { onDelete: "cascade" }),
+  basicSalary: decimal("basic_salary", { precision: 12, scale: 2 }).notNull(),
+  allowances: jsonb("allowances").$type<Record<string, number>>(),
+  deductions: jsonb("deductions").$type<Record<string, number>>(),
+  effectiveFrom: date("effective_from").notNull(),
+  effectiveTo: date("effective_to"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const salaryPayments = pgTable(
+  "salary_payments",
+  {
+    id: serial("id").primaryKey(),
+    staffId: integer("staff_id").notNull().references(() => staff.id),
+    paymentMonth: date("payment_month").notNull(),
+    grossSalary: decimal("gross_salary", { precision: 12, scale: 2 }).notNull(),
+    totalDeductions: decimal("total_deductions", { precision: 12, scale: 2 }).notNull().default("0"),
+    netSalary: decimal("net_salary", { precision: 12, scale: 2 }).notNull(),
+    paymentDate: date("payment_date").notNull(),
+    paymentMethod: varchar("payment_method", { length: 50 }),
+    transactionId: varchar("transaction_id", { length: 100 }),
+    remarks: text("remarks"),
+    processedBy: integer("processed_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqueStaffMonth: uniqueIndex("salary_payments_staff_month_idx").on(table.staffId, table.paymentMonth),
+  })
+);
+
+export const staffLoans = pgTable("staff_loans", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull().references(() => staff.id),
+  loanType: varchar("loan_type", { length: 50 }).notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  approvedDate: date("approved_date").notNull(),
+  monthlyInstallment: decimal("monthly_installment", { precision: 12, scale: 2 }),
+  totalInstallments: integer("total_installments"),
+  installmentsPaid: integer("installments_paid").notNull().default(0),
+  outstandingBalance: decimal("outstanding_balance", { precision: 12, scale: 2 }),
+  interestRate: decimal("interest_rate", { precision: 5, scale: 2 }).notNull().default("0"),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  approvedBy: integer("approved_by").references(() => users.id),
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const loanRepayments = pgTable("loan_repayments", {
+  id: serial("id").primaryKey(),
+  loanId: integer("loan_id").notNull().references(() => staffLoans.id, { onDelete: "cascade" }),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  repaymentDate: date("repayment_date").notNull(),
+  salaryPaymentId: integer("salary_payment_id").references(() => salaryPayments.id),
+  remarks: text("remarks"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const staffAttendance = pgTable(
+  "staff_attendance",
+  {
+    id: serial("id").primaryKey(),
+    staffId: integer("staff_id").notNull().references(() => staff.id),
+    attendanceDate: date("attendance_date").notNull(),
+    status: varchar("status", { length: 20 }).notNull(),
+    checkIn: text("check_in"),
+    checkOut: text("check_out"),
+    remarks: text("remarks"),
+  },
+  (table) => ({
+    uniqueStaffDate: uniqueIndex("staff_attendance_staff_date_idx").on(table.staffId, table.attendanceDate),
+  })
+);
+
+// Insert schemas
+export const insertStaffSchema = createInsertSchema(staff).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSalaryStructureSchema = createInsertSchema(salaryStructures).omit({ id: true, createdAt: true });
+export const insertSalaryPaymentSchema = createInsertSchema(salaryPayments).omit({ id: true, createdAt: true });
+export const insertStaffLoanSchema = createInsertSchema(staffLoans).omit({ id: true, createdAt: true });
+export const insertLoanRepaymentSchema = createInsertSchema(loanRepayments).omit({ id: true, createdAt: true });
+export const insertStaffAttendanceSchema = createInsertSchema(staffAttendance).omit({ id: true });
+
+// Types
+export type Staff = typeof staff.$inferSelect;
+export type InsertStaff = z.infer<typeof insertStaffSchema>;
+export type SalaryStructure = typeof salaryStructures.$inferSelect;
+export type InsertSalaryStructure = z.infer<typeof insertSalaryStructureSchema>;
+export type SalaryPayment = typeof salaryPayments.$inferSelect;
+export type InsertSalaryPayment = z.infer<typeof insertSalaryPaymentSchema>;
+export type StaffLoan = typeof staffLoans.$inferSelect;
+export type InsertStaffLoan = z.infer<typeof insertStaffLoanSchema>;
+export type LoanRepayment = typeof loanRepayments.$inferSelect;
+export type InsertLoanRepayment = z.infer<typeof insertLoanRepaymentSchema>;
+export type StaffAttendance = typeof staffAttendance.$inferSelect;
+export type InsertStaffAttendance = z.infer<typeof insertStaffAttendanceSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WALLET SYSTEM — RELATIONS, INSERT SCHEMAS & TYPES
 // ─────────────────────────────────────────────────────────────────────────────
 
