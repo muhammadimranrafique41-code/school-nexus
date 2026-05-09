@@ -39,6 +39,7 @@ import AdminFamiliesPage from "./pages/admin/families";
 import AiAssistantPage from "./pages/ai-assistant";
 import WhatsappPage from "./pages/admin/whatsapp";
 import ExaminationPage from "./features/examination/ExaminationPage";
+import LedgerPage from "./features/ledger/LedgerPage";
 
 import TeacherDashboard from "./pages/teacher/dashboard";
 import TeacherAttendance from "./pages/teacher/attendance";
@@ -118,6 +119,9 @@ function Router() {
       </Route>
       <Route path="/examination">
         <ProtectedRoute allowedRoles={['admin', 'teacher']}><ExaminationPage /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/ledger">
+        <ProtectedRoute allowedRoles={['admin']}><LedgerPage /></ProtectedRoute>
       </Route>
       <Route path="/admin/finance/wallets">
         <ProtectedRoute allowedRoles={['admin']}><WalletManagementHub /></ProtectedRoute>

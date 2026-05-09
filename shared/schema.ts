@@ -2360,3 +2360,272 @@ export type PayFeeInput = z.infer<typeof payFeeSchema>;
 export type ParentWalletWithTransactions = ParentWallet & {
   transactions?: WalletTransaction[];
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEDGER — Unified cash-flow accounting table
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Permitted entry types for the unified ledger.
+ * - `income`  : money flowing INTO the school (fee receipts, fund receipts, etc.)
+ * - `expense` : money flowing OUT of the school (salary disbursements, operational costs, etc.)
+ */
+export const LEDGER_ENTRY_TYPES = ["income", "expense"] as const;
+export type LedgerEntryType = (typeof LEDGER_ENTRY_TYPES)[number];
+
+/**
+ * High-level category labels that identify the originating financial domain.
+ * Kept intentionally broad so new categories can be added without a schema migration.
+ */
+export const LEDGER_CATEGORIES = [
+  "fee",
+  "salary",
+  "fund",
+  "expense",
+  "other",
+] as const;
+export type LedgerCategory = (typeof LEDGER_CATEGORIES)[number];
+
+/**
+ * Fine-grained reference types that link a ledger row back to its source record.
+ * Mirrors the `sourceModule` + primary-key pair stored in `referenceId`.
+ */
+export const LEDGER_REFERENCE_TYPES = [
+  "fee_payment",
+  "salary_payment",
+  "fund_receipt",
+  "expense_entry",
+  "loan_repayment",
+  "wallet_deposit",
+  "manual_entry",
+] as const;
+export type LedgerReferenceType = (typeof LEDGER_REFERENCE_TYPES)[number];
+
+/**
+ * Source-module identifiers — which sub-system originated the transaction.
+ */
+export const LEDGER_SOURCE_MODULES = [
+  "fees",
+  "staff",
+  "funds",
+  "expenses",
+  "wallet",
+  "manual",
+] as const;
+export type LedgerSourceModule = (typeof LEDGER_SOURCE_MODULES)[number];
+
+/**
+ * `ledger` — the canonical, append-only accounting table.
+ *
+ * Every confirmed financial event (fee receipt, salary disbursement, fund
+ * receipt, operational expense) MUST produce exactly one row here.  The table
+ * is intentionally denormalised for read performance; the `referenceType` +
+ * `referenceId` pair provides a polymorphic back-link to the originating record
+ * in its own domain table.
+ *
+ * Indexed columns:
+ *   - `transaction_date`  → range queries for monthly / annual reports
+ *   - `entry_type`        → fast income vs. expense aggregation
+ *   - `source_module`     → per-module drill-down
+ *   - `reference_type` + `reference_id` → reverse-lookup from source records
+ */
+export const ledger = pgTable(
+  "ledger",
+  {
+    /** Auto-incrementing surrogate primary key. */
+    id: serial("id").primaryKey(),
+
+    /**
+     * Wall-clock timestamp of the financial event.
+     * Defaults to the current DB time; callers may override for back-dated entries.
+     */
+    transactionDate: timestamp("transaction_date").notNull().defaultNow(),
+
+    /**
+     * Double-entry direction: `'income'` (debit cash) or `'expense'` (credit cash).
+     * Constrained at the application layer via the `LEDGER_ENTRY_TYPES` constant.
+     */
+    entryType: varchar("entry_type", { length: 20 })
+      .notNull()
+      .$type<LedgerEntryType>(),
+
+    /**
+     * Broad financial domain: `'fee'`, `'salary'`, `'fund'`, `'expense'`, `'other'`.
+     * Used for P&L categorisation and dashboard aggregations.
+     */
+    category: varchar("category", { length: 50 })
+      .notNull()
+      .$type<LedgerCategory>(),
+
+    /**
+     * Monetary value of the transaction in the school's base currency.
+     * Stored as DECIMAL(12,2) to avoid floating-point rounding errors.
+     * Always positive; direction is encoded by `entryType`.
+     */
+    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+
+    /** Human-readable narrative for the transaction (optional). */
+    description: text("description"),
+
+    /**
+     * Discriminator for the polymorphic back-reference.
+     * e.g. `'fee_payment'` means `referenceId` points to `fee_payments.id`.
+     */
+    referenceType: varchar("reference_type", { length: 50 }).$type<LedgerReferenceType>(),
+
+    /**
+     * Primary key of the originating record in its domain table.
+     * Nullable for manual / system-generated entries that have no source record.
+     */
+    referenceId: integer("reference_id"),
+
+    /**
+     * Sub-system that produced this entry.
+     * Enables per-module cash-flow reports without joining domain tables.
+     */
+    sourceModule: varchar("source_module", { length: 50 }).$type<LedgerSourceModule>(),
+
+    /**
+     * FK to `users.id` — the authenticated user who triggered the transaction.
+     * Nullable to accommodate automated / system-generated entries.
+     */
+    createdBy: integer("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+
+    /** Row creation timestamp (immutable after insert). */
+    createdAt: timestamp("created_at").defaultNow(),
+
+    /** Last-modified timestamp — updated by application logic on corrections. */
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    /** Supports date-range queries used by monthly cash-flow reports. */
+    transactionDateIdx: index("ledger_transaction_date_idx").on(
+      table.transactionDate
+    ),
+    /** Enables fast income / expense split aggregations. */
+    entryTypeIdx: index("ledger_entry_type_idx").on(table.entryType),
+    /** Per-module drill-down without full-table scans. */
+    sourceModuleIdx: index("ledger_source_module_idx").on(table.sourceModule),
+    /** Reverse-lookup: given a source record, find its ledger row(s). */
+    referenceIdx: index("ledger_reference_idx").on(
+      table.referenceType,
+      table.referenceId
+    ),
+  })
+);
+
+// ── Relations ─────────────────────────────────────────────────────────────────
+
+export const ledgerRelations = relations(ledger, ({ one }) => ({
+  /** The admin / staff member who recorded the transaction. */
+  createdByUser: one(users, {
+    fields: [ledger.createdBy],
+    references: [users.id],
+  }),
+}));
+
+// ── Zod validation schemas ────────────────────────────────────────────────────
+
+/**
+ * Insert schema — used to validate API payloads before writing to the DB.
+ * `id`, `createdAt`, and `updatedAt` are omitted because they are DB-managed.
+ */
+export const insertLedgerSchema = createInsertSchema(ledger, {
+  entryType: z.enum(LEDGER_ENTRY_TYPES),
+  category: z.enum(LEDGER_CATEGORIES),
+  referenceType: z.enum(LEDGER_REFERENCE_TYPES).optional(),
+  sourceModule: z.enum(LEDGER_SOURCE_MODULES).optional(),
+  amount: z.string().regex(/^\d+(\.\d{1,2})?$/, "Amount must be a valid decimal"),
+}).omit({ id: true, createdAt: true, updatedAt: true });
+
+/**
+ * Select schema — mirrors the full DB row shape for API response validation.
+ */
+export const selectLedgerSchema = insertLedgerSchema.extend({
+  id: z.number().int().positive(),
+  createdAt: z.date().nullable(),
+  updatedAt: z.date().nullable(),
+});
+
+// ── TypeScript types ──────────────────────────────────────────────────────────
+
+/** Full DB row as returned by a SELECT query. */
+export type Ledger = typeof ledger.$inferSelect;
+
+/** Validated insert payload (Zod-inferred). */
+export type InsertLedger = z.infer<typeof insertLedgerSchema>;
+
+/**
+ * Convenience type for the `recordTransaction` service method.
+ * Callers supply the domain-specific fields; the service fills in `createdAt`.
+ */
+export type RecordTransactionInput = {
+  transactionDate?: Date;
+  entryType: LedgerEntryType;
+  category: LedgerCategory;
+  /** Monetary amount — must be positive. */
+  amount: number | string;
+  description?: string;
+  referenceType?: LedgerReferenceType;
+  /** PK of the originating record in its domain table. */
+  referenceId?: number;
+  sourceModule?: LedgerSourceModule;
+  /** User ID of the operator who triggered the transaction. */
+  createdBy?: number;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Expenses table
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Allowed expense categories — kept in sync with AddExpenseDialog dropdown. */
+export const EXPENSE_CATEGORIES = [
+  "utilities",
+  "maintenance",
+  "supplies",
+  "salaries",
+  "rent",
+  "transport",
+  "food",
+  "it_equipment",
+  "marketing",
+  "other",
+] as const;
+
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+export const expenses = pgTable("expenses", {
+  id:          serial("id").primaryKey(),
+  amount:      decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  category:    varchar("category", { length: 50 }).notNull(),
+  description: text("description"),
+  expenseDate: date("expense_date").notNull(),
+  recordedBy:  integer("recorded_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt:   timestamp("created_at").defaultNow(),
+});
+
+export const insertExpenseSchema = createInsertSchema(expenses, {
+  amount:      z.string().regex(/^\d+(\.\d{1,2})?$/, "Amount must be a valid positive decimal"),
+  category:    z.enum(EXPENSE_CATEGORIES),
+  description: z.string().max(500).optional(),
+  expenseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
+}).omit({ id: true, createdAt: true });
+
+export type Expense       = typeof expenses.$inferSelect;
+export type InsertExpense = z.infer<typeof insertExpenseSchema>;
+
+/**
+ * Shape returned by the `getCashFlowSummary` service method.
+ * Mirrors the `cash_flow_summary` materialised view columns.
+ */
+export type CashFlowSummaryRow = {
+  /** Calendar year, e.g. `2025`. */
+  year: number;
+  /** Calendar month (1–12). */
+  month: number;
+  totalIncome: string;
+  totalExpense: string;
+  netCashFlow: string;
+};

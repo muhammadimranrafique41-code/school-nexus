@@ -66,6 +66,7 @@ const adminSections: SidebarSection[] = [
     label: "Finance",
     items: [
       { title: "Finance", url: "/admin/finance", icon: Calculator },
+      { title: "Ledger & Reports", url: "/admin/ledger", icon: BookOpen, badge: "New" },
       { title: "Wallets", url: "/admin/finance/wallets", icon: Wallet },
       {
         title: "Family Voucher Generator",

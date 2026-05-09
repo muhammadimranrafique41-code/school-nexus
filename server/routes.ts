@@ -14,6 +14,11 @@ import {
   studentSubmissions,
   timetableDays,
   users,
+  walletTransactions,
+  parentWallets,
+  expenses,
+  insertExpenseSchema,
+  EXPENSE_CATEGORIES,
   type ResultWithStudent,
   type User,
   type InsertFamily,
@@ -5038,6 +5043,281 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", 'inline; filename="marksheets.pdf"');
       res.send(pdf);
+    })
+  );
+
+  // ── Wallet Transactions (admin aggregate view) ────────────────────────────
+  /** GET /api/ledger/wallet-transactions
+   *  Returns all wallet_transactions joined with student name, newest first.
+   *  Query params: limit (default 200), type (filter by tx type), search (student name)
+   */
+  app.get(
+    "/api/ledger/wallet-transactions",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const limit = Math.min(Number(req.query.limit) || 200, 500);
+      const typeFilter = typeof req.query.type === "string" ? req.query.type : null;
+      const search = typeof req.query.search === "string" ? req.query.search.trim().toLowerCase() : null;
+
+      // Single JOIN query: wallet_transactions → parent_wallets → users
+      const rows = await db
+        .select({
+          id:           walletTransactions.id,
+          walletId:     walletTransactions.walletId,
+          amount:       walletTransactions.amount,
+          type:         walletTransactions.type,
+          referenceId:  walletTransactions.referenceId,
+          description:  walletTransactions.description,
+          createdBy:    walletTransactions.createdBy,
+          createdAt:    walletTransactions.createdAt,
+          studentId:    parentWallets.studentId,
+          studentName:  users.name,
+          balanceAfter: parentWallets.balance,
+        })
+        .from(walletTransactions)
+        .innerJoin(parentWallets, eq(walletTransactions.walletId, parentWallets.id))
+        .innerJoin(users, eq(parentWallets.studentId, users.id))
+        .orderBy(desc(walletTransactions.createdAt))
+        .limit(limit);
+
+      // Apply optional filters in JS (avoids complex SQL for small datasets)
+      let filtered = rows;
+      if (typeFilter) filtered = filtered.filter((r) => r.type === typeFilter);
+      if (search) filtered = filtered.filter((r) => r.studentName?.toLowerCase().includes(search));
+
+      // Compute summary totals
+      const totalDeposited = filtered
+        .filter((r) => parseFloat(r.amount) > 0)
+        .reduce((s, r) => s + parseFloat(r.amount), 0);
+      const totalSpent = filtered
+        .filter((r) => parseFloat(r.amount) < 0)
+        .reduce((s, r) => s + Math.abs(parseFloat(r.amount)), 0);
+
+      sendApiSuccess(res, {
+        transactions: filtered,
+        total: filtered.length,
+        summary: {
+          totalDeposited: totalDeposited.toFixed(2),
+          totalSpent: totalSpent.toFixed(2),
+          netBalance: (totalDeposited - totalSpent).toFixed(2),
+        },
+      });
+    })
+  );
+
+  // ── Expenses API Routes ───────────────────────────────────────────────────
+
+  /**
+   * POST /api/expenses
+   * Record a new operational expense and post a matching ledger entry.
+   * Admin only.
+   */
+  app.post(
+    "/api/expenses",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const parsed = insertExpenseSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({
+          message: "Validation failed",
+          errors: parsed.error.flatten().fieldErrors,
+        });
+        return;
+      }
+
+      const data = parsed.data;
+
+      // Insert expense row
+      const [expense] = await db
+        .insert(expenses)
+        .values({
+          amount:      data.amount,
+          category:    data.category,
+          description: data.description ?? null,
+          expenseDate: data.expenseDate,
+          recordedBy:  user.id,
+        })
+        .returning();
+
+      // Post a matching ledger entry so cash-flow reports include this expense
+      const expenseLedgerSvc = new LedgerService();
+      await expenseLedgerSvc.recordTransaction({
+        transactionDate: new Date(data.expenseDate),
+        entryType:       "expense",
+        category:        "expense",
+        sourceModule:    "expenses",
+        referenceType:   "expense_entry",
+        referenceId:     expense.id,
+        amount:          data.amount,
+        description:     data.description ?? `${data.category} expense`,
+        createdBy:       user.id,
+      });
+
+      sendApiSuccess(res, { expense }, undefined, 201);
+    })
+  );
+
+  /**
+   * GET /api/expenses
+   * List expenses with optional category filter.
+   * Admin only.
+   */
+  app.get(
+    "/api/expenses",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const limit = Math.min(Number(req.query.limit) || 100, 500);
+      const category = typeof req.query.category === "string" ? req.query.category : null;
+
+      const rows = await db
+        .select({
+          id:             expenses.id,
+          amount:         expenses.amount,
+          category:       expenses.category,
+          description:    expenses.description,
+          expenseDate:    expenses.expenseDate,
+          recordedBy:     expenses.recordedBy,
+          createdAt:      expenses.createdAt,
+          recordedByName: users.name,
+        })
+        .from(expenses)
+        .leftJoin(users, eq(expenses.recordedBy, users.id))
+        .orderBy(desc(expenses.expenseDate), desc(expenses.createdAt))
+        .limit(limit);
+
+      const filtered = category ? rows.filter((r) => r.category === category) : rows;
+      const totalAmount = filtered.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
+
+      sendApiSuccess(res, {
+        expenses: filtered,
+        total: filtered.length,
+        totalAmount: totalAmount.toFixed(2),
+        categories: EXPENSE_CATEGORIES,
+      });
+    })
+  );
+
+  // ── Ledger API Routes ─────────────────────────────────────────────────────
+  // All routes require admin role. The ledger is the unified cash-flow register.
+
+  const ledgerSvc = new LedgerService();
+
+  /** GET /api/ledger/cash-flow-summary — monthly income/expense/net from the view */
+  app.get(
+    "/api/ledger/cash-flow-summary",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const limit = Math.min(Number(req.query.limit) || 24, 60);
+      sendApiSuccess(res, await ledgerSvc.getCashFlowSummary(limit));
+    })
+  );
+
+  /** GET /api/ledger/period-summary — KPI totals for a date range */
+  app.get(
+    "/api/ledger/period-summary",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const schema = z.object({
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        to:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      });
+      const { from, to } = schema.parse(req.query);
+      sendApiSuccess(res, await ledgerSvc.getPeriodSummary(from, to));
+    })
+  );
+
+  /** GET /api/ledger/category-breakdown — per-category totals for a date range */
+  app.get(
+    "/api/ledger/category-breakdown",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const schema = z.object({
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        to:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      });
+      const { from, to } = schema.parse(req.query);
+      sendApiSuccess(res, await ledgerSvc.getCategoryBreakdown(from, to));
+    })
+  );
+
+  /** GET /api/ledger/module-breakdown — per-source-module totals for a date range */
+  app.get(
+    "/api/ledger/module-breakdown",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const schema = z.object({
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        to:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      });
+      const { from, to } = schema.parse(req.query);
+      sendApiSuccess(res, await ledgerSvc.getModuleBreakdown(from, to));
+    })
+  );
+
+  /** GET /api/ledger/entries — paginated ledger register with optional filters */
+  app.get(
+    "/api/ledger/entries",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const schema = z.object({
+        from:         z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        to:           z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        entryType:    z.enum(["income", "expense"]).optional(),
+        sourceModule: z.enum(["fees", "staff", "funds", "expenses", "wallet", "manual"]).optional(),
+        page:         z.coerce.number().int().min(1).default(1),
+        pageSize:     z.coerce.number().int().min(1).max(100).default(25),
+      });
+      const { from, to, entryType, sourceModule, page, pageSize } = schema.parse(req.query);
+
+      // Build entries using available service methods
+      let entries;
+      if (entryType) {
+        entries = await ledgerSvc.getByEntryType(entryType, from, to, pageSize * page);
+      } else if (sourceModule) {
+        entries = await ledgerSvc.getBySourceModule(sourceModule, pageSize * page);
+      } else if (from && to) {
+        // Use period query via getByEntryType for both types combined
+        const [income, expense] = await Promise.all([
+          ledgerSvc.getByEntryType("income", from, to, 5000),
+          ledgerSvc.getByEntryType("expense", from, to, 5000),
+        ]);
+        entries = [...income, ...expense].sort(
+          (a, b) => new Date(b.transactionDate!).getTime() - new Date(a.transactionDate!).getTime()
+        );
+      } else {
+        entries = await ledgerSvc.getBySourceModule("fees", pageSize * page);
+      }
+
+      const total = entries.length;
+      const offset = (page - 1) * pageSize;
+      const paginated = entries.slice(offset, offset + pageSize);
+
+      sendApiSuccess(res, { entries: paginated, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
+    })
+  );
+
+  /** GET /api/ledger/entries/:id — single ledger entry by PK */
+  app.get(
+    "/api/ledger/entries/:id",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const id = parseNumberValue(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) throw new AppError("Invalid ledger entry id", "INVALID_ID", 422);
+      const entry = await ledgerSvc.getById(id);
+      if (!entry) throw new AppError("Ledger entry not found", "NOT_FOUND", 404);
+      sendApiSuccess(res, entry);
     })
   );
 
