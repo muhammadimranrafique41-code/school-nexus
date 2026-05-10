@@ -89,6 +89,17 @@ import {
   users,
 } from "../shared/schema.js";
 import {
+  reportDefinitions,
+  reportHistory,
+  reportCache,
+  type InsertReportDefinition,
+  type InsertReportHistory,
+  type InsertReportCache,
+  type ReportDefinition,
+  type ReportHistory,
+  type ReportCache,
+} from "../shared/schema.js";
+import {
   buildFeeBalanceSummary,
   buildFinanceVoucherFileName,
   buildFinanceVoucherPreview,
@@ -460,6 +471,20 @@ export interface IStorage {
     openInvoices: number;
     overdueInvoices: number;
   }>;
+
+  // ── Report Management ─────────────────────────────────────
+  getReportDefinitions(): Promise<ReportDefinition[]>;
+  getReportDefinition(id: number): Promise<ReportDefinition | undefined>;
+  createReportDefinition(record: InsertReportDefinition): Promise<ReportDefinition>;
+  updateReportDefinition(id: number, updates: Partial<InsertReportDefinition>): Promise<ReportDefinition | undefined>;
+  deleteReportDefinition(id: number): Promise<boolean>;
+  getReportHistory(): Promise<ReportHistory[]>;
+  getReportHistoryByDefinition(definitionId: number): Promise<ReportHistory[]>;
+  createReportHistory(record: InsertReportHistory): Promise<ReportHistory>;
+  incrementReportDownloadCount(id: number): Promise<ReportHistory | undefined>;
+  getReportCache(reportKey: string): Promise<ReportCache | undefined>;
+  setReportCache(record: InsertReportCache): Promise<ReportCache>;
+  deleteExpiredReportCache(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3446,6 +3471,116 @@ export class DatabaseStorage implements IStorage {
       .from(financeLedgerEntries)
       .where(eq(financeLedgerEntries.feeId, feeId));
     return entries.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  }
+
+  // ── Report Management ─────────────────────────────────────
+
+  async getReportDefinitions(): Promise<ReportDefinition[]> {
+    return db.select().from(reportDefinitions).orderBy(desc(reportDefinitions.createdAt));
+  }
+
+  async getReportDefinition(id: number): Promise<ReportDefinition | undefined> {
+    const [row] = await db
+      .select()
+      .from(reportDefinitions)
+      .where(eq(reportDefinitions.id, id));
+    return row;
+  }
+
+  async createReportDefinition(record: InsertReportDefinition): Promise<ReportDefinition> {
+    const [created] = await db
+      .insert(reportDefinitions)
+      .values(record)
+      .returning();
+    return created;
+  }
+
+  async updateReportDefinition(
+    id: number,
+    updates: Partial<InsertReportDefinition>
+  ): Promise<ReportDefinition | undefined> {
+    const [updated] = await db
+      .update(reportDefinitions)
+      .set(updates)
+      .where(eq(reportDefinitions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteReportDefinition(id: number): Promise<boolean> {
+    const [deleted] = await db
+      .delete(reportDefinitions)
+      .where(eq(reportDefinitions.id, id))
+      .returning({ id: reportDefinitions.id });
+    return !!deleted;
+  }
+
+  async getReportHistory(): Promise<ReportHistory[]> {
+    return db
+      .select()
+      .from(reportHistory)
+      .orderBy(desc(reportHistory.generatedAt));
+  }
+
+  async getReportHistoryByDefinition(definitionId: number): Promise<ReportHistory[]> {
+    return db
+      .select()
+      .from(reportHistory)
+      .where(eq(reportHistory.reportDefinitionId, definitionId))
+      .orderBy(desc(reportHistory.generatedAt));
+  }
+
+  async createReportHistory(record: InsertReportHistory): Promise<ReportHistory> {
+    const [created] = await db
+      .insert(reportHistory)
+      .values(record)
+      .returning();
+    return created;
+  }
+
+  async incrementReportDownloadCount(id: number): Promise<ReportHistory | undefined> {
+    const [updated] = await db
+      .update(reportHistory)
+      .set({
+        downloadCount: sql`${reportHistory.downloadCount} + 1`,
+      })
+      .where(eq(reportHistory.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getReportCache(reportKey: string): Promise<ReportCache | undefined> {
+    const [row] = await db
+      .select()
+      .from(reportCache)
+      .where(
+        and(
+          eq(reportCache.reportKey, reportKey),
+          sql`(${reportCache.expiresAt} IS NULL OR ${reportCache.expiresAt} > CURRENT_TIMESTAMP)`
+        )
+      );
+    return row;
+  }
+
+  async setReportCache(record: InsertReportCache): Promise<ReportCache> {
+    const [created] = await db
+      .insert(reportCache)
+      .values(record)
+      .returning();
+    return created;
+  }
+
+  async deleteExpiredReportCache(): Promise<number> {
+    const deleted = await db
+      .delete(reportCache)
+      .where(
+        and(
+          sql`${reportCache.expiresAt} IS NOT NULL`,
+          sql`${reportCache.expiresAt} <= CURRENT_TIMESTAMP`
+        )
+      )
+      .returning({ id: reportCache.id });
+    return deleted.length;
   }
 }
 

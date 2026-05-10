@@ -4,9 +4,16 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TimetableSettingsProvider } from "@/lib/timetable-settings-bus";
+import { UiStateProvider } from "@/hooks/useUiState";
+import { Header } from "@/components/layout/Header";
+import { SideNav } from "@/components/layout/SideNav";
 import NotFound from "@/pages/not-found";
 
 import Login from "./pages/login";
+import DashboardPage from "./pages/DashboardPage";
+import AttendancePage from "./pages/AttendancePage";
+import FinancePage from "./pages/FinancePage";
+import HomeworkPage from "./pages/HomeworkPage";
 import AdminDashboard from "./pages/admin/dashboard";
 import AdminUsers from "./pages/admin/users";
 import AdminAcademics from "./pages/admin/academics";
@@ -36,6 +43,9 @@ import AdminHomeworkDiary from "./pages/admin/homework-diary";
 import AdminDailyDiary from "./pages/admin/daily-diary";
 import AdminStudentProfile from "./pages/admin/student-profile";
 import AdminFamiliesPage from "./pages/admin/families";
+import AdminReportsPage from "./pages/admin/reports";
+import FinancialReportsPage from "./pages/admin/financial-reports";
+import ActivityLogsPage from "./pages/admin/activity-logs";
 import AiAssistantPage from "./pages/ai-assistant";
 import WhatsappPage from "./pages/admin/whatsapp";
 import ExaminationPage from "./features/examination/ExaminationPage";
@@ -67,6 +77,60 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
+
+      {/* PRD Module Routes */}
+      <Route path="/dashboard">
+        <UiStateProvider>
+          <div className="flex h-screen w-full overflow-hidden bg-slate-50">
+            <SideNav />
+            <div className="flex flex-1 flex-col min-w-0">
+              <Header />
+              <main className="flex-1 overflow-y-auto p-5">
+                <DashboardPage />
+              </main>
+            </div>
+          </div>
+        </UiStateProvider>
+      </Route>
+      <Route path="/attendance">
+        <UiStateProvider>
+          <div className="flex h-screen w-full overflow-hidden bg-slate-50">
+            <SideNav />
+            <div className="flex flex-1 flex-col min-w-0">
+              <Header />
+              <main className="flex-1 overflow-y-auto p-5">
+                <AttendancePage />
+              </main>
+            </div>
+          </div>
+        </UiStateProvider>
+      </Route>
+      <Route path="/finance">
+        <UiStateProvider>
+          <div className="flex h-screen w-full overflow-hidden bg-slate-50">
+            <SideNav />
+            <div className="flex flex-1 flex-col min-w-0">
+              <Header />
+              <main className="flex-1 overflow-y-auto p-5">
+                <FinancePage />
+              </main>
+            </div>
+          </div>
+        </UiStateProvider>
+      </Route>
+      <Route path="/homework">
+        <UiStateProvider>
+          <div className="flex h-screen w-full overflow-hidden bg-slate-50">
+            <SideNav />
+            <div className="flex flex-1 flex-col min-w-0">
+              <Header />
+              <main className="flex-1 overflow-y-auto p-5">
+                <HomeworkPage />
+              </main>
+            </div>
+          </div>
+        </UiStateProvider>
+      </Route>
 
       {/* Admin Routes */}
       <Route path="/admin/users">
@@ -155,6 +219,15 @@ function Router() {
       </Route>
       <Route path="/admin/settings">
         <ProtectedRoute allowedRoles={['admin']}><AdminSettings /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/reports">
+        <ProtectedRoute allowedRoles={['admin']}><AdminReportsPage /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/activity-logs">
+        <ProtectedRoute allowedRoles={['admin']}><ActivityLogsPage /></ProtectedRoute>
+      </Route>
+      <Route path="/admin/reports/financial">
+        <ProtectedRoute allowedRoles={['admin', 'teacher']}><FinancialReportsPage /></ProtectedRoute>
       </Route>
       <Route path="/admin">
         <ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>

@@ -1,0 +1,86 @@
+{
+  "project": "School Nexus Frontend",
+  "version": "1.0.0",
+  "lastUpdated": "2026-05-10",
+  "description": "Product Requirements Document for the School Nexus web frontend.",
+  "roles": [
+    {
+      "name": "Admin",
+      "permissions": ["manageUsers", "configureSystem", "viewAllReports"]
+    },
+    {
+      "name": "Teacher",
+      "permissions": ["createAssignments", "gradeSubmissions", "viewClassAttendance", "manageClassFinance"]
+    },
+    {
+      "name": "Student",
+      "permissions": ["viewDashboard", "submitAssignments", "viewAttendance", "payFees"]
+    },
+    {
+      "name": "Parent",
+      "permissions": ["viewStudentDashboard", "trackAttendance", "payStudentFees", "viewAssignments"]
+    }
+  ],
+  "modules": {
+    "dashboard": {
+      "description": "Landing page after login showing quick overview of key metrics.",
+      "components": ["Header", "SideNav", "StatsCards", "RecentActivity", "Notifications"]
+    },
+    "attendanceTracking": {
+      "description": "Record and view daily attendance for classes.",
+      "components": ["AttendanceCalendar", "ClassList", "StudentRow", "BulkUpdateControls"]
+    },
+    "financeFeeManagement": {
+      "description": "Handle fee structures, payments, and financial reports.",
+      "components": ["FeeTable", "PaymentForm", "InvoiceHistory", "FinancialSummary"]
+    },
+    "homeworkAssignment": {
+      "description": "Create, distribute, and review homework/assignments.",
+      "components": ["AssignmentList", "AssignmentDetail", "SubmissionUploader", "GradingPanel"]
+    }
+  },
+  "uiUx": {
+    "navigation": {
+      "type": "sidebar + top bar",
+      "routes": ["/dashboard", "/attendance", "/finance", "/homework"]
+    },
+    "layoutGuidelines": {
+      "gridSystem": "12‑column responsive grid",
+      "spacing": "8px base unit",
+      "typography": "Tailwind defaults with custom font family",
+      "colorPalette": "Primary #1E40AF, secondary #D97706, neutral shades"
+    },
+    "componentHierarchy": {
+      "Page": "Header > SideNav > MainContent",
+      "MainContent": "module‑specific container > reusable UI components"
+    },
+    "responsiveness": "Mobile‑first, breakpoints at sm (640px), md (768px), lg (1024px)"
+  },
+  "stateManagement": {
+    "strategy": "React Context for global UI state + Redux Toolkit for domain data",
+    "storeSlices": ["auth", "dashboard", "attendance", "finance", "homework"],
+    "dataFetching": "RTK Query with auto‑generated hooks, caching, and optimistic updates",
+    "sideEffects": "createAsyncThunk for async actions, middleware for logging and error handling"
+  },
+  "apiIntegration": {
+    "baseUrl": "/api/v1",
+    "auth": "Bearer token from login endpoint, stored in HttpOnly cookie",
+    "errorHandling": "Standardized error shape {code, message, details}, mapped to UI toast notifications",
+    "rateLimiting": "Client respects X‑Rate‑Limit headers, exponential backoff on 429",
+    "openAPISpec": "Located at /docs/openapi.json for contract consistency"
+  },
+  "testing": {
+    "unit": {
+      "framework": "Jest",
+      "reactTestingLibrary": true,
+      "coverageTarget": "90% of statements"
+    },
+    "integration": "React Testing Library with mock Service Worker for API contracts",
+    "e2e": "Playwright scripts covering critical user flows"
+  },
+  "quality": {
+    "lint": "ESLint with Airbnb + TypeScript rules",
+    "format": "Prettier (2‑space, single quotes, no semicolons)",
+    "typeChecking": "strict TypeScript (noImplicitAny, strictNullChecks)"
+  }
+}

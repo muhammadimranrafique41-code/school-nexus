@@ -111,9 +111,12 @@ import {
   sendBulkVoucherNotifications,
   sendFeeReminder,
 } from "./services/whatsappVoucherService.js";
+import { reportService } from "./services/reportService.js";
 import { historyService } from "./services/historyService.js";
 import { hasPermission } from "./middleware/rbac.js";
 import { financeRateLimiterSync, initRateLimiters } from "./middleware/rateLimiter.js";
+import { activityLogger, logExplicitActivity } from "./middleware/activityLogger.js";
+import { getActivityLogs, getActivityLogById, pruneOldActivityLogs } from "./services/activityLogService.js";
 import { createPresignedDownload, createPresignedUpload } from "./s3.js";
 import {
   broadcastHomeworkDiaryPublish,
@@ -496,6 +499,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.use(createSessionMiddleware());
 
+  // Activity logging middleware for audit trail
+  app.use(activityLogger);
+
   const getSessionUser = async (req: Request) => (req.session.userId ? storage.getUser(req.session.userId) : undefined);
 
   const requireUser = async (req: Request, res: Response): Promise<User | undefined> => {
@@ -511,7 +517,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await requireUser(req, res);
     if (!user) return undefined;
     if (!allowedRoles.includes(user.role)) {
-      res.status(403).json({ message: "Forbidden" });
+      console.error(`Access denied: User ${user.id} (${user.email}) with role '${user.role}' attempted to access resource requiring roles: ${allowedRoles.join(', ')}`);
+      res.status(403).json({
+        message: "Forbidden",
+        requiredRoles: allowedRoles,
+        userRole: user.role
+      });
       return undefined;
     }
     return user;
@@ -1014,11 +1025,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post(api.families.pay.path, async (req, res) => {
     try {
-      const user = await requireRole(req, res, ["admin"]);
+      const user = await requireRole(req, res, ["admin", "student"]);
       if (!user) return;
       const familyId = parseNumberValue(req.params.id);
       if (Number.isNaN(familyId)) {
         return res.status(400).json({ message: "Invalid family id", field: "id" });
+      }
+      // Students can only pay for their own family
+      if (user.role === "student" && user.familyId !== familyId) {
+        return res.status(403).json({ message: "Students can only pay for their own family" });
       }
       const input = api.families.pay.input.parse(req.body);
       const result = await storage.payFamily(familyId, input, user.id);
@@ -5554,6 +5569,302 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const entry = await ledgerSvc.getById(id);
       if (!entry) throw new AppError("Ledger entry not found", "NOT_FOUND", 404);
       sendApiSuccess(res, entry);
+    })
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // REPORTS MANAGEMENT ROUTES
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** GET /api/reports/definitions — list all report definitions */
+  app.get(
+    "/api/reports/definitions",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const definitions = await reportService.getDefinitions();
+      sendApiSuccess(res, definitions);
+    })
+  );
+
+  /** GET /api/reports/definitions/:id — get one report definition */
+  app.get(
+    "/api/reports/definitions/:id",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const id = parseNumberValue(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) throw new AppError("Invalid definition id", "INVALID_ID", 422);
+      const definition = await reportService.getDefinition(id);
+      if (!definition) throw new AppError("Report definition not found", "NOT_FOUND", 404);
+      sendApiSuccess(res, definition);
+    })
+  );
+
+  /** POST /api/reports/definitions — create a report definition */
+  app.post(
+    "/api/reports/definitions",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const data = z.object({
+        name: z.string().min(1).max(100),
+        category: z.enum(["academic", "fee", "finance", "attendance"]),
+        description: z.string().optional().nullable(),
+        parameters: z.array(z.string()).optional().nullable(),
+        queryTemplate: z.string().optional().nullable(),
+      }).parse(req.body);
+      const definition = await reportService.createDefinition(data);
+      sendApiSuccess(res, definition, undefined, 201);
+    })
+  );
+
+  /** PUT /api/reports/definitions/:id — update a report definition */
+  app.put(
+    "/api/reports/definitions/:id",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const id = parseNumberValue(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) throw new AppError("Invalid definition id", "INVALID_ID", 422);
+      const data = z.object({
+        name: z.string().min(1).max(100).optional(),
+        category: z.enum(["academic", "fee", "finance", "attendance"]).optional(),
+        description: z.string().optional().nullable(),
+        parameters: z.array(z.string()).optional().nullable(),
+        queryTemplate: z.string().optional().nullable(),
+      }).parse(req.body);
+      const definition = await reportService.updateDefinition(id, data);
+      if (!definition) throw new AppError("Report definition not found", "NOT_FOUND", 404);
+      sendApiSuccess(res, definition);
+    })
+  );
+
+  /** DELETE /api/reports/definitions/:id — delete a report definition */
+  app.delete(
+    "/api/reports/definitions/:id",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const id = parseNumberValue(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) throw new AppError("Invalid definition id", "INVALID_ID", 422);
+      const deleted = await reportService.deleteDefinition(id);
+      if (!deleted) throw new AppError("Report definition not found", "NOT_FOUND", 404);
+      sendApiSuccess(res, { success: true });
+    })
+  );
+
+  /** GET /api/reports/history — list report generation history */
+  app.get(
+    "/api/reports/history",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const history = await reportService.getHistory();
+      sendApiSuccess(res, history);
+    })
+  );
+
+  /** GET /api/reports/history/definition/:definitionId — history by definition */
+  app.get(
+    "/api/reports/history/definition/:definitionId",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const definitionId = parseNumberValue(req.params.definitionId);
+      if (!Number.isFinite(definitionId) || definitionId <= 0) throw new AppError("Invalid definition id", "INVALID_ID", 422);
+      const history = await reportService.getHistoryByDefinition(definitionId);
+      sendApiSuccess(res, history);
+    })
+  );
+
+  /** POST /api/reports/history — record a report generation */
+  app.post(
+    "/api/reports/history",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const data = z.object({
+        reportDefinitionId: z.number().int().positive().nullable().optional(),
+        parametersUsed: z.record(z.unknown()).optional().nullable(),
+        fileUrl: z.string().max(500).optional().nullable(),
+        fileSize: z.number().int().optional().nullable(),
+      }).parse(req.body);
+      const history = await reportService.recordGeneration({
+        ...data,
+        generatedBy: user.id,
+      });
+      sendApiSuccess(res, history, undefined, 201);
+    })
+  );
+
+  /** POST /api/reports/history/:id/download — increment download count */
+  app.post(
+    "/api/reports/history/:id/download",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const id = parseNumberValue(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) throw new AppError("Invalid history id", "INVALID_ID", 422);
+      const history = await reportService.incrementDownload(id);
+      if (!history) throw new AppError("Report history not found", "NOT_FOUND", 404);
+      sendApiSuccess(res, history);
+    })
+  );
+
+  /** GET /api/reports/cache/:reportKey — get cached report data */
+  app.get(
+    "/api/reports/cache/:reportKey",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const cached = await reportService.getCached(req.params.reportKey);
+      if (!cached) return sendApiSuccess(res, null);
+      sendApiSuccess(res, cached);
+    })
+  );
+
+  /** POST /api/reports/cache — set cached report data */
+  app.post(
+    "/api/reports/cache",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const data = z.object({
+        reportKey: z.string().min(1).max(255),
+        data: z.any(),
+        expiresAt: z.string().optional().nullable(),
+      }).parse(req.body);
+      const cached = await reportService.setCache(data);
+      sendApiSuccess(res, cached, undefined, 201);
+    })
+  );
+
+  /** POST /api/reports/cache/clean — remove expired cache entries */
+  app.post(
+    "/api/reports/cache/clean",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const deletedCount = await reportService.cleanExpiredCache();
+      sendApiSuccess(res, { deletedCount });
+    })
+  );
+
+  // ── Financial Dashboard Report Endpoints ─────────────────────────────────
+
+  /** GET /api/reports/financial/monthly-fee-summary */
+  app.get(
+    "/api/reports/financial/monthly-fee-summary",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+      const data = await reportService.getMonthlyFeeSummary(user);
+      sendApiSuccess(res, data);
+    })
+  );
+
+  /** GET /api/reports/financial/monthly-funds-summary */
+  app.get(
+    "/api/reports/financial/monthly-funds-summary",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+      const data = await reportService.getMonthlyFundsSummary(user);
+      sendApiSuccess(res, data);
+    })
+  );
+
+  /** GET /api/reports/financial/monthly-pnl */
+  app.get(
+    "/api/reports/financial/monthly-pnl",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+      const data = await reportService.getMonthlyPnL(user);
+      sendApiSuccess(res, data);
+    })
+  );
+
+  /** GET /api/reports/financial/overdue-fees-snapshot */
+  app.get(
+    "/api/reports/financial/overdue-fees-snapshot",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+      const data = await reportService.getOverdueFeesSnapshot(user);
+      sendApiSuccess(res, data);
+    })
+  );
+
+  /** GET /api/reports/financial/daily-fee-collection */
+  app.get(
+    "/api/reports/financial/daily-fee-collection",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin", "teacher"]);
+      if (!user) return;
+      const data = await reportService.getDailyFeeCollectionReport(user);
+      sendApiSuccess(res, data);
+    })
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Activity Logs API (Admin only)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** GET /api/activity-logs - List activity logs with filtering and pagination */
+  app.get(
+    "/api/activity-logs",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const filters = {
+        userId: req.query.userId ? parseInt(req.query.userId as string, 10) : undefined,
+        userEmail: req.query.userEmail as string | undefined,
+        action: req.query.action as string | undefined,
+        entityType: req.query.entityType as string | undefined,
+        entityId: req.query.entityId ? parseInt(req.query.entityId as string, 10) : undefined,
+        startDate: req.query.startDate as string | undefined,
+        endDate: req.query.endDate as string | undefined,
+        page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
+        limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 50,
+      };
+
+      const result = await getActivityLogs(filters);
+      sendApiSuccess(res, result);
+    })
+  );
+
+  /** GET /api/activity-logs/:id - Get single activity log detail */
+  app.get(
+    "/api/activity-logs/:id",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const id = parseInt(req.params.id, 10);
+      const log = await getActivityLogById(id);
+
+      if (!log) {
+        return res.status(404).json({ success: false, error: "Activity log not found" });
+      }
+
+      sendApiSuccess(res, log);
+    })
+  );
+
+  /** POST /api/activity-logs/prune - Prune old activity logs (retention policy) */
+  app.post(
+    "/api/activity-logs/prune",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const retentionDays = req.body.retentionDays ?? 365;
+      const deleted = await pruneOldActivityLogs(retentionDays);
+
+      sendApiSuccess(res, { deleted });
     })
   );
 

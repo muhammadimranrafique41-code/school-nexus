@@ -81,6 +81,24 @@ export async function initializeApp() {
       const { sql } = await import("drizzle-orm");
       const { db } = await import("./db.js");
       console.log("Checking database schema alignment...");
+      // ── Reports management module tables ─────────────────────────────
+      await db.execute(sql`DO $$ BEGIN CREATE TYPE report_category AS ENUM ('academic','fee','finance','attendance'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS report_definitions (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, category report_category NOT NULL, description TEXT, parameters JSONB, query_template TEXT, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS report_history (id SERIAL PRIMARY KEY, report_definition_id INTEGER REFERENCES report_definitions(id) ON DELETE SET NULL, generated_by INTEGER REFERENCES users(id) ON DELETE SET NULL, parameters_used JSONB, file_url VARCHAR(500), file_size INTEGER, generated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, download_count INTEGER NOT NULL DEFAULT 0);`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_report_history_user ON report_history(generated_by);`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_report_history_date ON report_history(generated_at);`);
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS report_cache (id SERIAL PRIMARY KEY, report_key VARCHAR(255) NOT NULL UNIQUE, data JSONB NOT NULL, generated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMP);`);
+
+      // ── Activity Logs table for audit trail ───────────────────────────
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS activity_logs (id BIGSERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, user_email TEXT NOT NULL, user_role TEXT NOT NULL, action TEXT NOT NULL CHECK (action IN ('CREATE','UPDATE','DELETE','LOGIN','LOGOUT','EXPORT','VIEW','APPROVE','REJECT')), entity_type TEXT NOT NULL, entity_id INTEGER, old_values JSONB, new_values JSONB, ip_address TEXT, user_agent TEXT, request_method TEXT, request_path TEXT, status_code INTEGER, duration_ms INTEGER, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id);`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_activity_logs_user_email ON activity_logs(user_email);`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_activity_logs_action ON activity_logs(action);`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_activity_logs_entity ON activity_logs(entity_type, entity_id);`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at);`);
+      // Retention policy function
+      await db.execute(sql`CREATE OR REPLACE FUNCTION delete_old_activity_logs(retention_days INT DEFAULT 365) RETURNS VOID AS $$ BEGIN DELETE FROM activity_logs WHERE created_at < NOW() - (retention_days || ' days')::INTERVAL; END; $$ LANGUAGE plpgsql;`);
+
       await db.execute(sql`ALTER TABLE fees ADD COLUMN IF NOT EXISTS paid_amount integer NOT NULL DEFAULT 0;`);
       await db.execute(sql`ALTER TABLE fees ADD COLUMN IF NOT EXISTS total_discount integer NOT NULL DEFAULT 0;`);
       await db.execute(sql`ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS discount integer NOT NULL DEFAULT 0;`);

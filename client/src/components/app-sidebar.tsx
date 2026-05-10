@@ -1,6 +1,6 @@
 import {
   BookOpen, Users, LayoutDashboard, Calculator,
-  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle, ReceiptText, Wallet, BookMarked
+  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle, ReceiptText, Wallet, BookMarked, FileText, TrendingUp, ClipboardList,
 } from "lucide-react";
 import {
   Sidebar,
@@ -60,12 +60,15 @@ const adminSections: SidebarSection[] = [
       { title: "Schedule Builder", url: "/admin/timetable", icon: LayoutGrid },
       { title: "Homework Diary", url: "/admin/homework-diary", icon: Notebook, badge: "New" },
       { title: "QR Attendance", url: "/admin/qr-attendance", icon: QrCode, badge: "New" },
+      { title: "Reports", url: "/admin/reports", icon: FileText, badge: "New" },
+      { title: "Activity Logs", url: "/admin/activity-logs", icon: ClipboardList },
     ],
   },
   {
     label: "Finance",
     items: [
       { title: "Finance", url: "/admin/finance", icon: Calculator },
+      { title: "Financial Reports", url: "/admin/reports/financial", icon: TrendingUp, badge: "New" },
       { title: "Ledger & Reports", url: "/admin/ledger", icon: BookOpen, badge: "New" },
       { title: "Wallets", url: "/admin/finance/wallets", icon: Wallet },
       {
@@ -135,14 +138,21 @@ export function AppSidebar() {
   const logout = useLogout();
   const [location] = useLocation();
 
-  const { open, setOpen, isMobile, setOpenMobile } = useSidebar();
+  const { isMobile, setOpenMobile, state } = useSidebar();
 
   /**
-   * On mobile: close the drawer after navigating so the page is fully visible.
-   * On desktop: the layout's useSidebar effect handles the expand prevention.
+   * Prevent sidebar from auto-expanding when clicking navigation items while collapsed.
+   * On mobile: close the drawer after navigating.
+   * On desktop: maintain collapsed state unless user explicitly toggles.
+   * The sidebar expansion is controlled by Layout - only toggle button triggers it.
    */
-  const handleNavClick = () => {
-    if (isMobile) setOpenMobile(false);
+  const handleNavClick = (e: React.MouseEvent) => {
+    if (isMobile) {
+      e.preventDefault();
+      setOpenMobile(false);
+    }
+    // On desktop: let the Link navigate without triggering sidebar state change
+    // The sidebar state is managed by Layout's controlled SidebarProvider
   };
 
   const role = user?.role?.trim().toLowerCase();

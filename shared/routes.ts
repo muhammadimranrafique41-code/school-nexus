@@ -2529,6 +2529,135 @@ export const api = {
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Reports Management – route contracts
+// ─────────────────────────────────────────────────────────────────────────────
+
+const reportDefinitionSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  category: z.enum(["academic", "fee", "finance", "attendance"]),
+  description: z.string().nullable().optional(),
+  parameters: z.array(z.string()).nullable().optional(),
+  queryTemplate: z.string().nullable().optional(),
+  createdAt: z.string().or(z.date()).optional(),
+});
+
+const reportHistorySchema = z.object({
+  id: z.number(),
+  reportDefinitionId: z.number().nullable().optional(),
+  generatedBy: z.number().nullable().optional(),
+  parametersUsed: z.record(z.unknown()).nullable().optional(),
+  fileUrl: z.string().nullable().optional(),
+  fileSize: z.number().nullable().optional(),
+  generatedAt: z.string().or(z.date()),
+  downloadCount: z.number(),
+});
+
+const reportCacheSchema = z.object({
+  id: z.number(),
+  reportKey: z.string(),
+  generatedAt: z.string().or(z.date()),
+  expiresAt: z.string().or(z.date()).nullable().optional(),
+});
+
+export const reportsApi = {
+  definitions: {
+    list: {
+      path: "/api/reports/definitions",
+      method: "GET" as const,
+      responses: { 200: z.array(reportDefinitionSchema) },
+    },
+    get: {
+      path: "/api/reports/definitions/:id",
+      method: "GET" as const,
+      responses: { 200: reportDefinitionSchema },
+    },
+    create: {
+      path: "/api/reports/definitions",
+      method: "POST" as const,
+      input: z.object({
+        name: z.string().min(1).max(100),
+        category: z.enum(["academic", "fee", "finance", "attendance"]),
+        description: z.string().optional().nullable(),
+        parameters: z.array(z.string()).optional().nullable(),
+        queryTemplate: z.string().optional().nullable(),
+      }),
+      responses: { 201: reportDefinitionSchema },
+    },
+    update: {
+      path: "/api/reports/definitions/:id",
+      method: "PUT" as const,
+      input: z.object({
+        name: z.string().min(1).max(100).optional(),
+        category: z.enum(["academic", "fee", "finance", "attendance"]).optional(),
+        description: z.string().optional().nullable(),
+        parameters: z.array(z.string()).optional().nullable(),
+        queryTemplate: z.string().optional().nullable(),
+      }),
+      responses: { 200: reportDefinitionSchema },
+    },
+    delete: {
+      path: "/api/reports/definitions/:id",
+      method: "DELETE" as const,
+      responses: { 200: z.object({ success: z.boolean() }) },
+    },
+  },
+  history: {
+    list: {
+      path: "/api/reports/history",
+      method: "GET" as const,
+      responses: { 200: z.array(reportHistorySchema) },
+    },
+    byDefinition: {
+      path: "/api/reports/history/definition/:definitionId",
+      method: "GET" as const,
+      responses: { 200: z.array(reportHistorySchema) },
+    },
+    create: {
+      path: "/api/reports/history",
+      method: "POST" as const,
+      input: z.object({
+        reportDefinitionId: z.number().int().positive().nullable().optional(),
+        generatedBy: z.number().int().positive().nullable().optional(),
+        parametersUsed: z.record(z.unknown()).optional().nullable(),
+        fileUrl: z.string().max(500).optional().nullable(),
+        fileSize: z.number().int().optional().nullable(),
+      }),
+      responses: { 201: reportHistorySchema },
+    },
+    incrementDownload: {
+      path: "/api/reports/history/:id/download",
+      method: "POST" as const,
+      responses: { 200: reportHistorySchema },
+    },
+  },
+  cache: {
+    get: {
+      path: "/api/reports/cache/:reportKey",
+      method: "GET" as const,
+      responses: { 200: reportCacheSchema.nullable() },
+    },
+    set: {
+      path: "/api/reports/cache",
+      method: "POST" as const,
+      input: z.object({
+        reportKey: z.string().min(1).max(255),
+        data: z.any(),
+        expiresAt: z.string().optional().nullable(),
+      }),
+      responses: { 201: reportCacheSchema },
+    },
+    cleanExpired: {
+      path: "/api/reports/cache/clean",
+      method: "POST" as const,
+      responses: { 200: z.object({ deletedCount: z.number() }) },
+    },
+  },
+} as const;
+
+export type ReportsApiRoutes = typeof reportsApi;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Academic Sessions & Promotion – route contracts
 // Kept separate from the main `api` object so they can be tree-shaken by
 // clients that don't need them, while still being co-located with all other
@@ -2664,6 +2793,91 @@ export const sessionsApi = {
 } as const;
 
 export type SessionsApiRoutes = typeof sessionsApi;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Activity Logs API
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const activityLogFiltersSchema = z.object({
+  userId: z.number().optional(),
+  userEmail: z.string().optional(),
+  action: z.enum(["CREATE", "UPDATE", "DELETE", "LOGIN", "LOGOUT", "EXPORT", "VIEW", "APPROVE", "REJECT"]).optional(),
+  entityType: z.string().optional(),
+  entityId: z.number().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  page: z.number().default(1),
+  limit: z.number().default(50),
+});
+
+export const activityLogResponseSchema = z.object({
+  logs: z.array(z.object({
+    id: z.number(),
+    userId: z.number().nullable(),
+    userEmail: z.string(),
+    userRole: z.string(),
+    action: z.string(),
+    entityType: z.string(),
+    entityId: z.number().nullable(),
+    oldValues: z.any().nullable(),
+    newValues: z.any().nullable(),
+    ipAddress: z.string().nullable(),
+    userAgent: z.string().nullable(),
+    requestMethod: z.string().nullable(),
+    requestPath: z.string().nullable(),
+    statusCode: z.number().nullable(),
+    durationMs: z.number().nullable(),
+    createdAt: z.string(),
+  })),
+  total: z.number(),
+  page: z.number(),
+  limit: z.number(),
+  totalPages: z.number(),
+});
+
+export const activityLogDetailSchema = z.object({
+  id: z.number(),
+  userId: z.number().nullable(),
+  userEmail: z.string(),
+  userRole: z.string(),
+  action: z.string(),
+  entityType: z.string(),
+  entityId: z.number().nullable(),
+  oldValues: z.any().nullable(),
+  newValues: z.any().nullable(),
+  ipAddress: z.string().nullable(),
+  userAgent: z.string().nullable(),
+  requestMethod: z.string().nullable(),
+  requestPath: z.string().nullable(),
+  statusCode: z.number().nullable(),
+  durationMs: z.number().nullable(),
+  createdAt: z.string(),
+});
+
+export const activityLogsApi = {
+  list: {
+    path: "/api/activity-logs",
+    method: "GET" as const,
+    query: activityLogFiltersSchema,
+    responses: { 200: activityLogResponseSchema },
+  },
+  detail: {
+    path: "/api/activity-logs/:id",
+    method: "GET" as const,
+    params: z.object({ id: z.coerce.number() }),
+    responses: { 200: activityLogDetailSchema },
+  },
+  prune: {
+    path: "/api/activity-logs/prune",
+    method: "POST" as const,
+    body: z.object({
+      retentionDays: z.number().min(30).max(730).default(365),
+    }),
+    responses: { 200: z.object({ deleted: z.number() }) },
+  },
+} as const;
+
+export type ActivityLogsApiRoutes = typeof activityLogsApi;
 
 export type ApiRoutes = typeof api;
 

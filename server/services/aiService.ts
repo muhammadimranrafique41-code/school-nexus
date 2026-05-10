@@ -30,7 +30,7 @@ type AiChatInput = {
   history: ChatMessage[];
 };
 
-type ScopedAccess = {
+export type ScopedAccess = {
   role: "admin" | "teacher";
   classIds: number[];
   classNames: string[];
@@ -77,7 +77,7 @@ const money = (value: number) =>
 
 const unique = <T>(values: T[]) => Array.from(new Set(values));
 
-async function resolveScope(user: User): Promise<ScopedAccess> {
+export async function resolveScope(user: User): Promise<ScopedAccess> {
   if (user.role === "admin") {
     const classRows = await db.select().from(classes);
     return {

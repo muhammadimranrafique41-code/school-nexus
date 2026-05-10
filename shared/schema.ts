@@ -15,6 +15,7 @@ import {
   varchar,
   pgEnum,
   decimal,
+  pgView,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -426,6 +427,22 @@ export const feePayments = pgTable(
     ),
   })
 );
+
+// ── Custom Funds ──────────────────────────────────────────────────────────────
+export const customFunds = pgTable("custom_funds", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  amount: integer("amount").notNull(),
+  studentId: integer("student_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  createdBy: integer("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
 
 export const feeAdjustments = pgTable(
   "fee_adjustments",
@@ -2683,3 +2700,224 @@ export type CashFlowSummaryRow = {
   totalExpense: string;
   netCashFlow: string;
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGGREGATION VIEWS (Finance Management Module)
+// ─────────────────────────────────────────────────────────────────────────────
+// Views are created via raw SQL in server/migrations/20260510_add_finance_views.sql .
+// The pgView(...).existing() pattern below provides type-safe Drizzle ORM
+// access without Drizzle attempting to manage the view lifecycle.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── 1. Monthly fee collection summary ────────────────────────────────────────
+export const monthlyFeeSummary = pgView("monthly_fee_summary", {
+  month: date("month"),
+  className: text("class_name"),
+  totalStudents: integer("total_students"),
+  totalFeesGenerated: integer("total_fees_generated"),
+  totalFeesCollected: integer("total_fees_collected"),
+  totalFeesPending: integer("total_fees_pending"),
+  collectionPercentage: numeric("collection_percentage"),
+}).existing();
+
+export type MonthlyFeeSummary = typeof monthlyFeeSummary.$inferSelect;
+
+// ── 2. Monthly custom funds summary ──────────────────────────────────────────
+export const monthlyFundsSummary = pgView("monthly_funds_summary", {
+  month: timestamp("month", { mode: "date" }),
+  fundName: text("fund_name"),
+  totalCollected: integer("total_collected"),
+}).existing();
+
+export type MonthlyFundsSummary = typeof monthlyFundsSummary.$inferSelect;
+
+// ── 3. Monthly P&L (income vs expense) ──────────────────────────────────────
+export const monthlyPnl = pgView("monthly_pnl", {
+  month: timestamp("month", { mode: "date" }),
+  totalIncome: numeric("total_income"),
+  totalExpense: numeric("total_expense"),
+  netProfit: numeric("net_profit"),
+}).existing();
+
+export type MonthlyPnl = typeof monthlyPnl.$inferSelect;
+
+// ── 4. Overdue fees snapshot ────────────────────────────────────────────────
+export const overdueFeesSnapshot = pgView("overdue_fees_snapshot", {
+  studentId: integer("student_id"),
+  studentName: text("student_name"),
+  className: text("class_name"),
+  billingPeriod: text("billing_period"),
+  overdueAmount: integer("overdue_amount"),
+  dueDate: text("due_date"),
+}).existing();
+
+export type OverdueFeesSnapshot = typeof overdueFeesSnapshot.$inferSelect;
+
+// ── 5. Daily fee collection report ───────────────────────────────────────────
+export const dailyFeeCollectionReport = pgView("daily_fee_collection_report", {
+  paymentId: integer("payment_id"),
+  collectionDate: date("collection_date"),
+  studentName: text("student_name"),
+  className: text("class_name"),
+  totalBilled: integer("total_billed"),
+  amountPaid: integer("amount_paid"),
+  paymentMethod: text("payment_method"),
+  receiptNumber: text("receipt_number"),
+  status: text("status"),
+}).existing();
+
+export type DailyFeeCollectionReport =
+  typeof dailyFeeCollectionReport.$inferSelect;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REPORTS MANAGEMENT MODULE
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const reportCategoryEnum = pgEnum("report_category", [
+  "academic",
+  "fee",
+  "finance",
+  "attendance",
+]);
+
+export const reportDefinitions = pgTable("report_definitions", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  category: reportCategoryEnum("category").notNull(),
+  description: text("description"),
+  parameters: jsonb("parameters").$type<string[]>(),
+  queryTemplate: text("query_template"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const reportHistory = pgTable(
+  "report_history",
+  {
+    id: serial("id").primaryKey(),
+    reportDefinitionId: integer("report_definition_id").references(
+      () => reportDefinitions.id,
+      { onDelete: "set null" }
+    ),
+    generatedBy: integer("generated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    parametersUsed: jsonb("parameters_used").$type<Record<string, unknown>>(),
+    fileUrl: varchar("file_url", { length: 500 }),
+    fileSize: integer("file_size"),
+    generatedAt: timestamp("generated_at").notNull().defaultNow(),
+    downloadCount: integer("download_count").notNull().default(0),
+  },
+  (table) => ({
+    generatedByIdx: index("idx_report_history_user").on(table.generatedBy),
+    generatedAtIdx: index("idx_report_history_date").on(table.generatedAt),
+  })
+);
+
+export const reportCache = pgTable("report_cache", {
+  id: serial("id").primaryKey(),
+  reportKey: varchar("report_key", { length: 255 }).notNull().unique(),
+  data: jsonb("data").notNull(),
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at"),
+});
+
+export const reportHistoryRelations = relations(reportHistory, ({ one }) => ({
+  reportDefinition: one(reportDefinitions, {
+    fields: [reportHistory.reportDefinitionId],
+    references: [reportDefinitions.id],
+  }),
+  generatedByUser: one(users, {
+    fields: [reportHistory.generatedBy],
+    references: [users.id],
+  }),
+}));
+
+export const insertReportDefinitionSchema = createInsertSchema(
+  reportDefinitions
+).omit({ id: true, createdAt: true });
+
+export const insertReportHistorySchema = createInsertSchema(
+  reportHistory
+).omit({ id: true, generatedAt: true });
+
+export const insertReportCacheSchema = createInsertSchema(reportCache).omit({
+  id: true,
+  generatedAt: true,
+});
+
+export type ReportDefinition = typeof reportDefinitions.$inferSelect;
+export type InsertReportDefinition = z.infer<
+  typeof insertReportDefinitionSchema
+>;
+export type ReportHistory = typeof reportHistory.$inferSelect;
+export type InsertReportHistory = z.infer<typeof insertReportHistorySchema>;
+export type ReportCache = typeof reportCache.$inferSelect;
+export type InsertReportCache = z.infer<typeof insertReportCacheSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTIVITY LOGS (Audit Trail)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const activityLogActions = [
+  "CREATE",
+  "UPDATE",
+  "DELETE",
+  "LOGIN",
+  "LOGOUT",
+  "EXPORT",
+  "VIEW",
+  "APPROVE",
+  "REJECT",
+] as const;
+export type ActivityLogAction = (typeof activityLogActions)[number];
+
+export const activityLogs = pgTable(
+  "activity_logs",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    userEmail: text("user_email").notNull(),
+    userRole: text("user_role").notNull(),
+    action: text("action").$type<ActivityLogAction>().notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: integer("entity_id"),
+    oldValues: jsonb("old_values"),
+    newValues: jsonb("new_values"),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    requestMethod: text("request_method"),
+    requestPath: text("request_path"),
+    statusCode: integer("status_code"),
+    durationMs: integer("duration_ms"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => ({
+    userIdIdx: index("idx_activity_logs_user_id").on(table.userId),
+    userEmailIdx: index("idx_activity_logs_user_email").on(table.userEmail),
+    actionIdx: index("idx_activity_logs_action").on(table.action),
+    entityIdx: index("idx_activity_logs_entity").on(
+      table.entityType,
+      table.entityId
+    ),
+    createdAtIdx: index("idx_activity_logs_created_at").on(table.createdAt),
+  })
+);
+
+export const activityLogsRelations = relations(activityLogs, ({ one }) => ({
+  user: one(users, {
+    fields: [activityLogs.userId],
+    references: [users.id],
+  }),
+}));
+
+export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type ActivityLog = typeof activityLogs.$inferSelect;
+export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
