@@ -854,9 +854,12 @@ const staffSchema = z.object({
 const salaryStructureSchema = z.object({
   id: z.number(),
   staffId: z.number(),
-  basicSalary: z.number(),
-  allowances: z.record(z.string(), z.number()).nullable().optional(),
-  deductions: z.record(z.string(), z.number()).nullable().optional(),
+  // PostgreSQL DECIMAL columns are serialised as strings by the pg driver.
+  // Accept both string and number and coerce to number so downstream
+  // consumers can do arithmetic without extra casting.
+  basicSalary: z.union([z.string(), z.number()]).transform((v) => Number(v)),
+  allowances: z.record(z.string(), z.union([z.string(), z.number()]).transform(Number)).nullable().optional(),
+  deductions: z.record(z.string(), z.union([z.string(), z.number()]).transform(Number)).nullable().optional(),
   effectiveFrom: z.string(),
   effectiveTo: z.string().nullable().optional(),
   createdAt: z.string(),
@@ -866,9 +869,10 @@ const salaryPaymentSchema = z.object({
   id: z.number(),
   staffId: z.number(),
   paymentMonth: z.string(),
-  grossSalary: z.number(),
-  totalDeductions: z.number(),
-  netSalary: z.number(),
+  // PostgreSQL DECIMAL columns are serialised as strings by the pg driver.
+  grossSalary: z.union([z.string(), z.number()]).transform(Number),
+  totalDeductions: z.union([z.string(), z.number()]).transform(Number),
+  netSalary: z.union([z.string(), z.number()]).transform(Number),
   paymentDate: z.string(),
   paymentMethod: z.string().nullable().optional(),
   transactionId: z.string().nullable().optional(),
@@ -1115,6 +1119,40 @@ export const api = {
       path: "/api/families/dashboard/me",
       method: "GET",
       responses: { 200: familyCardSchema },
+    },
+  },
+  jazzcash: {
+    initiate: {
+      path: "/api/payment/jazzcash/initiate",
+      method: "POST",
+      input: z.object({
+        amountPKR: z.number().positive(),
+        description: z.string().trim().max(255).optional().nullable(),
+      }),
+      responses: {
+        200: z.object({
+          checkoutUrl: z.string().url(),
+          formParams: z.record(z.string(), z.string()),
+          txnRefNo: z.string(),
+          intentId: z.number(),
+        }),
+      },
+    },
+    status: {
+      path: "/api/payment/jazzcash/status/:txnRefNo",
+      method: "GET",
+      responses: {
+        200: z.object({
+          id: z.number(),
+          status: z.string(),
+          ppResponseCode: z.string().nullable().optional(),
+          ppResponseMessage: z.string().nullable().optional(),
+          requestedAmountPkr: z.string(),
+          appliedAmountPkr: z.string().nullable().optional(),
+          createdAt: z.string(),
+          completedAt: z.string().nullable().optional(),
+        }),
+      },
     },
   },
   teachers: {

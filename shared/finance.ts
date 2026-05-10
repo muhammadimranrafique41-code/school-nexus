@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 export const feeStatuses = ["Paid", "Partially Paid", "Unpaid", "Overdue"] as const;
-export const paymentMethods = ["Cash", "Bank Transfer", "Card", "Mobile Money", "Cheque", "Other"] as const;
-export const paymentGateways = ["cash", "bank", "card", "mobile-money", "cheque", "online"] as const;
+export const paymentMethods = ["Cash", "Bank Transfer", "Card", "Mobile Money", "Cheque", "Other", "JazzCash"] as const;
+export const paymentGateways = ["cash", "bank", "card", "mobile-money", "cheque", "online", "jazzcash"] as const;
 export const gatewayPaymentStatuses = ["pending", "completed", "failed"] as const;
 export const invoiceSources = ["manual", "monthly"] as const;
 export const financeVoucherOperationStatuses = ["pending", "queued", "running", "completed", "completed_with_errors", "cancelled", "failed"] as const;

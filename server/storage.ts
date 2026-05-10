@@ -2616,8 +2616,10 @@ export class DatabaseStorage implements IStorage {
       reference?: string | null;
       notes?: string | null;
     },
-    createdBy?: number
+    createdByOrOptions?: number | { tx?: unknown; createdBy?: number }
   ) {
+    const tx = typeof createdByOrOptions === "object" ? createdByOrOptions.tx : undefined;
+    const createdBy = typeof createdByOrOptions === "number" ? createdByOrOptions : createdByOrOptions?.createdBy;
     const family = await this.getFamilyWithMembers(familyId);
     if (!family) throw new Error("Family not found");
 
@@ -2644,13 +2646,13 @@ export class DatabaseStorage implements IStorage {
     const receiptPrefix = publicSettings.financialSettings.receiptPrefix || "RCT";
     const timestamp = new Date().toISOString();
 
-    await db.transaction(async (tx) => {
+    const runPaymentTransaction = async (txConnection: any) => {
       for (const fee of outstanding) {
         if (available <= 0) break;
         const appliedAmount = Math.min(available, fee.remainingBalance);
         if (appliedAmount <= 0) continue;
 
-        const [createdPayment] = await tx
+        const [createdPayment] = await txConnection
           .insert(feePayments)
           .values({
             feeId: fee.id,
@@ -2675,7 +2677,7 @@ export class DatabaseStorage implements IStorage {
           createdPayment.id,
           new Date(input.paymentDate || timestamp)
         );
-        await tx
+        await txConnection
           .update(feePayments)
           .set({ receiptNumber })
           .where(eq(feePayments.id, createdPayment.id));
@@ -2687,7 +2689,7 @@ export class DatabaseStorage implements IStorage {
           fee.dueDate,
           fee.totalDiscount ?? 0
         );
-        await tx
+        await txConnection
           .update(fees)
           .set({
             paidAmount: newPaidAmount,
@@ -2709,7 +2711,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       const endingWalletBalance = Math.max(available, 0);
-      await tx
+      await txConnection
         .update(families)
         .set({
           walletBalance: endingWalletBalance.toFixed(2),
@@ -2717,7 +2719,7 @@ export class DatabaseStorage implements IStorage {
         })
         .where(eq(families.id, familyId));
 
-      await tx.insert(familyTransactions).values({
+      await txConnection.insert(familyTransactions).values({
         familyId,
         familyFeeId: null,
         amount: input.amount,
@@ -2733,7 +2735,15 @@ export class DatabaseStorage implements IStorage {
         createdAt: timestamp,
         createdBy: createdBy ?? null,
       });
-    });
+    };
+
+    if (tx) {
+      await runPaymentTransaction(tx);
+    } else {
+      await db.transaction(async (txConnection) => {
+        await runPaymentTransaction(txConnection);
+      });
+    }
 
     for (const allocation of allocations) {
       await this.createLedgerEntry(allocation.studentId, "payment", {

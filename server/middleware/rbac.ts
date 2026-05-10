@@ -35,11 +35,19 @@ const ROLE_PERMISSIONS: Record<string, Set<string>> = {
     "vouchers:read",
     "vouchers:write",
     "reports:read",
+    // Payroll & salary history permissions
+    "salary:history:read",
+    "salary:history:write",
+    "payroll:read",
+    "payroll:write",
+    "payroll:reconcile",
   ]),
   teacher: new Set([
     "student:history",
     "student:read",
     "fees:read",
+    // Teachers may view their own salary history only (enforced at route level)
+    "salary:history:self",
   ]),
   student: new Set([
     // Students may only view their own history — enforced at the route level.

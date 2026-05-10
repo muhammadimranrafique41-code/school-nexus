@@ -6,6 +6,7 @@ import { scheduleDailyTeachingPulseCron } from "./generate-pulse.js";
 import { attachSocketServer } from "./socket.js";
 import { recoverStaleVoucherJobs, scheduleVoucherJobHealthCheck } from "./services/voucherService.js";
 import { initRateLimiters } from "./middleware/rateLimiter.js";
+import { startPayrollReconciliationJob } from "./services/payrollReconciliationJob.js";
 
 declare module "http" {
   interface IncomingMessage {
@@ -111,6 +112,7 @@ export async function initializeApp() {
     // Schedule background cron jobs
     scheduleDailyTeachingPulseCron();
     scheduleVoucherJobHealthCheck();
+    startPayrollReconciliationJob();
 
     app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
       const status = err.status || err.statusCode || 500;

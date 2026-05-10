@@ -121,3 +121,25 @@ export function usePayFamily() {
     },
   });
 }
+
+export function useJazzCashInitiate() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ amountPKR, description }: { amountPKR: number; description?: string | null }) => {
+      const validated = api.jazzcash.initiate.input.parse({ amountPKR, description });
+      const res = await fetch(api.jazzcash.initiate.path, {
+        method: api.jazzcash.initiate.method,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(validated),
+      });
+      if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to initiate JazzCash payment"));
+      return api.jazzcash.initiate.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.families.dashboard.path] });
+      queryClient.invalidateQueries({ queryKey: [api.fees.list.path] });
+    },
+  });
+}

@@ -64,6 +64,7 @@ import {
 import { LedgerService } from "./services/ledgerService.js";
 import { AuditService } from "./services/auditService.js";
 import { chatWithSchoolAssistant } from "./services/aiService.js";
+import { jazzCashService, type JazzCashCallbackPayload } from "./services/jazzcashService.js";
 import { AppError } from "./errors.js";
 import {
   bulkUpsertMarks,
@@ -2247,6 +2248,54 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
       }
       if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/payment/jazzcash/initiate", financeRateLimiterSync, async (req, res) => {
+    try {
+      const user = await requireUser(req, res);
+      if (!user) return;
+      if (!user.familyId) return res.status(400).json({ message: "Authenticated user must belong to a family." });
+
+      const input = api.jazzcash.initiate.input.parse(req.body);
+      const result = await jazzCashService.initiatePayment({
+        familyId: user.familyId,
+        amountPKR: input.amountPKR,
+        initiatedByUserId: user.id,
+        description: input.description ?? undefined,
+      });
+
+      res.status(200).json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
+      }
+      if (err instanceof Error) return res.status(400).json({ message: err.message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/payment/jazzcash/callback", async (req, res) => {
+    try {
+      const result = await jazzCashService.processCallback(req.body as JazzCashCallbackPayload);
+      return res.status(200).json({ received: true, ...result });
+    } catch (err: any) {
+      console.error("JazzCash callback processing error", err, req.body);
+      return res.status(200).json({ received: true, success: false, error: err?.message ?? "Callback processing failed" });
+    }
+  });
+
+  app.get("/api/payment/jazzcash/status/:txnRefNo", async (req, res) => {
+    try {
+      const user = await requireUser(req, res);
+      if (!user) return;
+      if (!user.familyId) return res.status(400).json({ message: "Authenticated user must belong to a family." });
+
+      const status = await jazzCashService.getPaymentStatus(req.params.txnRefNo, user.familyId);
+      res.status(200).json(status);
+    } catch (err) {
+      if (err instanceof Error) return res.status(404).json({ message: err.message });
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -4782,12 +4831,44 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { insertSalaryStructureSchema } = await import("../shared/schema.js");
       const id = parseNumberValue(req.params.id);
       if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid staff id" });
+      // insertSalaryStructureSchema now accepts number | string for basicSalary
+      // and transforms it to a string, so no manual coercion is needed here.
       const input = insertSalaryStructureSchema.parse({ ...req.body, staffId: id });
       const created = await staffService.createSalaryStructure(input);
       res.status(201).json(created);
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message });
       console.error("Failed to create salary structure", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PUT /api/staff/:id/salary-structure/:structureId
+  // Updates an existing salary structure row (admin only).
+  app.put("/api/staff/:id/salary-structure/:structureId", async (req, res) => {
+    try {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+      const { staffService } = await import("./services/staffService.js");
+      const staffId = parseNumberValue(req.params.id);
+      const structureId = parseNumberValue(req.params.structureId);
+      if (Number.isNaN(staffId) || Number.isNaN(structureId)) {
+        return res.status(400).json({ message: "Invalid staff id or structure id" });
+      }
+      const updateSchema = z.object({
+        basicSalary: z.string().or(z.number()).transform((v) => String(v)).optional(),
+        allowances: z.record(z.string(), z.number()).optional().nullable(),
+        deductions: z.record(z.string(), z.number()).optional().nullable(),
+        effectiveFrom: z.string().optional(),
+        effectiveTo: z.string().optional().nullable(),
+      });
+      const input = updateSchema.parse(req.body);
+      const updated = await staffService.updateSalaryStructure(structureId, input);
+      if (!updated) return res.status(404).json({ message: "Salary structure not found" });
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0]?.message });
+      console.error("Failed to update salary structure", err);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -4825,6 +4906,158 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ─── Salary History Endpoints (RBAC-protected) ────────────────────────────
+  //
+  // GET /api/staff/:id/salary-history
+  //   Returns paginated salary history for a staff member with optional date
+  //   range filtering.  Restricted to admin role via `hasPermission`.
+  //
+  // GET /api/staff/:id/salary-history/ledger
+  //   Returns salary history enriched with the corresponding ledger entries.
+  //   Useful for the payroll reconciliation view.
+  //
+  // POST /api/payroll/reconcile
+  //   Manually trigger a reconciliation pass: finds unreconciled salary
+  //   payments and posts the missing ledger entries.  Admin-only.
+
+  app.get(
+    "/api/staff/:id/salary-history",
+    hasPermission("salary:history:read"),
+    asyncHandler(async (req, res) => {
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) {
+        sendApiError(res, 400, "Invalid staff id"); return;
+      }
+
+      // Parse optional date-range query params
+      const fromRaw = typeof req.query.from === "string" ? req.query.from : undefined;
+      const toRaw   = typeof req.query.to   === "string" ? req.query.to   : undefined;
+
+      const fromDate = fromRaw ? new Date(fromRaw) : undefined;
+      const toDate   = toRaw   ? new Date(toRaw)   : undefined;
+
+      if (fromDate && isNaN(fromDate.getTime())) {
+        sendApiError(res, 400, "Invalid 'from' date — expected ISO 8601 (YYYY-MM-DD)"); return;
+      }
+      if (toDate && isNaN(toDate.getTime())) {
+        sendApiError(res, 400, "Invalid 'to' date — expected ISO 8601 (YYYY-MM-DD)"); return;
+      }
+      if (fromDate && toDate && fromDate > toDate) {
+        sendApiError(res, 400, "'from' date must not be after 'to' date"); return;
+      }
+
+      const { payrollService } = await import("./services/payrollService.js");
+      const history = await payrollService.getSalaryHistory(id, fromDate, toDate);
+      sendApiSuccess(res, history); return;
+    })
+  );
+
+  app.get(
+    "/api/staff/:id/salary-history/ledger",
+    hasPermission("salary:history:read"),
+    asyncHandler(async (req, res) => {
+      const id = parseNumberValue(req.params.id);
+      if (Number.isNaN(id)) {
+        sendApiError(res, 400, "Invalid staff id"); return;
+      }
+
+      const fromRaw = typeof req.query.from === "string" ? req.query.from : undefined;
+      const toRaw   = typeof req.query.to   === "string" ? req.query.to   : undefined;
+
+      const fromDate = fromRaw ? new Date(fromRaw) : undefined;
+      const toDate   = toRaw   ? new Date(toRaw)   : undefined;
+
+      if (fromDate && isNaN(fromDate.getTime())) {
+        sendApiError(res, 400, "Invalid 'from' date"); return;
+      }
+      if (toDate && isNaN(toDate.getTime())) {
+        sendApiError(res, 400, "Invalid 'to' date"); return;
+      }
+
+      const { payrollService } = await import("./services/payrollService.js");
+      const history = await payrollService.getSalaryHistoryWithLedger(id, fromDate, toDate);
+      sendApiSuccess(res, history); return;
+    })
+  );
+
+  // POST /api/payroll/compute-slip — compute a salary slip without persisting
+  app.post(
+    "/api/payroll/compute-slip",
+    hasPermission("payroll:write"),
+    asyncHandler(async (req, res) => {
+      const bodySchema = z.object({
+        basicSalary:          z.number().positive(),
+        houseRentAllowance:   z.number().min(0).default(0),
+        medicalAllowance:     z.number().min(0).default(0),
+        conveyanceAllowance:  z.number().min(0).default(0),
+        otherAllowances:      z.record(z.number()).optional().default({}),
+        loanDeduction:        z.number().min(0).default(0),
+        otherDeductions:      z.record(z.number()).optional().default({}),
+      });
+
+      const input = bodySchema.parse(req.body);
+      const { payrollService } = await import("./services/payrollService.js");
+
+      const slip = payrollService.computeSalarySlip(
+        {
+          basicSalary:         input.basicSalary,
+          houseRentAllowance:  input.houseRentAllowance,
+          medicalAllowance:    input.medicalAllowance,
+          conveyanceAllowance: input.conveyanceAllowance,
+          otherAllowances:     input.otherAllowances,
+        },
+        input.loanDeduction,
+        input.otherDeductions
+      );
+
+      sendApiSuccess(res, slip); return;
+    })
+  );
+
+  // POST /api/payroll/reconcile — manual reconciliation trigger
+  app.post(
+    "/api/payroll/reconcile",
+    hasPermission("payroll:reconcile"),
+    asyncHandler(async (req, res) => {
+      const { payrollService } = await import("./services/payrollService.js");
+
+      const unreconciled = await payrollService.findUnreconciledPayments();
+
+      if (unreconciled.length === 0) {
+        sendApiSuccess(res, {
+          reconciledCount: 0,
+          message: "All salary payments already have ledger entries — no action needed.",
+        }); return;
+      }
+
+      const results: Array<{ paymentId: number; status: "posted" | "failed"; error?: string }> = [];
+
+      for (const payment of unreconciled) {
+        try {
+          await payrollService.postMissingLedgerEntry(payment);
+          results.push({ paymentId: payment.id, status: "posted" });
+        } catch (err) {
+          console.error(`[Reconcile] Failed to post ledger for payment #${payment.id}:`, err);
+          results.push({
+            paymentId: payment.id,
+            status: "failed",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      const postedCount = results.filter((r) => r.status === "posted").length;
+      const failedCount = results.filter((r) => r.status === "failed").length;
+
+      sendApiSuccess(res, {
+        reconciledCount: postedCount,
+        failedCount,
+        results,
+        message: `Reconciliation complete: ${postedCount} posted, ${failedCount} failed.`,
+      }); return;
+    })
+  );
+
   app.get("/api/staff/:id/salary-structure", async (req, res) => {
     try {
       const user = await requireRole(req, res, ["admin"]);
@@ -4833,8 +5066,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const id = parseNumberValue(req.params.id);
       if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid staff id" });
       const structure = await staffService.getCurrentSalaryStructure(id);
-      if (!structure) return res.status(404).json({ message: "Salary structure not found" });
-      res.json(structure);
+      // Return null (200) when no salary structure has been defined yet.
+      // A 404 here causes the frontend's useQuery to treat the staff member
+      // as an error rather than simply "no structure yet", breaking the
+      // payroll table for staff who haven't had a salary set up.
+      res.json(structure ?? null);
     } catch (err) {
       console.error("Failed to get salary structure", err);
       res.status(500).json({ message: "Internal server error" });

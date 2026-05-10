@@ -22,7 +22,7 @@ import type {
   FeeLineItem,
   FeeStatus,
   FinanceVoucherOperationStatus,
-  PaymentMethod,
+  paymentMethod,
   // ── NEW consolidated voucher types (defined in finance.ts) ──
   ConsolidatedFeeRow,
   ConsolidatedSummary,
@@ -391,7 +391,7 @@ export const feePayments = pgTable(
     discount: integer("discount").default(0).notNull(),
     discountReason: text("discount_reason"),
     paymentDate: text("payment_date").notNull(),
-    method: text("method").$type<PaymentMethod>().notNull(),
+    method: text("method").$type<paymentMethod>().notNull(),
     receiptNumber: text("receipt_number"),
     reference: text("reference"),
     notes: text("notes"),
@@ -637,7 +637,7 @@ export const familyTransactions = pgTable("family_transactions", {
       | "family_adjustment"
     >()
     .notNull(),
-  method: text("method").$type<PaymentMethod>(),
+  method: text("method").$type<paymentMethod>(),
   reference: text("reference"),
   notes: text("notes"),
   allocation: jsonb("allocation")
@@ -651,9 +651,31 @@ export const familyTransactions = pgTable("family_transactions", {
     .notNull()
     .default(sql`'[]'::jsonb`),
   createdAt: text("created_at").notNull(),
+  jazzcashIntentId: integer("jazzcash_intent_id").references(() => jazzcashPaymentIntents.id, {
+    onDelete: "set null",
+  }),
+  createdAt: text("created_at").notNull(),
   createdBy: integer("created_by").references(() => users.id, {
     onDelete: "set null",
   }),
+});
+
+export const jazzcashPaymentIntents = pgTable("jazzcash_payment_intents", {
+  id: serial("id").primaryKey(),
+  familyId: integer("family_id").notNull().references(() => families.id, { onDelete: "restrict" }),
+  ppTxnRefNo: varchar("pp_txn_ref_no", { length: 50 }).notNull().unique(),
+  ppResponseCode: varchar("pp_response_code", { length: 10 }),
+  ppResponseMessage: varchar("pp_response_message", { length: 255 }),
+  requestedAmountPkr: numeric("requested_amount_pkr", { precision: 12, scale: 2 }).notNull(),
+  appliedAmountPkr: numeric("applied_amount_pkr", { precision: 12, scale: 2 }),
+  currency: varchar("currency", { length: 3 }).notNull().default("PKR"),
+  status: text("status").notNull().default("PENDING"),
+  initiatedByUserId: integer("initiated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  rawCallbackPayload: jsonb("raw_callback_payload").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+  idempotencyKey: varchar("idempotency_key", { length: 100 }).unique(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  completedAt: text("completed_at"),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2272,8 +2294,24 @@ export const staffAttendance = pgTable(
 
 // Insert schemas
 export const insertStaffSchema = createInsertSchema(staff).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertSalaryStructureSchema = createInsertSchema(salaryStructures).omit({ id: true, createdAt: true });
-export const insertSalaryPaymentSchema = createInsertSchema(salaryPayments).omit({ id: true, createdAt: true });
+
+// drizzle-zod maps DECIMAL columns to z.string().  Extend basicSalary to also
+// accept a JS number so callers that send `parseFloat(...)` don't get a 400.
+export const insertSalaryStructureSchema = createInsertSchema(salaryStructures)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    basicSalary: z.union([z.string(), z.number()]).transform((v) => String(v)),
+  });
+// drizzle-zod maps DECIMAL columns to z.string().  Extend the numeric salary
+// fields to also accept JS numbers so the frontend can send parseFloat() values
+// without getting a 400 "Expected string, received number" error.
+export const insertSalaryPaymentSchema = createInsertSchema(salaryPayments)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    grossSalary: z.union([z.string(), z.number()]).transform((v) => String(v)),
+    totalDeductions: z.union([z.string(), z.number()]).transform((v) => String(v)),
+    netSalary: z.union([z.string(), z.number()]).transform((v) => String(v)),
+  });
 export const insertStaffLoanSchema = createInsertSchema(staffLoans).omit({ id: true, createdAt: true });
 export const insertLoanRepaymentSchema = createInsertSchema(loanRepayments).omit({ id: true, createdAt: true });
 export const insertStaffAttendanceSchema = createInsertSchema(staffAttendance).omit({ id: true });
@@ -2407,6 +2445,7 @@ export type LedgerReferenceType = (typeof LEDGER_REFERENCE_TYPES)[number];
 export const LEDGER_SOURCE_MODULES = [
   "fees",
   "staff",
+  "payroll",
   "funds",
   "expenses",
   "wallet",
@@ -2562,7 +2601,22 @@ export type InsertLedger = z.infer<typeof insertLedgerSchema>;
  * Callers supply the domain-specific fields; the service fills in `createdAt`.
  */
 export type RecordTransactionInput = {
+  /**
+   * Wall-clock time of the transaction (defaults to `new Date()`).
+   * Use `effectiveDate` instead when backdating payroll or correcting entries.
+   */
   transactionDate?: Date;
+  /**
+   * Historical effective date for the ledger entry.
+   * When provided, this overrides `transactionDate` and allows payroll
+   * records to be posted against the period they actually belong to
+   * (e.g. a salary disbursement for March posted in April).
+   *
+   * Constraints enforced by `LedgerService.recordTransaction`:
+   *  - Must be a valid date.
+   *  - Must NOT be in the future (prevents pre-posting unconfirmed transactions).
+   */
+  effectiveDate?: Date | string;
   entryType: LedgerEntryType;
   category: LedgerCategory;
   /** Monetary amount — must be positive. */

@@ -8,9 +8,9 @@
  *  - `recordLoanRepayment` → posts an `expense / other`  entry via `LedgerService`
  *                            (loan disbursements are outflows from the school's perspective).
  *
- * The legacy `financeLedgerEntries` insert inside `processSalary` is retained
- * for backward-compatibility with existing student-ledger queries; the new
- * `ledger` table is the forward-looking cash-flow register.
+ * Salary disbursements are tracked exclusively in the unified `ledger` table.
+ * The `finance_ledger_entries` table is a student-fee ledger and must NOT be
+ * used for staff salary entries (its `student_id` FK would reject them).
  */
 
 import { db } from "../db.js";
@@ -22,7 +22,6 @@ import {
   staffLoans,
   loanRepayments,
   staffAttendance,
-  financeLedgerEntries,
   type InsertStaff,
   type InsertSalaryStructure,
   type InsertSalaryPayment,
@@ -69,6 +68,26 @@ export class StaffService {
     return created;
   }
 
+  /**
+   * Updates an existing salary structure row by its primary key.
+   * Only the fields supplied in `data` are changed; all others are preserved.
+   *
+   * @param id   - Primary key of the `salary_structures` row to update.
+   * @param data - Partial salary structure fields to overwrite.
+   * @returns    The updated row, or `undefined` if no row matched.
+   */
+  async updateSalaryStructure(
+    id: number,
+    data: Partial<Omit<InsertSalaryStructure, "staffId">>
+  ) {
+    const [updated] = await db
+      .update(salaryStructures)
+      .set(data)
+      .where(eq(salaryStructures.id, id))
+      .returning();
+    return updated;
+  }
+
   async getCurrentSalaryStructure(staffId: number) {
     const today = new Date().toISOString().split("T")[0];
     const [structure] = await db
@@ -106,23 +125,13 @@ export class StaffService {
    * @returns    The newly created `salary_payments` row.
    */
   async processSalary(data: InsertSalaryPayment & { ledgerDescription?: string }) {
-    // ── Step 1 & 2: Persist payment + legacy ledger entry atomically ───────
+    // ── Step 1: Persist salary payment row atomically ──────────────────────
+    // NOTE: The legacy `finance_ledger_entries` write has been removed.
+    // That table has a NOT NULL FK to `users.id` (student-fee ledger) and is
+    // not appropriate for staff salary entries.  All salary disbursements are
+    // tracked in the unified `ledger` table (Step 2 below).
     const payment = await db.transaction(async (tx) => {
       const [newPayment] = await tx.insert(salaryPayments).values(data).returning();
-
-      // Legacy finance_ledger_entries write (retained for backward-compat).
-      await tx.insert(financeLedgerEntries).values({
-        studentId: 0, // System entry — no student association.
-        type: "payment",
-        debit: 0,
-        credit: Number(data.netSalary),
-        balanceAfter: 0,
-        referenceId: `SALARY-${newPayment.id}`,
-        description: data.ledgerDescription || `Salary payment for staff ${data.staffId}`,
-        createdAt: new Date().toISOString(),
-        createdBy: data.processedBy,
-      });
-
       return newPayment;
     });
 

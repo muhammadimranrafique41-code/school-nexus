@@ -109,12 +109,46 @@ export class LedgerService {
       }
     }
 
+    // ── Resolve effective transaction date ─────────────────────────────────
+    // `effectiveDate` allows callers (e.g. payroll backdating) to record a
+    // transaction against a historical date without altering the system clock.
+    // When supplied it takes precedence over `transactionDate`; both fall back
+    // to `new Date()` (i.e. "now") when absent.
+    //
+    // Validation: backdated entries are permitted but future-dated entries are
+    // rejected to prevent accidental pre-posting of unconfirmed transactions.
+    const resolvedDate: Date = (() => {
+      const candidate = input.effectiveDate
+        ? new Date(input.effectiveDate)
+        : input.transactionDate
+          ? new Date(input.transactionDate)
+          : new Date();
+
+      if (isNaN(candidate.getTime())) {
+        throw new Error(
+          `LedgerService: effectiveDate / transactionDate is not a valid date: ` +
+            String(input.effectiveDate ?? input.transactionDate)
+        );
+      }
+
+      // Reject future-dated entries (allow up to 1 minute of clock skew).
+      const oneMinuteFromNow = new Date(Date.now() + 60_000);
+      if (candidate > oneMinuteFromNow) {
+        throw new Error(
+          `LedgerService: future-dated ledger entries are not permitted. ` +
+            `Supplied date: ${candidate.toISOString()}`
+        );
+      }
+
+      return candidate;
+    })();
+
     // ── Build the insert payload ───────────────────────────────────────────
     // Use the raw Drizzle insert type (`LedgerInsertRow`) rather than the
     // Zod-inferred `InsertLedger` so that nullable columns correctly accept
     // `null` without TypeScript narrowing conflicts.
     const payload: LedgerInsertRow = {
-      transactionDate: input.transactionDate ?? new Date(),
+      transactionDate: resolvedDate,
       entryType: input.entryType,
       category: input.category,
       amount: toDecimalString(input.amount),
