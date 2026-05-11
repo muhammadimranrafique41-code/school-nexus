@@ -17,6 +17,12 @@ import {
   studentSubmissions,
   users,
   walletTransactions,
+  // ── NEW: Authoritative financial & staff tables ──────────────────────────
+  ledger,
+  expenses,
+  staff,
+  salaryPayments,
+  staffLoans,
   type User,
 } from "../../shared/schema.js";
 
@@ -130,6 +136,18 @@ function isStudentInScope(student: Pick<User, "className">, scope: ScopedAccess)
 async function collectGroundedContext(user: User) {
   const scope = await resolveScope(user);
   const today = new Date().toISOString().slice(0, 10);
+
+  // ── NEW: Ledger and Expenses query (admin-only for authoritative financial data) ─────────────
+  const isAdmin = scope.role === "admin";
+  const [ledgerRows, expenseRows, staffRows, salaryPaymentRows, staffLoanRows] = isAdmin
+    ? await Promise.all([
+        db.select().from(ledger).orderBy(desc(ledger.transactionDate)).limit(100),
+        db.select().from(expenses).orderBy(desc(expenses.expenseDate)).limit(50),
+        db.select().from(staff),
+        db.select().from(salaryPayments).orderBy(desc(salaryPayments.paymentDate)).limit(20),
+        db.select().from(staffLoans).where(eq(staffLoans.status, "active")),
+      ])
+    : [[], [], [], [], []];
 
   const [
     classRows,
@@ -248,19 +266,6 @@ async function collectGroundedContext(user: User) {
   const scopedVouchers = voucherRows.filter((voucher) => scopedFeeIds.has(voucher.feeId));
   const scopedFamilies = familyRows.filter((family) => scopedFamilyIds.has(family.id) || scope.role === "admin");
 
-  // ── NEW: walletBalanceTotal from parentWallets (authoritative source) ─────
-  // Falls back to families.walletBalance sum if no parentWallet rows exist yet
-  // (backward-compat during migration period).
-  const walletBalanceTotalNew = scopedWallets.reduce(
-    (sum, w) => sum + numeric(w.balance),
-    0
-  );
-  const walletBalanceLegacy = scopedFamilies.reduce(
-    (sum, family) => sum + numeric(family.walletBalance),
-    0
-  );
-  const walletBalanceTotal = walletBalanceTotalNew > 0 ? walletBalanceTotalNew : walletBalanceLegacy;
-
   // ── NEW: overdueAmount from fees remaining balances ───────────────────────
   const overdueAmount = scopedFees
     .filter((fee) => numeric(fee.remainingBalance) > 0 && (fee.status === "Overdue" || fee.dueDate < today))
@@ -273,6 +278,83 @@ async function collectGroundedContext(user: User) {
     description: tx.description ?? "",
     createdAt: tx.createdAt instanceof Date ? tx.createdAt.toISOString() : String(tx.createdAt),
   }));
+
+  // ── NEW: Ledger authoritative financial summary (admin-only) ───────────────
+  const ledgerIncome = ledgerRows
+    .filter((row) => row.entryType === "income")
+    .reduce((sum, row) => sum + numeric(row.amount), 0);
+  const ledgerExpense = ledgerRows
+    .filter((row) => row.entryType === "expense")
+    .reduce((sum, row) => sum + numeric(row.amount), 0);
+  const ledgerByCategory: Record<string, number> = {};
+  for (const row of ledgerRows) {
+    const cat = row.category ?? "other";
+    ledgerByCategory[cat] = (ledgerByCategory[cat] ?? 0) + numeric(row.amount);
+  }
+  const ledgerSummary = {
+    totalIncome: ledgerIncome,
+    totalExpense: ledgerExpense,
+    netBalance: ledgerIncome - ledgerExpense,
+    byCategory: ledgerByCategory,
+    recentTransactions: ledgerRows.slice(0, 10).map((row) => ({
+      entryType: row.entryType,
+      category: row.category,
+      amount: numeric(row.amount),
+      description: row.description ?? "",
+      date: row.transactionDate instanceof Date ? row.transactionDate.toISOString() : String(row.transactionDate),
+      sourceModule: row.sourceModule ?? "",
+    })),
+  };
+
+  // ── NEW: Expenses summary (admin-only) ─────────────────────────────────────
+  const totalExpenses = expenseRows.reduce((sum, exp) => sum + numeric(exp.amount), 0);
+  const expensesByCategory: Record<string, number> = {};
+  for (const exp of expenseRows) {
+    expensesByCategory[exp.category] = (expensesByCategory[exp.category] ?? 0) + numeric(exp.amount);
+  }
+  const expensesSummary = {
+    totalExpenses,
+    byCategory: expensesByCategory,
+    recentExpenses: expenseRows.slice(0, 8).map((exp) => ({
+      amount: numeric(exp.amount),
+      category: exp.category,
+      description: exp.description ?? "",
+      date: exp.expenseDate instanceof Date ? exp.expenseDate.toISOString() : String(exp.expenseDate),
+    })),
+  };
+
+  // ── NEW: Staff financials - salaries and loans (admin-only) ────────────────
+  const staffById = new Map(staffRows.map((s) => [s.id, s]));
+  const totalSalaryPaid = salaryPaymentRows.reduce((sum, p) => sum + numeric(p.netSalary), 0);
+  const salaryByMonth: Record<string, number> = {};
+  for (const p of salaryPaymentRows) {
+    const month = String(p.paymentMonth).slice(0, 7);
+    salaryByMonth[month] = (salaryByMonth[month] ?? 0) + numeric(p.netSalary);
+  }
+  const activeStaffLoans = staffLoanRows.map((loan) => {
+    const staffMember = staffById.get(loan.staffId);
+    return {
+      staffId: loan.staffId,
+      staffName: staffMember ? `${staffMember.firstName} ${staffMember.lastName}` : `Staff #${loan.staffId}`,
+      loanType: loan.loanType,
+      amount: numeric(loan.amount),
+      outstandingBalance: numeric(loan.outstandingBalance),
+      monthlyInstallment: numeric(loan.monthlyInstallment),
+      installmentsPaid: loan.installmentsPaid,
+      totalInstallments: loan.totalInstallments,
+    };
+  });
+  const totalLoanOutstanding = staffLoanRows.reduce((sum, loan) => sum + numeric(loan.outstandingBalance), 0);
+  const staffFinancials = {
+    totalSalaryPaid,
+    salaryByMonth,
+    activeLoans: activeStaffLoans,
+    totalLoanOutstanding,
+    staffCount: staffRows.length,
+  };
+
+  // ── NEW: Standardized wallet (parentWallets as authoritative source) ─────
+  const walletBalanceTotal = scopedWallets.reduce((sum, w) => sum + numeric(w.balance), 0);
 
   const familyFinance = scopedFamilies
     .map((family) => {
@@ -379,12 +461,19 @@ async function collectGroundedContext(user: User) {
       "parent_wallets",
       "wallet_transactions",
       "exam_sessions",
+      // ── NEW: Authoritative financial & staff sources ────────────────────
+      "ledger",
+      "expenses",
+      "staff",
+      "salary_payments",
+      "staff_loans",
     ],
     summary: {
       totals: {
         classes: scopedClasses.length,
         students: scopedStudents.length,
         teachers: teacherRows.length,
+        staff: isAdmin ? staffRows.length : 0,
       },
       classSummaries,
       attendanceByClass,
@@ -399,8 +488,7 @@ async function collectGroundedContext(user: User) {
         overdueInvoices: overdueFees.length,
         generatedVouchers: scopedVouchers.length,
         /**
-         * walletBalanceTotal: summed from parentWallets (new authoritative source).
-         * Falls back to families.walletBalance during migration period.
+         * walletBalanceTotal: summed from parentWallets (authoritative source).
          */
         walletBalanceTotal,
         collectionRate: percent(totalPaid, totalBilled),
@@ -420,7 +508,13 @@ async function collectGroundedContext(user: User) {
           .slice(0, 10),
         /** Last 10 wallet transactions across all scoped students */
         recentWalletTransactions: recentWalletTransactionsSummary,
+        // ── NEW: Authoritative ledger summary (admin-only) ────────────────
+        ledger: isAdmin ? ledgerSummary : null,
       },
+      // ── NEW: Expenses section (admin-only) ────────────────────────────────
+      expenses: isAdmin ? expensesSummary : null,
+      // ── NEW: Staff financials section (admin-only) ──────────────────────
+      staffFinancials: isAdmin ? staffFinancials : null,
       homework: {
         byClass: homeworkByClass,
         assignments: homeworkDetails,
@@ -441,6 +535,11 @@ function buildFallbackAnswer(question: string, context: Awaited<ReturnType<typeo
   const wantsHomework = /homework|assignment|diary|submission|pending|task/.test(lowerQuestion);
   const wantsClasses = /class|teacher|student|size|status|homeroom/.test(lowerQuestion);
   const wantsExams = /exam|test|marksheet|result|grade|mat|half.year|annual|top|pass rate/.test(lowerQuestion);
+  // ── NEW: Finance & Staff keyword checks ─────────────────────────────────
+  const wantsLedger = /ledger|cash.flow|income.*expense|transaction|pos|net balance/.test(lowerQuestion);
+  const wantsExpenses = /expense|utilities|maintenance|supplies|rent|transport|food|spending/.test(lowerQuestion);
+  const wantsStaffPayroll = /staff|teacher|salary|payroll|payout|monthly.*salary|net pay/.test(lowerQuestion);
+  const wantsStaffLoans = /loan|advance|borrowed|repayment|installment/.test(lowerQuestion);
 
   if (isGreeting) {
     return `Hello! I'm the Schooliee AI Assistant. How can I help you today?`;
@@ -517,6 +616,83 @@ function buildFallbackAnswer(question: string, context: Awaited<ReturnType<typeo
     );
     if (examinations.recentCompletedExam) {
       lines.push(`Recent completed exam: ${examinations.recentCompletedExam.title} for ${examinations.recentCompletedExam.className}, ended ${examinations.recentCompletedExam.endDate.slice(0, 10)}.`);
+    }
+  }
+
+  // ── NEW: Ledger response (admin-only) ─────────────────────────────────────
+  if (wantsLedger) {
+    if (context.scope.role !== "admin") {
+      lines.push("Ledger data is only available to administrators.");
+    } else if (context.summary.finance?.ledger) {
+      const ledger = context.summary.finance.ledger;
+      lines.push(
+        `Ledger: income ${money(ledger.totalIncome)}, expenses ${money(ledger.totalExpense)}, net ${money(ledger.netBalance)}.`
+      );
+      if (Object.keys(ledger.byCategory).length > 0) {
+        const catSummary = Object.entries(ledger.byCategory)
+          .map(([cat, amt]) => `${cat} ${money(amt)}`)
+          .join("; ");
+        lines.push(`By category: ${catSummary}.`);
+      }
+      if (ledger.recentTransactions?.length) {
+        lines.push(
+          `Recent transactions: ${ledger.recentTransactions.slice(0, 5).map((t) => `${t.entryType} ${t.category} ${money(t.amount)}${t.description ? ` (${t.description.slice(0, 30)})` : ""}`).join("; ")}.`
+        );
+      }
+    } else {
+      lines.push("No ledger transactions found.");
+    }
+  }
+
+  // ── NEW: Expenses response (admin-only) ───────────────────────────────────
+  if (wantsExpenses) {
+    if (context.scope.role !== "admin") {
+      lines.push("Expense data is only available to administrators.");
+    } else if (context.summary.expenses) {
+      const expenses = context.summary.expenses;
+      lines.push(`Expenses: total ${money(expenses.totalExpenses)}.`);
+      if (Object.keys(expenses.byCategory).length > 0) {
+        const catSummary = Object.entries(expenses.byCategory)
+          .map(([cat, amt]) => `${cat} ${money(amt)}`)
+          .join("; ");
+        lines.push(`By category: ${catSummary}.`);
+      }
+      if (expenses.recentExpenses?.length) {
+        lines.push(
+          `Recent expenses: ${expenses.recentExpenses.slice(0, 5).map((e) => `${e.category} ${money(e.amount)} on ${String(e.date).slice(0, 10)}`).join("; ")}.`
+        );
+      }
+    } else {
+      lines.push("No expense records found.");
+    }
+  }
+
+  // ── NEW: Staff Payroll response (admin-only) ──────────────────────────────
+  if (wantsStaffPayroll || wantsStaffLoans) {
+    if (context.scope.role !== "admin") {
+      lines.push("Staff payroll data is only available to administrators.");
+    } else if (context.summary.staffFinancials) {
+      const staffFin = context.summary.staffFinancials;
+      if (wantsStaffPayroll && !wantsStaffLoans) {
+        lines.push(`Staff: ${staffFin.staffCount} total, total salary paid ${money(staffFin.totalSalaryPaid)}.`);
+        if (Object.keys(staffFin.salaryByMonth).length > 0) {
+          const monthSummary = Object.entries(staffFin.salaryByMonth)
+            .slice(-6)
+            .map(([month, amt]) => `${month}: ${money(amt)}`)
+            .join("; ");
+          lines.push(`Monthly breakdown: ${monthSummary}.`);
+        }
+      }
+      if (wantsStaffLoans) {
+        lines.push(`Active staff loans: ${staffFin.activeLoans.length} totaling ${money(staffFin.totalLoanOutstanding)}.`);
+        if (staffFin.activeLoans.length > 0) {
+          lines.push(
+            `Staff with outstanding loans: ${staffFin.activeLoans.slice(0, 5).map((l) => `${l.staffName} ${money(l.outstandingBalance)} (${l.installmentsPaid}/${l.totalInstallments} installments)`).join("; ")}.`
+          );
+        }
+      }
+    } else {
+      lines.push("No staff payroll records found.");
     }
   }
 

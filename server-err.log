@@ -54,3 +54,13 @@ Internal Server Error: Error: Connection terminated due to connection timeout
 [39m
   Plugin: [35mvite:esbuild[39m
   File: [36mD:/School-Nexus/shared/schema.ts[39m
+[2m1:41:25 AM[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [33mwarning: [33mDuplicate key "createdAt" in object literal[33m
+672 |      onDelete: "set null",
+673 |    }),
+674 |    createdAt: text("created_at").notNull(),
+    |    ^
+675 |    createdBy: integer("created_by").references(() => users.id, {
+676 |      onDelete: "set null",
+[39m
+  Plugin: [35mvite:esbuild[39m
+  File: [36mD:/School-Nexus/shared/schema.ts[39m

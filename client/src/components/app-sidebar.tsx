@@ -1,6 +1,6 @@
 import {
   BookOpen, Users, LayoutDashboard, Calculator,
-  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle, ReceiptText, Wallet, BookMarked, FileText, TrendingUp, ClipboardList,
+  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle, ReceiptText, Wallet, BookMarked, UserCog, FileText, TrendingUp, ClipboardList,
 } from "lucide-react";
 import {
   Sidebar,
@@ -48,8 +48,8 @@ const adminSections: SidebarSection[] = [
     label: "Management",
     items: [
       { title: "Teachers", url: "/admin/teachers", icon: Briefcase },
-        { title: "Staff", url: "/admin/staff", icon: Briefcase },
-        { title: "Payroll Dashboard", url: "/admin/payroll-dashboard", icon: Calculator },
+      { title: "Staff", url: "/admin/staff", icon: UserCog },
+      { title: "Payroll Dashboard", url: "/admin/payroll-dashboard", icon: Calculator },
       { title: "Students", url: "/admin/students", icon: GraduationCap },
       { title: "Families", url: "/admin/families", icon: Users },
       { title: "Classes", url: "/admin/classes", icon: BookOpen, matchUrls: ["/admin/classes", "/admin/classes/:id"] },
@@ -84,6 +84,12 @@ const adminSections: SidebarSection[] = [
       { title: "Bulk Print Vouchers", url: "/admin/finance/bulk-print", icon: Printer },
     ],
   },
+  {
+    label: "Account",
+    items: [
+      { title: "Settings", url: "/settings", icon: Settings },
+    ],
+  },
 ];
 
 const teacherSections: SidebarSection[] = [
@@ -98,7 +104,7 @@ const teacherSections: SidebarSection[] = [
     label: "Teaching",
     items: [
       { title: "Attendance Marking", url: "/teacher/attendance", icon: CalendarDays, badge: "Live", pulse: true },
-      { title: "Homework Diary", url: "/teacher/homework-dairy", icon: Notebook, badge: "New" },
+      { title: "Homework Diary", url: "/teacher/homework-diary", icon: Notebook, badge: "New" },
       { title: "Examination", url: "/examination", icon: GraduationCap, badge: "New" },
       { title: "My Timetable", url: "/teacher/timetable", icon: LayoutGrid },
       { title: "My QR Card", url: "/teacher/qr-card", icon: QrCode, badge: "QR" },
@@ -106,12 +112,21 @@ const teacherSections: SidebarSection[] = [
       { title: "Results", url: "/teacher/results", icon: GraduationCap },
     ],
   },
+  {
+    label: "Account",
+    items: [
+      { title: "Settings", url: "/settings", icon: Settings },
+    ],
+  },
 ];
 
 const studentSections: SidebarSection[] = [
   {
     label: "Overview",
-    items: [{ title: "Dashboard", url: "/student", icon: LayoutDashboard }],
+    items: [
+      { title: "Dashboard", url: "/student", icon: LayoutDashboard },
+      { title: "AI Assistant", url: "/student/ai-assistant", icon: Sparkles, badge: "AI" },
+    ],
   },
   {
     label: "Academics",
@@ -130,6 +145,12 @@ const studentSections: SidebarSection[] = [
       { title: "My Family", url: "/student/family", icon: Users },
     ],
   },
+  {
+    label: "Account",
+    items: [
+      { title: "Settings", url: "/settings", icon: Settings },
+    ],
+  },
 ];
 
 export function AppSidebar() {
@@ -138,21 +159,16 @@ export function AppSidebar() {
   const logout = useLogout();
   const [location] = useLocation();
 
-  const { isMobile, setOpenMobile, state } = useSidebar();
+  const { isMobile, setOpenMobile } = useSidebar();
 
   /**
-   * Prevent sidebar from auto-expanding when clicking navigation items while collapsed.
-   * On mobile: close the drawer after navigating.
-   * On desktop: maintain collapsed state unless user explicitly toggles.
-   * The sidebar expansion is controlled by Layout - only toggle button triggers it.
+   * On mobile: close the drawer after navigating so the page is fully visible.
+   * On desktop: sidebar state is persisted in localStorage by the Layout component,
+   * so clicking a nav item never resets it to expanded — the collapsed state survives
+   * the full unmount/remount cycle that happens on every route change.
    */
-  const handleNavClick = (e: React.MouseEvent) => {
-    if (isMobile) {
-      e.preventDefault();
-      setOpenMobile(false);
-    }
-    // On desktop: let the Link navigate without triggering sidebar state change
-    // The sidebar state is managed by Layout's controlled SidebarProvider
+  const handleNavClick = () => {
+    if (isMobile) setOpenMobile(false);
   };
 
   const role = user?.role?.trim().toLowerCase();

@@ -120,12 +120,12 @@ export default function ActivityLogsPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <div className="space-y-2">
                 <Label>Action</Label>
-                <Select value={filters.action} onValueChange={(v) => handleFilterChange("action", v)}>
+                <Select value={filters.action || "__all"} onValueChange={(v) => handleFilterChange("action", v === "__all" ? "" : v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Actions" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Actions</SelectItem>
+                    <SelectItem value="__all">All Actions</SelectItem>
                     {actions.map((action) => (
                       <SelectItem key={action} value={action}>
                         {actionLabels[action]}

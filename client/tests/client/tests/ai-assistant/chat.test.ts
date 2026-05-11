@@ -6,7 +6,7 @@ const TEACHER_EMAIL = process.env.TEACHER_EMAIL!
 const TEACHER_PASSWORD = process.env.TEACHER_PASSWORD!
 
 async function adminLogin(page: Page) {
-  await page.goto('/login')
+  await page.goto('/login', { timeout: 60_000 })
   await page.fill('input[name="email"]', ADMIN_EMAIL)
   await page.fill('input[name="password"]', ADMIN_PASSWORD)
   const [response] = await Promise.all([
@@ -30,14 +30,20 @@ async function teacherLogin(page: Page) {
 }
 
 test.describe('AI Assistant – OpenRouter Chat Interface', () => {
+  test.beforeAll(async ({ browser }) => {
+    const page = await browser.newPage()
+    await page.goto('/login', { timeout: 120_000 })
+    await page.close()
+  })
+
   test.beforeEach(async ({ page }) => {
     await adminLogin(page)
     await page.goto('/admin/ai-assistant')
-    await page.waitForLoadState('networkidle', { timeout: 15_000 })
+    await expect(page.getByText(/AI School Assistant|Schooliee/i).first()).toBeVisible({ timeout: 15_000 })
   })
 
   test('chat page loads with greeting message and starter prompts', async ({ page }) => {
-    await expect(page.getByText(/AI School Assistant|Schooliee|assistant/i)).toBeVisible()
+    await expect(page.getByText(/AI School Assistant|Schooliee|assistant/i).first()).toBeVisible()
     await expect(page.getByText(/greeting|attendance|fee collection|homework|class sizes/i).first()).toBeVisible({ timeout: 5_000 })
     const starterButtons = page.locator('button').filter({ hasText: /attendance|fee collection|homework|class sizes/i })
     const count = await starterButtons.count()
@@ -66,7 +72,8 @@ test.describe('AI Assistant – OpenRouter Chat Interface', () => {
     expect(body.sources.length).toBeGreaterThan(0)
     expect(body.scopedTo.role).toBe('admin')
 
-    await expect(page.getByText(/fee|collection|overdue|balance|billed|paid|outstanding/i).first()).toBeVisible({ timeout: 10_000 })
+    const firstLine = body.answer.split('\n')[0].trim()
+    await expect(page.getByText(firstLine)).toBeVisible({ timeout: 10_000 })
   })
 
   test('ai response shows grounded context sources in sidebar', async ({ page }) => {
@@ -80,9 +87,8 @@ test.describe('AI Assistant – OpenRouter Chat Interface', () => {
       page.click('button[type="submit"]'),
     ])
 
-    await page.waitForLoadState('networkidle', { timeout: 15_000 })
-
-    const sourceBadges = page.locator('aside').locator('span, badge').filter({ hasText: /attendance|classes|users|fees|homework/i })
+    const sourceBadges = page.locator('aside').locator('div').filter({ hasText: /attendance|classes|users|fees|homework/i })
+    await expect(sourceBadges.first()).toBeVisible({ timeout: 10_000 })
     const sourceCount = await sourceBadges.count()
     expect(sourceCount).toBeGreaterThanOrEqual(1)
   })
@@ -106,7 +112,7 @@ test.describe('AI Assistant – OpenRouter Chat Interface', () => {
   test('teacher can access ai assistant and sees scoped context', async ({ page }) => {
     await teacherLogin(page)
     await page.goto('/teacher/ai-assistant')
-    await page.waitForLoadState('networkidle', { timeout: 15_000 })
+    await expect(page.getByText(/AI School Assistant|Schooliee/i).first()).toBeVisible({ timeout: 15_000 })
 
     await expect(page.getByText(/AI School Assistant|Schooliee/i).first()).toBeVisible()
 

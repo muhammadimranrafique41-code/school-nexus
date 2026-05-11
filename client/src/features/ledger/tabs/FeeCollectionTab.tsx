@@ -136,7 +136,7 @@ export function FeeCollectionTab() {
           <SelectContent>
             <SelectItem value="__all" className="text-xs">All Classes</SelectItem>
             {(Array.isArray(classes) ? classes : []).map((c: any) => (
-              <SelectItem key={c.id} value={c.name ?? c.grade ?? String(c.id)} className="text-xs">{c.name ?? `${c.grade ?? ""} ${c.section ?? ""}`.trim()}</SelectItem>
+              <SelectItem key={c.id} value={c.name || c.grade || String(c.id)} className="text-xs">{c.name ?? `${c.grade ?? ""} ${c.section ?? ""}`.trim()}</SelectItem>
             ))}
           </SelectContent>
         </Select>

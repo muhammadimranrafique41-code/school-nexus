@@ -93,11 +93,29 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const style = { "--sidebar-width": "17rem", "--sidebar-width-icon": "4.5rem" } as CSSProperties;
 
-  // Controlled sidebar state - fully controlled by us, no auto-expansion
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Controlled sidebar state - persisted in localStorage so it survives
+  // page navigations (Layout unmounts/remounts on every route change).
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try {
+      const stored = localStorage.getItem("sidebar_state");
+      if (stored !== null) return stored === "true";
+    } catch {
+      // localStorage unavailable
+    }
+    // On first visit, default to collapsed on smaller screens for better UX
+    return window.innerWidth >= 1024;
+  });
 
   const handleToggleSidebar = useCallback(() => {
-    setSidebarOpen((prev) => !prev);
+    setSidebarOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("sidebar_state", String(next));
+      } catch {
+        // localStorage unavailable
+      }
+      return next;
+    });
   }, []);
 
   return (
