@@ -16,6 +16,7 @@ import {
   pgEnum,
   decimal,
   pgView,
+  unique,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -150,12 +151,32 @@ export const sessions = pgTable("session", {
   expire: timestamp("expire", { withTimezone: true }).notNull(),
 });
 
-export const students = pgTable("students", {
-  userId: integer("user_id")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "cascade" }),
-  className: text("class_name").notNull(),
-});
+export const students = pgTable(
+  "students",
+  {
+    userId: integer("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    className: text("class_name").notNull(),
+    /** Current academic session context for the student. */
+    academicSessionId: integer("academic_session_id").references(
+      () => academicSessions.id,
+      { onDelete: "set null" }
+    ),
+    /** Previous session for traceability and rollback scenarios. */
+    previousSessionId: integer("previous_session_id").references(
+      () => academicSessions.id,
+      { onDelete: "set null" }
+    ),
+    /** Timestamp of the most recent promotion transition. */
+    promotedAt: timestamp("promoted_at"),
+  },
+  (table) => ({
+    sessionIdx: index("idx_students_session_lookup").on(
+      table.academicSessionId
+    ),
+  })
+);
 
 export const teachers = pgTable("teachers", {
   userId: integer("user_id")
@@ -671,7 +692,6 @@ export const familyTransactions = pgTable("family_transactions", {
   jazzcashIntentId: integer("jazzcash_intent_id").references(() => jazzcashPaymentIntents.id, {
     onDelete: "set null",
   }),
-  createdAt: text("created_at").notNull(),
   createdBy: integer("created_by").references(() => users.id, {
     onDelete: "set null",
   }),
@@ -1099,20 +1119,33 @@ export const academicSessions = pgTable(
   {
     id: serial("id").primaryKey(),
     /** Human-readable name, e.g. "2024-2025". Must be unique. */
-    name: text("name").notNull().unique(),
+    name: varchar("name", { length: 50 }).notNull().unique(),
     startDate: date("start_date").notNull(),
     endDate: date("end_date").notNull(),
     /** Only one session may be current at a time. */
     isCurrent: boolean("is_current").notNull().default(false),
-    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-  }
+    /** Marks the upcoming session for pre-configuration before activation. */
+    isNext: boolean("is_next").notNull().default(false),
+    /** Becomes true once the automated promotion workflow completes for this session. */
+    promotionExecuted: boolean("promotion_executed").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    /** Enforce at most one current session at any time. */
+    uniqueCurrentSession: uniqueIndex("uq_academic_sessions_current").on(
+      table.isCurrent
+    ),
+  })
 );
 
 export const insertAcademicSessionSchema = createInsertSchema(academicSessions).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+  isCurrent: true,
+  isNext: true,
+  promotionExecuted: true,
 });
 
 // Examination Management - Pakistani Curriculum System
@@ -1254,6 +1287,93 @@ export const promotionHistory = pgTable(
 export const insertPromotionHistorySchema = createInsertSchema(promotionHistory).omit({
   id: true,
   createdAt: true,
+});
+
+/**
+ * session_promotions – immutable audit trail of every student promotion
+ * across academic sessions. Captures the full context of each transition
+ * including source/target session and class, who triggered it, and remarks.
+ */
+export const sessionPromotions = pgTable(
+  "session_promotions",
+  {
+    id: serial("id").primaryKey(),
+    fromSessionId: integer("from_session_id")
+      .notNull()
+      .references(() => academicSessions.id, { onDelete: "restrict" }),
+    toSessionId: integer("to_session_id")
+      .notNull()
+      .references(() => academicSessions.id, { onDelete: "restrict" }),
+    studentId: integer("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    fromClassId: integer("from_class_id").references(() => classes.id, {
+      onDelete: "set null",
+    }),
+    toClassId: integer("to_class_id").references(() => classes.id, {
+      onDelete: "set null",
+    }),
+    promotedAt: timestamp("promoted_at").notNull().defaultNow(),
+    triggeredBy: integer("triggered_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    remarks: text("remarks"),
+  },
+  (table) => ({
+    studentSessionIdx: index("idx_session_promotions_audit").on(
+      table.studentId,
+      table.toSessionId
+    ),
+    fromSessionIdx: index("idx_session_promotions_from").on(
+      table.fromSessionId
+    ),
+    toSessionIdx: index("idx_session_promotions_to").on(table.toSessionId),
+  })
+);
+
+/**
+ * class_promotion_mapping – configuration table for defining valid
+ * promotion paths between classes (e.g., Grade 1 -> Grade 2).
+ * The UNIQUE (from_class_id, to_class_id) constraint prevents ambiguous
+ * mappings. Optionally scoped to an academic session.
+ */
+export const classPromotionMapping = pgTable(
+  "class_promotion_mapping",
+  {
+    id: serial("id").primaryKey(),
+    fromClassId: integer("from_class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "restrict" }),
+    toClassId: integer("to_class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "restrict" }),
+    academicSessionId: integer("academic_session_id").references(
+      () => academicSessions.id,
+      { onDelete: "cascade" }
+    ),
+    isDefault: boolean("is_default").notNull().default(false),
+  },
+  (table) => ({
+    uniqueMapping: unique("uq_class_promotion_mapping").on(
+      table.fromClassId,
+      table.toClassId
+    ),
+    fromClassIdx: index("idx_promotion_mapping_from").on(table.fromClassId),
+    toClassIdx: index("idx_promotion_mapping_to").on(table.toClassId),
+  })
+);
+
+export const insertSessionPromotionSchema = createInsertSchema(
+  sessionPromotions
+).omit({
+  id: true,
+  promotedAt: true,
+});
+
+export const insertClassPromotionMappingSchema = createInsertSchema(
+  classPromotionMapping
+).omit({
+  id: true,
 });
 
 export const dailyTeachingPulse = pgTable(
@@ -1605,6 +1725,89 @@ export const consolidatedVoucherAuditLogRelations = relations(
   })
 );
 
+// ── NEW: Academic session relations ───────────────────────────────────────────
+
+export const academicSessionsRelations = relations(
+  academicSessions,
+  ({ many }) => ({
+    examSessions: many(examSessions),
+    promotionHistory: many(promotionHistory),
+    sessionPromotionsFrom: many(sessionPromotions, {
+      relationName: "fromSession",
+    }),
+    sessionPromotionsTo: many(sessionPromotions, {
+      relationName: "toSession",
+    }),
+    classPromotionMappings: many(classPromotionMapping),
+    students: many(students),
+  })
+);
+
+export const sessionPromotionsRelations = relations(
+  sessionPromotions,
+  ({ one }) => ({
+    fromSession: one(academicSessions, {
+      fields: [sessionPromotions.fromSessionId],
+      references: [academicSessions.id],
+      relationName: "fromSession",
+    }),
+    toSession: one(academicSessions, {
+      fields: [sessionPromotions.toSessionId],
+      references: [academicSessions.id],
+      relationName: "toSession",
+    }),
+    student: one(users, {
+      fields: [sessionPromotions.studentId],
+      references: [users.id],
+    }),
+    fromClass: one(classes, {
+      fields: [sessionPromotions.fromClassId],
+      references: [classes.id],
+    }),
+    toClass: one(classes, {
+      fields: [sessionPromotions.toClassId],
+      references: [classes.id],
+    }),
+    triggeredByUser: one(users, {
+      fields: [sessionPromotions.triggeredBy],
+      references: [users.id],
+    }),
+  })
+);
+
+export const classPromotionMappingRelations = relations(
+  classPromotionMapping,
+  ({ one }) => ({
+    fromClass: one(classes, {
+      fields: [classPromotionMapping.fromClassId],
+      references: [classes.id],
+    }),
+    toClass: one(classes, {
+      fields: [classPromotionMapping.toClassId],
+      references: [classes.id],
+    }),
+    academicSession: one(academicSessions, {
+      fields: [classPromotionMapping.academicSessionId],
+      references: [academicSessions.id],
+    }),
+  })
+);
+
+export const studentsRelations = relations(students, ({ one }) => ({
+  user: one(users, {
+    fields: [students.userId],
+    references: [users.id],
+  }),
+  academicSession: one(academicSessions, {
+    fields: [students.academicSessionId],
+    references: [academicSessions.id],
+  }),
+  previousSession: one(academicSessions, {
+    fields: [students.previousSessionId],
+    references: [academicSessions.id],
+  }),
+}));
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ZOD VALIDATION SCHEMAS — user fields
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1891,6 +2094,12 @@ export type SelectExamAttendance = typeof examAttendance.$inferSelect;
 export type InsertExamAttendance = typeof examAttendance.$inferInsert;
 export type PromotionHistory = typeof promotionHistory.$inferSelect;
 export type InsertPromotionHistory = z.infer<typeof insertPromotionHistorySchema>;
+export type SessionPromotion = typeof sessionPromotions.$inferSelect;
+export type InsertSessionPromotion = z.infer<typeof insertSessionPromotionSchema>;
+export type ClassPromotionMapping = typeof classPromotionMapping.$inferSelect;
+export type InsertClassPromotionMapping = z.infer<
+  typeof insertClassPromotionMappingSchema
+>;
 export type DailyTeachingPulse = typeof dailyTeachingPulse.$inferSelect;
 export type InsertDailyTeachingPulse = z.infer<
   typeof insertDailyTeachingPulseSchema
@@ -2921,3 +3130,226 @@ export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({
 
 export type ActivityLog = typeof activityLogs.$inferSelect;
 export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHAT MESSAGING
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: serial("id").primaryKey(),
+    senderId: integer("sender_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    receiverId: integer("receiver_id")
+      .references(() => users.id, { onDelete: "set null" }),
+    familyId: integer("family_id")
+      .references(() => families.id, { onDelete: "set null" }),
+    classId: integer("class_id")
+      .references(() => classes.id, { onDelete: "set null" }),
+    messageBody: text("message_body").notNull(),
+    attachmentUrl: varchar("attachment_url", { length: 500 }),
+    isRead: boolean("is_read").notNull().default(false),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    senderIdx: index("chat_messages_sender_idx").on(table.senderId),
+    receiverIdx: index("chat_messages_receiver_idx").on(table.receiverId),
+    familyIdx: index("chat_messages_family_idx").on(table.familyId),
+    classIdx: index("chat_messages_class_idx").on(table.classId),
+    createdAtIdx: index("chat_messages_created_at_idx").on(table.createdAt),
+  })
+);
+
+export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
+  sender: one(users, {
+    fields: [chatMessages.senderId],
+    references: [users.id],
+  }),
+  receiver: one(users, {
+    fields: [chatMessages.receiverId],
+    references: [users.id],
+  }),
+  family: one(families, {
+    fields: [chatMessages.familyId],
+    references: [families.id],
+  }),
+  class: one(classes, {
+    fields: [chatMessages.classId],
+    references: [classes.id],
+  }),
+}));
+
+export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ANNOUNCEMENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const announcementCategories = [
+  "general",
+  "academic",
+  "fee",
+  "event",
+  "holiday",
+  "emergency",
+] as const;
+export type AnnouncementCategory = (typeof announcementCategories)[number];
+
+export const announcementTargetRoles = [
+  "all",
+  "admin",
+  "teacher",
+  "student",
+  "parent",
+] as const;
+export type AnnouncementTargetRole = (typeof announcementTargetRoles)[number];
+
+export const announcements = pgTable(
+  "announcements",
+  {
+    id: serial("id").primaryKey(),
+    title: varchar("title", { length: 200 }).notNull(),
+    body: text("body").notNull(),
+    category: varchar("category", { length: 50 })
+      .$type<AnnouncementCategory>()
+      .notNull()
+      .default("general"),
+    targetRole: varchar("target_role", { length: 20 })
+      .$type<AnnouncementTargetRole>()
+      .notNull()
+      .default("all"),
+    classId: integer("class_id")
+      .references(() => classes.id, { onDelete: "set null" }),
+    createdBy: integer("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    isActive: boolean("is_active").notNull().default(true),
+    pinned: boolean("pinned").notNull().default(false),
+    pinnedUntil: timestamp("pinned_until", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    targetRoleIdx: index("announcements_target_role_idx").on(table.targetRole),
+    classIdx: index("announcements_class_idx").on(table.classId),
+    createdByIdx: index("announcements_created_by_idx").on(table.createdBy),
+    activePinnedIdx: index("announcements_active_pinned_idx").on(
+      table.isActive,
+      table.pinned
+    ),
+    createdAtIdx: index("announcements_created_at_idx").on(table.createdAt),
+  })
+);
+
+export const announcementsRelations = relations(announcements, ({ one }) => ({
+  class: one(classes, {
+    fields: [announcements.classId],
+    references: [classes.id],
+  }),
+  creator: one(users, {
+    fields: [announcements.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const insertAnnouncementSchema = createInsertSchema(announcements).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type Announcement = typeof announcements.$inferSelect;
+export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TO-DO TASKS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const todoStatuses = ["pending", "in_progress", "completed", "cancelled"] as const;
+export type TodoStatus = (typeof todoStatuses)[number];
+
+export const todoPriorities = ["low", "medium", "high", "urgent"] as const;
+export type TodoPriority = (typeof todoPriorities)[number];
+
+export const todos = pgTable(
+  "todos",
+  {
+    id: serial("id").primaryKey(),
+    title: varchar("title", { length: 200 }).notNull(),
+    description: text("description"),
+    assignedTo: integer("assigned_to")
+      .references(() => users.id, { onDelete: "set null" }),
+    assignedBy: integer("assigned_by")
+      .references(() => users.id, { onDelete: "set null" }),
+    classId: integer("class_id")
+      .references(() => classes.id, { onDelete: "set null" }),
+    dueDate: timestamp("due_date", { withTimezone: true }),
+    status: varchar("status", { length: 20 })
+      .$type<TodoStatus>()
+      .notNull()
+      .default("pending"),
+    priority: varchar("priority", { length: 10 })
+      .$type<TodoPriority>()
+      .notNull()
+      .default("medium"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    assignedToIdx: index("todos_assigned_to_idx").on(table.assignedTo),
+    assignedByIdx: index("todos_assigned_by_idx").on(table.assignedBy),
+    classIdx: index("todos_class_idx").on(table.classId),
+    statusIdx: index("todos_status_idx").on(table.status),
+    priorityIdx: index("todos_priority_idx").on(table.priority),
+    dueDateIdx: index("todos_due_date_idx").on(table.dueDate),
+  })
+);
+
+export const todosRelations = relations(todos, ({ one }) => ({
+  assignee: one(users, {
+    fields: [todos.assignedTo],
+    references: [users.id],
+  }),
+  assigner: one(users, {
+    fields: [todos.assignedBy],
+    references: [users.id],
+  }),
+  class: one(classes, {
+    fields: [todos.classId],
+    references: [classes.id],
+  }),
+}));
+
+export const insertTodoSchema = createInsertSchema(todos).omit({
+  id: true,
+  completedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type Todo = typeof todos.$inferSelect;
+export type InsertTodo = z.infer<typeof insertTodoSchema>;
