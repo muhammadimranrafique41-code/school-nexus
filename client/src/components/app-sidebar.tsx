@@ -1,6 +1,6 @@
 import {
   BookOpen, Users, LayoutDashboard, Calculator,
-  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle, ReceiptText, Wallet, BookMarked, UserCog, FileText, TrendingUp, ClipboardList,
+  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle, ReceiptText, Wallet, BookMarked, UserCog, FileText, TrendingUp, ClipboardList, ListTodo,
 } from "lucide-react";
 import {
   Sidebar,
@@ -39,6 +39,7 @@ const adminSections: SidebarSection[] = [
     label: "Overview",
     items: [
       { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
+      { title: "To-dos", url: "/admin/todos", icon: ListTodo },
       { title: "AI Assistant", url: "/admin/ai-assistant", icon: Sparkles, badge: "AI" },
       { title: "WhatsApp", url: "/admin/whatsapp", icon: MessageCircle, badge: "New" },
       { title: "Users", url: "/admin/users", icon: Users },
@@ -97,6 +98,7 @@ const teacherSections: SidebarSection[] = [
     label: "Overview",
     items: [
       { title: "Dashboard", url: "/teacher", icon: LayoutDashboard },
+      { title: "To-dos", url: "/teacher/todos", icon: ListTodo },
       { title: "AI Assistant", url: "/teacher/ai-assistant", icon: Sparkles, badge: "AI" },
     ],
   },
@@ -125,6 +127,7 @@ const studentSections: SidebarSection[] = [
     label: "Overview",
     items: [
       { title: "Dashboard", url: "/student", icon: LayoutDashboard },
+      { title: "To-dos", url: "/student/todos", icon: ListTodo },
       { title: "AI Assistant", url: "/student/ai-assistant", icon: Sparkles, badge: "AI" },
     ],
   },

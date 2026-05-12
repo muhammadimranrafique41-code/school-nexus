@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useAdminStats } from "@/hooks/use-dashboard";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -5,11 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Banknote, BookOpen, CalendarCheck, Clock, GraduationCap, Printer, TrendingUp, Users } from "lucide-react";
+import { Banknote, BookOpen, CalendarCheck, GraduationCap, Printer, TrendingUp, UploadCloud, Users } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Link } from "wouter";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import type { FinanceVoucherOperationRecord } from "@shared/finance";
+import { BulkImportModal } from "@/components/import/BulkImportModal";
 
 const activityMeta = {
   fee: { icon: Banknote, iconColor: "text-emerald-600", iconBg: "bg-emerald-50" },
@@ -59,6 +61,7 @@ function QuickLinkCard({
 
 export default function AdminDashboard() {
   const { data: stats, isLoading } = useAdminStats();
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -122,12 +125,26 @@ export default function AdminDashboard() {
               <p className="text-[12px] text-slate-400">Live visibility across enrollment, attendance, and finance.</p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline" size="sm">
-              <Link href="/admin/users">Users</Link>
+              <Link href="/admin/users">
+                <Users className="mr-1.5 h-3.5 w-3.5" />
+                Users
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setImportModalOpen(true)}
+            >
+              <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
+              Bulk Import
             </Button>
             <Button asChild size="sm">
-              <Link href="/admin/finance">Finance</Link>
+              <Link href="/admin/finance">
+                <Banknote className="mr-1.5 h-3.5 w-3.5" />
+                Finance
+              </Link>
             </Button>
           </div>
         </section>
@@ -283,6 +300,13 @@ export default function AdminDashboard() {
         </div>
 
       </div>
+
+      {/* ── Bulk Import Modal ─────────────────────────────────────────── */}
+      <BulkImportModal
+        open={importModalOpen}
+        onOpenChange={setImportModalOpen}
+        defaultTab="students"
+      />
     </Layout>
   );
 }

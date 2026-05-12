@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import type { Server } from "http";
 import { and, asc, avg, count, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
+import multer from "multer";
 import { api } from "../shared/routes.js";
 import {
   attendanceSessionSchema,
@@ -113,7 +114,19 @@ import {
 } from "./services/whatsappVoucherService.js";
 import { reportService } from "./services/reportService.js";
 import { historyService } from "./services/historyService.js";
+import {
+  importFamilies,
+  importStudents,
+} from "./services/import.service.js";
 import { hasPermission } from "./middleware/rbac.js";
+import {
+  CreateTodoSchema,
+  UpdateTodoSchema,
+  createTodo,
+  deleteTodo as deleteTodoService,
+  getMyTodos,
+  updateTodo as updateTodoService,
+} from "./services/todoService.js";
 import { financeRateLimiterSync, initRateLimiters } from "./middleware/rateLimiter.js";
 import { activityLogger, logExplicitActivity } from "./middleware/activityLogger.js";
 import { getActivityLogs, getActivityLogById, pruneOldActivityLogs } from "./services/activityLogService.js";
@@ -5865,6 +5878,202 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const deleted = await pruneOldActivityLogs(retentionDays);
 
       sendApiSuccess(res, { deleted });
+    })
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Bulk Import API (Admin only)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const importUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = [
+        "text/csv",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ];
+      cb(null, allowed.includes(file.mimetype));
+    },
+  });
+
+  /** POST /api/admin/import/families - Bulk import families from CSV/Excel */
+  app.post(
+    "/api/admin/import/families",
+    importUpload.single("file"),
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      if (!req.file) {
+        return sendApiError(res, 400, "No file uploaded. Attach a CSV or Excel file.");
+      }
+
+      const result = await importFamilies(req.file.buffer, req.file.mimetype);
+      res.status(result.success ? 200 : 422).json(result);
+    })
+  );
+
+  /** POST /api/admin/import/students - Bulk import students from CSV/Excel */
+  app.post(
+    "/api/admin/import/students",
+    importUpload.single("file"),
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      if (!req.file) {
+        return sendApiError(res, 400, "No file uploaded. Attach a CSV or Excel file.");
+      }
+
+      const result = await importStudents(req.file.buffer, req.file.mimetype);
+      res.status(result.success ? 200 : 422).json(result);
+    })
+  );
+
+  /** GET /api/admin/import/sample/:type - Download sample CSV */
+  app.get(
+    "/api/admin/import/sample/:type",
+    asyncHandler(async (req, res) => {
+      const user = await requireRole(req, res, ["admin"]);
+      if (!user) return;
+
+      const type = req.params.type as "families" | "students";
+
+      if (type === "families") {
+        const headers = [
+          "family_name",
+          "guardian_name",
+          "phone",
+          "email",
+          "address",
+          "cnic",
+        ];
+        const csv = [headers.join(","), headers.map(() => "example").join(",")].join("\n");
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", "attachment; filename=sample_families.csv");
+        return res.send(csv);
+      }
+
+      if (type === "students") {
+        const headers = [
+          "name",
+          "email",
+          "password",
+          "class_name",
+          "father_name",
+          "roll_number",
+          "date_of_birth",
+          "gender",
+          "phone",
+          "address",
+          "family_cnic",
+        ];
+        const csv = [headers.join(","), headers.map(() => "example").join(",")].join("\n");
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", "attachment; filename=sample_students.csv");
+        return res.send(csv);
+      }
+
+      return sendApiError(res, 400, "Invalid type. Use 'families' or 'students'.");
+    })
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Personal To-Dos API
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** GET /api/todos - List my personal todos (paginated, filterable by status) */
+  app.get(
+    "/api/todos",
+    asyncHandler(async (req, res) => {
+      const user = await requireUser(req, res);
+      if (!user) return;
+
+      const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 10));
+      const status = req.query.status as string | undefined;
+
+      const result = await getMyTodos(user.id, { page, limit, status });
+      sendApiSuccess(res, result);
+    })
+  );
+
+  /** POST /api/todos - Create a new personal todo */
+  app.post(
+    "/api/todos",
+    asyncHandler(async (req, res) => {
+      const user = await requireUser(req, res);
+      if (!user) return;
+
+      // Normalize: ensure empty strings become null before validation
+      const body = {
+        ...req.body,
+        reminderAt: req.body.reminderAt === "" ? null : req.body.reminderAt,
+      };
+      const parsed = CreateTodoSchema.safeParse(body);
+      if (!parsed.success) {
+        return res.status(422).json({
+          success: false,
+          error: {
+            code: "VALIDATION_ERROR",
+            message: parsed.error.errors[0]?.message ?? "Invalid input",
+            details: parsed.error.flatten().fieldErrors,
+          },
+        });
+      }
+
+      const todo = await createTodo(user.id, parsed.data);
+      res.status(201).json({ success: true, data: todo });
+    })
+  );
+
+  /** PATCH /api/todos/:id - Update a todo (content, status, reminder) */
+  app.patch(
+    "/api/todos/:id",
+    asyncHandler(async (req, res) => {
+      const user = await requireUser(req, res);
+      if (!user) return;
+
+      const todoId = parseInt(req.params.id, 10);
+      if (!Number.isFinite(todoId) || todoId <= 0) {
+        return sendApiError(res, 400, "Invalid todo id");
+      }
+
+      const parsed = UpdateTodoSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(422).json({
+          success: false,
+          error: {
+            code: "VALIDATION_ERROR",
+            message: parsed.error.errors[0]?.message ?? "Invalid input",
+            details: parsed.error.flatten().fieldErrors,
+          },
+        });
+      }
+
+      const updated = await updateTodoService(user.id, todoId, parsed.data);
+      if (!updated) {
+        return sendApiError(res, 404, "Todo not found");
+      }
+      sendApiSuccess(res, updated);
+    })
+  );
+
+  /** DELETE /api/todos/:id - Delete a todo */
+  app.delete(
+    "/api/todos/:id",
+    asyncHandler(async (req, res) => {
+      const user = await requireUser(req, res);
+      if (!user) return;
+
+      const todoId = parseInt(req.params.id, 10);
+      if (!Number.isFinite(todoId) || todoId <= 0) {
+        return sendApiError(res, 400, "Invalid todo id");
+      }
+
+      await deleteTodoService(user.id, todoId);
+      res.status(204).send();
     })
   );
 

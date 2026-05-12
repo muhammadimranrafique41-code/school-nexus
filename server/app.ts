@@ -99,6 +99,28 @@ export async function initializeApp() {
       // Retention policy function
       await db.execute(sql`CREATE OR REPLACE FUNCTION delete_old_activity_logs(retention_days INT DEFAULT 365) RETURNS VOID AS $$ BEGIN DELETE FROM activity_logs WHERE created_at < NOW() - (retention_days || ' days')::INTERVAL; END; $$ LANGUAGE plpgsql;`);
 
+      // ── Todos table for personal task management ───────────────────────
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS public.todos (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(200) NOT NULL,
+        description TEXT,
+        assigned_to INTEGER REFERENCES public.users(id) ON DELETE SET NULL,
+        assigned_by INTEGER REFERENCES public.users(id) ON DELETE SET NULL,
+        class_id INTEGER REFERENCES public.classes(id) ON DELETE SET NULL,
+        due_date TIMESTAMP WITH TIME ZONE,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        priority VARCHAR(10) NOT NULL DEFAULT 'medium',
+        completed_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS todos_assigned_to_idx ON public.todos(assigned_to);`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS todos_assigned_by_idx ON public.todos(assigned_by);`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS todos_class_idx ON public.todos(class_id);`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS todos_status_idx ON public.todos(status);`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS todos_priority_idx ON public.todos(priority);`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS todos_due_date_idx ON public.todos(due_date);`);
+
       await db.execute(sql`ALTER TABLE fees ADD COLUMN IF NOT EXISTS paid_amount integer NOT NULL DEFAULT 0;`);
       await db.execute(sql`ALTER TABLE fees ADD COLUMN IF NOT EXISTS total_discount integer NOT NULL DEFAULT 0;`);
       await db.execute(sql`ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS discount integer NOT NULL DEFAULT 0;`);

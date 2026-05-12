@@ -47,6 +47,7 @@ import AdminReportsPage from "./pages/admin/reports";
 import FinancialReportsPage from "./pages/admin/financial-reports";
 import ActivityLogsPage from "./pages/admin/activity-logs";
 import AiAssistantPage from "./pages/ai-assistant";
+import TodosPage from "./pages/TodosPage";
 import WhatsappPage from "./pages/admin/whatsapp";
 import ExaminationPage from "./features/examination/ExaminationPage";
 import LedgerPage from "./features/ledger/LedgerPage";
@@ -92,6 +93,7 @@ function Router() {
           </div>
         </UiStateProvider>
       </Route>
+
       <Route path="/attendance">
         <UiStateProvider>
           <div className="flex h-screen w-full overflow-hidden bg-slate-50">
@@ -133,6 +135,9 @@ function Router() {
       </Route>
 
       {/* Admin Routes */}
+      <Route path="/admin/todos">
+        <ProtectedRoute allowedRoles={['admin']}><TodosPage /></ProtectedRoute>
+      </Route>
       <Route path="/admin/users">
         <ProtectedRoute allowedRoles={['admin']}><AdminUsers /></ProtectedRoute>
       </Route>
@@ -250,6 +255,9 @@ function Router() {
       </Route>
 
       {/* Teacher Routes */}
+      <Route path="/teacher/todos">
+        <ProtectedRoute allowedRoles={['teacher']}><TodosPage /></ProtectedRoute>
+      </Route>
       <Route path="/teacher/attendance">
         <ProtectedRoute allowedRoles={['teacher']}><TeacherAttendance /></ProtectedRoute>
       </Route>
@@ -285,6 +293,9 @@ function Router() {
       </Route>
 
       {/* Student Routes */}
+      <Route path="/student/todos">
+        <ProtectedRoute allowedRoles={['student']}><TodosPage /></ProtectedRoute>
+      </Route>
       <Route path="/student/attendance">
         <ProtectedRoute allowedRoles={['student']}><StudentAttendance /></ProtectedRoute>
       </Route>

@@ -20,9 +20,10 @@ import { getErrorMessage, paginateItems, downloadCsv, cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Download, GraduationCap, Loader2, Plus, Search, Trash2, Edit2, ChevronRight, UserCheck, UserX, UserMinus } from "lucide-react";
+import { Download, GraduationCap, Loader2, Plus, Search, Trash2, Edit2, ChevronRight, UserCheck, UserX, UserMinus, UploadCloud } from "lucide-react";
 import { FamilySelect } from "@/components/family/FamilySelect";
 import { CreateFamilyDialog } from "@/components/family/CreateFamilyDialog";
+import { BulkImportModal } from "@/components/import/BulkImportModal";
 
 type ListedStudent = {
   id: number; name: string; email: string; role: string;
@@ -95,6 +96,7 @@ export default function StudentManagement() {
   const [studentToDelete, setStudentToDelete] = useState<ListedStudent | null>(null);
   const [createFamilyOpen, setCreateFamilyOpen] = useState(false);
   const [createFamilySeed, setCreateFamilySeed] = useState<string>("");
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [classFilter, setClassFilter] = useState("all");
@@ -210,6 +212,9 @@ export default function StudentManagement() {
             </div>
           </div>
           <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setImportModalOpen(true)}>
+              <UploadCloud className="mr-1.5 h-3.5 w-3.5" />Bulk Import
+            </Button>
             <Button size="sm" variant="outline" onClick={exportCsv} disabled={filteredStudents.length === 0}>
               <Download className="mr-1.5 h-3.5 w-3.5" />Export CSV
             </Button>
@@ -510,6 +515,13 @@ export default function StudentManagement() {
             form.setValue("familyId", family.id, { shouldDirty: true, shouldValidate: true });
             form.setValue("familyName", family.name);
           }}
+        />
+
+        {/* ── Bulk Import Modal ────────────────────────────────────────── */}
+        <BulkImportModal
+          open={importModalOpen}
+          onOpenChange={setImportModalOpen}
+          defaultTab="students"
         />
       </div>
     </Layout>
