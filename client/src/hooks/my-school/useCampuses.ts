@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 export interface CampusRow {
   id: number;
@@ -23,10 +24,7 @@ export function useCampuses() {
   return useQuery<CampusRow[]>({
     queryKey: ["owner", "campuses"],
     queryFn: async () => {
-      const res = await fetch("/api/owner/campuses", {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to fetch campuses");
+      const res = await apiRequest("GET", "/api/owner/campuses");
       const body = await res.json();
       return body.data;
     },
@@ -43,13 +41,7 @@ export function useCreateCampus() {
       contactInfo: { phone: string; email: string };
       logoUrl?: string;
     }) => {
-      const res = await fetch("/api/owner/campuses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error("Failed to create campus");
+      const res = await apiRequest("POST", "/api/owner/campuses", data);
       const body = await res.json();
       return body.data;
     },
@@ -71,13 +63,7 @@ export function useUpdateCampus() {
       logoUrl?: string;
       isActive: boolean;
     }>) => {
-      const res = await fetch(`/api/owner/campuses/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error("Failed to update campus");
+      const res = await apiRequest("PATCH", `/api/owner/campuses/${id}`, data);
       const body = await res.json();
       return body.data;
     },
@@ -89,11 +75,7 @@ export function useDeleteCampus() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => {
-      const res = await fetch(`/api/owner/campuses/${id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to delete campus");
+      await apiRequest("DELETE", `/api/owner/campuses/${id}`);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["owner", "campuses"] }),
   });

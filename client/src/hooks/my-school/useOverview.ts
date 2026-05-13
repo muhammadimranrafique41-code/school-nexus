@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 export interface OverviewStats {
   totalCampuses: number;
@@ -15,10 +16,7 @@ export function useOverview() {
   return useQuery<OverviewStats>({
     queryKey: ["owner", "overview"],
     queryFn: async () => {
-      const res = await fetch("/api/owner/overview", {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to fetch overview");
+      const res = await apiRequest("GET", "/api/owner/overview");
       const body = await res.json();
       return body.data;
     },

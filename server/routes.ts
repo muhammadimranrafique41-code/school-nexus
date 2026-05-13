@@ -132,7 +132,6 @@ import { activityLogger, logExplicitActivity } from "./middleware/activityLogger
 import { getActivityLogs, getActivityLogById, pruneOldActivityLogs } from "./services/activityLogService.js";
 import { createPresignedDownload, createPresignedUpload } from "./s3.js";
 import * as schoolService from "./services/schoolService.js";
-import { campuses as campusesTable } from "../shared/schema.js";
 import {
   broadcastHomeworkDiaryPublish,
   broadcastDailyDiaryPublish,

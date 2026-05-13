@@ -1,6 +1,9 @@
 import { db } from "../db.js";
 import {
   campuses,
+  students,
+  staff,
+  families,
   billingRecords,
   type Campus,
   type NewCampus,
@@ -38,49 +41,43 @@ export async function getCampusesByOwner(ownerId: number): Promise<CampusRow[]> 
     .from(campuses)
     .where(eq(campuses.ownerId, ownerId));
 
-  const enriched = await Promise.all(
-    rows.map(async (campus) => {
-      let studentCount = 0;
-      let staffCount = 0;
-      let familyCount = 0;
-      try {
-        const { students } = await import("../../shared/schema.js");
-        const [result] = await db
-          .select({ value: count() })
+  const [studCounts, staffCounts, famCounts] = await Promise.all([
+    rows.length > 0
+      ? db
+          .select({ campusId: students.campusId, value: count() })
           .from(students)
-          .where(eq(students.campusId, campus.id));
-        studentCount = Number(result?.value ?? 0);
-      } catch { /* table may not exist yet */ }
-
-      try {
-        const { staff } = await import("../../shared/schema.js");
-        const [result] = await db
-          .select({ value: count() })
+          .where(sql`${students.campusId} = ANY(ARRAY[${sql.join(rows.map(r => r.id), sql`, `)}]::int[])`)
+          .groupBy(students.campusId)
+      : Promise.resolve([]),
+    rows.length > 0
+      ? db
+          .select({ campusId: staff.campusId, value: count() })
           .from(staff)
-          .where(eq(staff.campusId, campus.id));
-        staffCount = Number(result?.value ?? 0);
-      } catch { /* table may not exist yet */ }
-
-      try {
-        const { families } = await import("../../shared/schema.js");
-        const [result] = await db
-          .select({ value: count() })
+          .where(sql`${staff.campusId} = ANY(ARRAY[${sql.join(rows.map(r => r.id), sql`, `)}]::int[])`)
+          .groupBy(staff.campusId)
+      : Promise.resolve([]),
+    rows.length > 0
+      ? db
+          .select({ campusId: families.campusId, value: count() })
           .from(families)
-          .where(eq(families.campusId, campus.id));
-        familyCount = Number(result?.value ?? 0);
-      } catch { /* table may not exist yet */ }
+          .where(sql`${families.campusId} = ANY(ARRAY[${sql.join(rows.map(r => r.id), sql`, `)}]::int[])`)
+          .groupBy(families.campusId)
+      : Promise.resolve([]),
+  ]);
 
-      return {
-        ...campus,
-        studentCount,
-        staffCount,
-        familyCount,
-        incomePaise: 0,
-        expensesPaise: 0,
-        pendingDuesPaise: 0,
-      } satisfies CampusRow;
-    })
-  );
+  const studMap = new Map(studCounts.map(r => [r.campusId, Number(r.value)]));
+  const staffMap = new Map(staffCounts.map(r => [r.campusId, Number(r.value)]));
+  const famMap = new Map(famCounts.map(r => [r.campusId, Number(r.value)]));
+
+  const enriched = rows.map((campus) => ({
+    ...campus,
+    studentCount: studMap.get(campus.id) ?? 0,
+    staffCount: staffMap.get(campus.id) ?? 0,
+    familyCount: famMap.get(campus.id) ?? 0,
+    incomePaise: 0,
+    expensesPaise: 0,
+    pendingDuesPaise: 0,
+  } satisfies CampusRow));
 
   return enriched;
 }
@@ -129,27 +126,53 @@ export async function getOwnerOverview(ownerId: number): Promise<OverviewStats> 
 
   const campusIds = ownerCampuses.map((c) => c.id);
 
-  const [pendingCount] = (campusIds.length > 0)
-    ? await db
+  let pendingBillingMonths = 0;
+  let totalStudents = 0;
+  let totalStaff = 0;
+  let totalFamilies = 0;
+
+  if (campusIds.length > 0) {
+    const idsArr = sql`ARRAY[${sql.join(campusIds, sql`, `)}]::int[]`;
+
+    const [[pendingCount], [studCount], [staffCount], [famCount]] = await Promise.all([
+      db
         .select({ value: count() })
         .from(billingRecords)
         .where(
           and(
-            sql`${billingRecords.campusId} = ANY(ARRAY[${sql.join(campusIds, sql`, `)}]::int[])`,
+            sql`${billingRecords.campusId} = ANY(${idsArr})`,
             eq(billingRecords.status, "PENDING")
           )
-        )
-    : [{ value: 0 as unknown as string }];
+        ),
+      db
+        .select({ value: count() })
+        .from(students)
+        .where(sql`${students.campusId} = ANY(${idsArr})`),
+      db
+        .select({ value: count() })
+        .from(staff)
+        .where(sql`${staff.campusId} = ANY(${idsArr})`),
+      db
+        .select({ value: count() })
+        .from(families)
+        .where(sql`${families.campusId} = ANY(${idsArr})`),
+    ]);
+
+    pendingBillingMonths = Number(pendingCount?.value ?? 0);
+    totalStudents = Number(studCount?.value ?? 0);
+    totalStaff = Number(staffCount?.value ?? 0);
+    totalFamilies = Number(famCount?.value ?? 0);
+  }
 
   return {
     totalCampuses: campusIds.length,
-    totalStudents: 0,
-    totalStaff: 0,
-    totalFamilies: 0,
+    totalStudents,
+    totalStaff,
+    totalFamilies,
     totalIncomePaise: 0,
     totalExpensesPaise: 0,
     totalPendingDuesPaise: 0,
-    pendingBillingMonths: Number(pendingCount?.value ?? 0),
+    pendingBillingMonths,
   };
 }
 

@@ -56,8 +56,6 @@ import OverviewPage from "./pages/my-school/overview/OverviewPage";
 import CampusesPage from "./pages/my-school/campuses/CampusesPage";
 import BillingPage from "./pages/my-school/billing/BillingPage";
 
-import { useUser } from "@/hooks/use-auth";
-
 import TeacherDashboard from "./pages/teacher/dashboard";
 import TeacherAttendance from "./pages/teacher/attendance";
 import TeacherQrCard from "./pages/teacher/qr-card";

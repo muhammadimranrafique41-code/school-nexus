@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 export interface BillingRecord {
   id: number;
@@ -19,10 +20,7 @@ export function useBilling(status?: string) {
     queryKey: ["owner", "billing", status],
     queryFn: async () => {
       const params = status ? `?status=${status}` : "";
-      const res = await fetch(`/api/owner/billing${params}`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to fetch billing");
+      const res = await apiRequest("GET", `/api/owner/billing${params}`);
       const body = await res.json();
       return body.data;
     },
