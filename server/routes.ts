@@ -131,6 +131,8 @@ import { financeRateLimiterSync, initRateLimiters } from "./middleware/rateLimit
 import { activityLogger, logExplicitActivity } from "./middleware/activityLogger.js";
 import { getActivityLogs, getActivityLogById, pruneOldActivityLogs } from "./services/activityLogService.js";
 import { createPresignedDownload, createPresignedUpload } from "./s3.js";
+import * as schoolService from "./services/schoolService.js";
+import { campuses as campusesTable } from "../shared/schema.js";
 import {
   broadcastHomeworkDiaryPublish,
   broadcastDailyDiaryPublish,
@@ -6075,6 +6077,152 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await deleteTodoService(user.id, todoId);
       res.status(204).send();
     })
+  );
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // MY SCHOOL MODULE — Owner Dashboard
+  // ───────────────────────────────────────────────────────────────────────────
+
+  const createCampusSchema = z.object({
+    name: z.string().min(2).max(120),
+    subdomain: z.string().min(2).max(60).regex(/^[a-z0-9-]+$/),
+    address: z.string().min(5),
+    contactInfo: z.object({
+      phone: z.string(),
+      email: z.string().email(),
+    }),
+    logoUrl: z.union([z.string().url(), z.literal("")]).optional(),
+  });
+
+  const updateCampusSchema = createCampusSchema.partial();
+
+  /**
+   * GET /api/owner/overview
+   * Aggregated stats for all campuses owned by the requester.
+   */
+  app.get(
+    "/api/owner/overview",
+    async (req, res) => {
+      try {
+        const user = await requireRole(req, res, ["admin"]);
+        if (!user) return;
+        const stats = await schoolService.getOwnerOverview(user.id);
+        res.json({ success: true, data: stats });
+      } catch (err) {
+        sendStructuredError(res, err);
+      }
+    }
+  );
+
+  /**
+   * GET /api/owner/campuses
+   */
+  app.get(
+    "/api/owner/campuses",
+    async (req, res) => {
+      try {
+        const user = await requireRole(req, res, ["admin"]);
+        if (!user) return;
+        const data = await schoolService.getCampusesByOwner(user.id);
+        res.json({ success: true, data });
+      } catch (err) {
+        sendStructuredError(res, err);
+      }
+    }
+  );
+
+  /**
+   * POST /api/owner/campuses
+   */
+  app.post(
+    "/api/owner/campuses",
+    async (req, res) => {
+      try {
+        const user = await requireRole(req, res, ["admin"]);
+        if (!user) return;
+        const parsed = createCampusSchema.safeParse(req.body);
+        if (!parsed.success) {
+          res.status(400).json({ success: false, errors: parsed.error.flatten() });
+          return;
+        }
+        const campus = await schoolService.createCampus(user.id, parsed.data);
+        res.status(201).json({ success: true, data: campus });
+      } catch (err) {
+        sendStructuredError(res, err);
+      }
+    }
+  );
+
+  /**
+   * PATCH /api/owner/campuses/:id
+   */
+  app.patch(
+    "/api/owner/campuses/:id",
+    async (req, res) => {
+      try {
+        const user = await requireRole(req, res, ["admin"]);
+        if (!user) return;
+        const campusId = parseInt(req.params.id, 10);
+        if (!Number.isFinite(campusId) || campusId <= 0) {
+          res.status(400).json({ success: false, message: "Invalid campus id" });
+          return;
+        }
+        const parsed = updateCampusSchema.safeParse(req.body);
+        if (!parsed.success) {
+          res.status(400).json({ success: false, errors: parsed.error.flatten() });
+          return;
+        }
+        const campus = await schoolService.updateCampus(user.id, campusId, parsed.data);
+        res.json({ success: true, data: campus });
+      } catch (err) {
+        sendStructuredError(res, err);
+      }
+    }
+  );
+
+  /**
+   * DELETE /api/owner/campuses/:id
+   */
+  app.delete(
+    "/api/owner/campuses/:id",
+    async (req, res) => {
+      try {
+        const user = await requireRole(req, res, ["admin"]);
+        if (!user) return;
+        const campusId = parseInt(req.params.id, 10);
+        if (!Number.isFinite(campusId) || campusId <= 0) {
+          res.status(400).json({ success: false, message: "Invalid campus id" });
+          return;
+        }
+        await schoolService.deleteCampus(user.id, campusId);
+        res.status(204).end();
+      } catch (err) {
+        sendStructuredError(res, err);
+      }
+    }
+  );
+
+  /**
+   * GET /api/owner/billing?status=PAID|PENDING|OVERDUE
+   */
+  app.get(
+    "/api/owner/billing",
+    async (req, res) => {
+      try {
+        const user = await requireRole(req, res, ["admin"]);
+        if (!user) return;
+        const rawStatus = req.query["status"];
+        const status =
+          typeof rawStatus === "string" &&
+          ["PAID", "PENDING", "OVERDUE", "CANCELLED"].includes(rawStatus)
+            ? (rawStatus as "PAID" | "PENDING" | "OVERDUE" | "CANCELLED")
+            : undefined;
+        const data = await schoolService.getBillingByOwner(user.id, { status });
+        res.json({ success: true, data });
+      } catch (err) {
+        sendStructuredError(res, err);
+      }
+    }
   );
 
   return httpServer;

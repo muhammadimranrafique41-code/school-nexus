@@ -52,6 +52,12 @@ import WhatsappPage from "./pages/admin/whatsapp";
 import ExaminationPage from "./features/examination/ExaminationPage";
 import LedgerPage from "./features/ledger/LedgerPage";
 
+import OverviewPage from "./pages/my-school/overview/OverviewPage";
+import CampusesPage from "./pages/my-school/campuses/CampusesPage";
+import BillingPage from "./pages/my-school/billing/BillingPage";
+
+import { useUser } from "@/hooks/use-auth";
+
 import TeacherDashboard from "./pages/teacher/dashboard";
 import TeacherAttendance from "./pages/teacher/attendance";
 import TeacherQrCard from "./pages/teacher/qr-card";
@@ -328,6 +334,53 @@ function Router() {
       </Route>
       <Route path="/student">
         <ProtectedRoute allowedRoles={['student']}><StudentDashboard /></ProtectedRoute>
+      </Route>
+
+      {/* My School Routes — uses same admin layout as all other pages */}
+      <Route path="/my-school/overview">
+        <ProtectedRoute allowedRoles={['admin']}>
+          <UiStateProvider>
+            <div className="flex h-screen w-full overflow-hidden bg-slate-50">
+              <SideNav />
+              <div className="flex flex-1 flex-col min-w-0">
+                <Header />
+                <main className="flex-1 overflow-y-auto p-6">
+                  <OverviewPage />
+                </main>
+              </div>
+            </div>
+          </UiStateProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/my-school/campuses">
+        <ProtectedRoute allowedRoles={['admin']}>
+          <UiStateProvider>
+            <div className="flex h-screen w-full overflow-hidden bg-slate-50">
+              <SideNav />
+              <div className="flex flex-1 flex-col min-w-0">
+                <Header />
+                <main className="flex-1 overflow-y-auto p-6">
+                  <CampusesPage />
+                </main>
+              </div>
+            </div>
+          </UiStateProvider>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/my-school/billing">
+        <ProtectedRoute allowedRoles={['admin']}>
+          <UiStateProvider>
+            <div className="flex h-screen w-full overflow-hidden bg-slate-50">
+              <SideNav />
+              <div className="flex flex-1 flex-col min-w-0">
+                <Header />
+                <main className="flex-1 overflow-y-auto p-6">
+                  <BillingPage />
+                </main>
+              </div>
+            </div>
+          </UiStateProvider>
+        </ProtectedRoute>
       </Route>
 
       {/* Root - redirects to proper dashboard via ProtectedRoute logic */}

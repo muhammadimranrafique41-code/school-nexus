@@ -1,6 +1,6 @@
 import {
   BookOpen, Users, LayoutDashboard, Calculator,
-  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle, ReceiptText, Wallet, BookMarked, UserCog, FileText, TrendingUp, ClipboardList, ListTodo,
+  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle, ReceiptText, Wallet, BookMarked, UserCog, FileText, TrendingUp, ClipboardList, ListTodo, Building2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -48,6 +48,7 @@ const adminSections: SidebarSection[] = [
   {
     label: "Management",
     items: [
+      { title: "My School", url: "/my-school/overview", icon: Building2, matchUrls: ["/my-school/overview", "/my-school/campuses", "/my-school/billing"] },
       { title: "Teachers", url: "/admin/teachers", icon: Briefcase },
       { title: "Staff", url: "/admin/staff", icon: UserCog },
       { title: "Payroll Dashboard", url: "/admin/payroll-dashboard", icon: Calculator },

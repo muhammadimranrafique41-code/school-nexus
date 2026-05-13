@@ -127,6 +127,45 @@ export async function initializeApp() {
       await db.execute(sql`ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS discount_reason text;`);
       await db.execute(sql`ALTER TABLE finance_voucher_operations ADD COLUMN IF NOT EXISTS error_log jsonb NOT NULL DEFAULT '[]'::jsonb;`);
       // Update remaining_balance to ensure consistency
+      // ── My School Module — campuses & billing_records ──────────────────
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS public.campuses (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(120) NOT NULL,
+        subdomain VARCHAR(60) NOT NULL UNIQUE,
+        address TEXT NOT NULL,
+        contact_info JSONB NOT NULL DEFAULT '{}'::jsonb,
+        logo_url VARCHAR(500),
+        owner_id INTEGER NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );`);
+
+      await db.execute(sql`DO $$ BEGIN
+        CREATE TYPE billing_status AS ENUM ('PAID','PENDING','OVERDUE','CANCELLED');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;`);
+
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS public.billing_records (
+        id SERIAL PRIMARY KEY,
+        campus_id INTEGER NOT NULL REFERENCES public.campuses(id) ON DELETE CASCADE,
+        amount_paise INTEGER NOT NULL,
+        currency VARCHAR(3) NOT NULL DEFAULT 'PKR',
+        status billing_status NOT NULL DEFAULT 'PENDING',
+        billing_month INTEGER NOT NULL,
+        billing_year INTEGER NOT NULL,
+        due_date DATE NOT NULL,
+        paid_at TIMESTAMP,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );`);
+
+      // ── Add campus_id FK columns to existing tables ──────────────────────
+      await db.execute(sql`ALTER TABLE public.students ADD COLUMN IF NOT EXISTS campus_id INTEGER REFERENCES public.campuses(id) ON DELETE SET NULL;`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_students_campus ON public.students(campus_id);`);
+      await db.execute(sql`ALTER TABLE public.staff ADD COLUMN IF NOT EXISTS campus_id INTEGER REFERENCES public.campuses(id) ON DELETE SET NULL;`);
+      await db.execute(sql`ALTER TABLE public.families ADD COLUMN IF NOT EXISTS campus_id INTEGER REFERENCES public.campuses(id) ON DELETE SET NULL;`);
+
       await db.execute(sql`UPDATE fees SET remaining_balance = GREATEST(amount - paid_amount - total_discount, 0) WHERE remaining_balance IS NULL OR remaining_balance > 0;`);
       console.log("Database schema alignment successful.");
     } catch (err) {

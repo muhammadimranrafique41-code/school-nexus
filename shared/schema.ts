@@ -110,6 +110,9 @@ export const families = pgTable("families", {
   walletBalance: numeric("wallet_balance", { precision: 12, scale: 2 })
     .notNull()
     .default("0"),
+  campusId: integer("campus_id").references(() => campuses.id, {
+    onDelete: "set null",
+  }),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 });
@@ -170,11 +173,16 @@ export const students = pgTable(
     ),
     /** Timestamp of the most recent promotion transition. */
     promotedAt: timestamp("promoted_at"),
+    /** FK to campuses table for multi-tenant isolation */
+    campusId: integer("campus_id").references(() => campuses.id, {
+      onDelete: "set null",
+    }),
   },
   (table) => ({
     sessionIdx: index("idx_students_session_lookup").on(
       table.academicSessionId
     ),
+    campusIdx: index("idx_students_campus").on(table.campusId),
   })
 );
 
@@ -2439,6 +2447,9 @@ export const staff = pgTable("staff", {
   panNumber: varchar("pan_number", { length: 20 }),
   emergencyContactName: varchar("emergency_contact_name", { length: 100 }),
   emergencyContactPhone: varchar("emergency_contact_phone", { length: 20 }),
+  campusId: integer("campus_id").references(() => campuses.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -3353,3 +3364,52 @@ export const insertTodoSchema = createInsertSchema(todos).omit({
 
 export type Todo = typeof todos.$inferSelect;
 export type InsertTodo = z.infer<typeof insertTodoSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MY SCHOOL MODULE — campuses & billing_records
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const campuses = pgTable("campuses", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 120 }).notNull(),
+  subdomain: varchar("subdomain", { length: 60 }).notNull().unique(),
+  address: text("address").notNull(),
+  contactInfo: jsonb("contact_info")
+    .$type<{ phone: string; email: string }>()
+    .notNull(),
+  logoUrl: varchar("logo_url", { length: 500 }),
+  ownerId: integer("owner_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const billingStatusEnum = pgEnum("billing_status", [
+  "PAID",
+  "PENDING",
+  "OVERDUE",
+  "CANCELLED",
+]);
+
+export const billingRecords = pgTable("billing_records", {
+  id: serial("id").primaryKey(),
+  campusId: integer("campus_id")
+    .notNull()
+    .references(() => campuses.id, { onDelete: "cascade" }),
+  amountPaise: integer("amount_paise").notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("PKR"),
+  status: billingStatusEnum("status").notNull().default("PENDING"),
+  billingMonth: integer("billing_month").notNull(),
+  billingYear: integer("billing_year").notNull(),
+  dueDate: date("due_date").notNull(),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type Campus = typeof campuses.$inferSelect;
+export type NewCampus = typeof campuses.$inferInsert;
+export type BillingRecord = typeof billingRecords.$inferSelect;
+export type NewBillingRecord = typeof billingRecords.$inferInsert;

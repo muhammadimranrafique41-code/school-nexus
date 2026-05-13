@@ -1,15 +1,19 @@
-import { LayoutDashboard, CalendarCheck, Wallet, BookOpen, GraduationCap, ListTodo } from "lucide-react"
+import { LayoutDashboard, CalendarCheck, Wallet, BookOpen, GraduationCap, ListTodo, Building2 } from "lucide-react"
 import { Link, useLocation } from "wouter"
 import { cn } from "@/lib/utils"
+import { useUser } from "@/hooks/use-auth"
 
 interface NavItem {
   label: string
   icon: typeof LayoutDashboard
   href: string
+  roles?: string[]
+  matchPrefix?: boolean
 }
 
 const navItems: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
+  { label: "My School", icon: Building2, href: "/my-school/overview", roles: ["admin"], matchPrefix: true },
   { label: "Todos", icon: ListTodo, href: "/dashboard/todos" },
   { label: "Attendance", icon: CalendarCheck, href: "/attendance" },
   { label: "Finance", icon: Wallet, href: "/finance" },
@@ -18,6 +22,13 @@ const navItems: NavItem[] = [
 
 export function SideNav() {
   const [location] = useLocation()
+  const { data: user } = useUser()
+
+  const visibleItems = navItems.filter((item) => {
+    if (!item.roles) return true
+    if (!user) return false
+    return item.roles.includes(user.role)
+  })
 
   return (
     <aside
@@ -35,8 +46,10 @@ export function SideNav() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4">
-        {navItems.map((item) => {
-          const isActive = location === item.href
+        {visibleItems.map((item) => {
+          const isActive = item.matchPrefix
+            ? location.startsWith("/my-school")
+            : location === item.href
           return (
             <Link
               key={item.href}
