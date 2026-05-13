@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TimetableSettingsProvider } from "@/lib/timetable-settings-bus";
 import { UiStateProvider } from "@/hooks/useUiState";
+import { Layout } from "@/components/layout";
 import { Header } from "@/components/layout/Header";
 import { SideNav } from "@/components/layout/SideNav";
 import NotFound from "@/pages/not-found";
@@ -52,6 +53,7 @@ import WhatsappPage from "./pages/admin/whatsapp";
 import ExaminationPage from "./features/examination/ExaminationPage";
 import LedgerPage from "./features/ledger/LedgerPage";
 
+import { MySchoolLayout } from "@/components/my-school/MySchoolLayout";
 import OverviewPage from "./pages/my-school/overview/OverviewPage";
 import CampusesPage from "./pages/my-school/campuses/CampusesPage";
 import BillingPage from "./pages/my-school/billing/BillingPage";
@@ -334,50 +336,32 @@ function Router() {
         <ProtectedRoute allowedRoles={['student']}><StudentDashboard /></ProtectedRoute>
       </Route>
 
-      {/* My School Routes — uses same admin layout as all other pages */}
+      {/* My School Routes — uses Layout (SidebarProvider + AppSidebar + Header) */}
       <Route path="/my-school/overview">
         <ProtectedRoute allowedRoles={['admin']}>
-          <UiStateProvider>
-            <div className="flex h-screen w-full overflow-hidden bg-slate-50">
-              <SideNav />
-              <div className="flex flex-1 flex-col min-w-0">
-                <Header />
-                <main className="flex-1 overflow-y-auto p-6">
-                  <OverviewPage />
-                </main>
-              </div>
-            </div>
-          </UiStateProvider>
+          <Layout>
+            <MySchoolLayout>
+              <OverviewPage />
+            </MySchoolLayout>
+          </Layout>
         </ProtectedRoute>
       </Route>
       <Route path="/my-school/campuses">
         <ProtectedRoute allowedRoles={['admin']}>
-          <UiStateProvider>
-            <div className="flex h-screen w-full overflow-hidden bg-slate-50">
-              <SideNav />
-              <div className="flex flex-1 flex-col min-w-0">
-                <Header />
-                <main className="flex-1 overflow-y-auto p-6">
-                  <CampusesPage />
-                </main>
-              </div>
-            </div>
-          </UiStateProvider>
+          <Layout>
+            <MySchoolLayout>
+              <CampusesPage />
+            </MySchoolLayout>
+          </Layout>
         </ProtectedRoute>
       </Route>
       <Route path="/my-school/billing">
         <ProtectedRoute allowedRoles={['admin']}>
-          <UiStateProvider>
-            <div className="flex h-screen w-full overflow-hidden bg-slate-50">
-              <SideNav />
-              <div className="flex flex-1 flex-col min-w-0">
-                <Header />
-                <main className="flex-1 overflow-y-auto p-6">
-                  <BillingPage />
-                </main>
-              </div>
-            </div>
-          </UiStateProvider>
+          <Layout>
+            <MySchoolLayout>
+              <BillingPage />
+            </MySchoolLayout>
+          </Layout>
         </ProtectedRoute>
       </Route>
 

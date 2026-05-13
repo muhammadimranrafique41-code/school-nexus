@@ -12,7 +12,6 @@ import {
 import { CampusTable } from "./CampusTable";
 import { CampusFormDialog } from "./CampusFormDialog";
 import { CampusFilters } from "./CampusFilters";
-import { MySchoolSubNav } from "../MySchoolSubNav";
 
 export default function CampusesPage() {
   const [, navigate] = useLocation();
@@ -79,7 +78,6 @@ export default function CampusesPage() {
 
   return (
     <div className="space-y-6">
-      <MySchoolSubNav />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-slate-900">

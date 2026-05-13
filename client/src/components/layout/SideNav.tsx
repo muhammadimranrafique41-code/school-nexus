@@ -14,7 +14,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
   { label: "My School", icon: Building2, href: "/my-school/overview", roles: ["admin"], matchPrefix: true },
-  { label: "Todos", icon: ListTodo, href: "/dashboard/todos" },
+  { label: "Todos", icon: ListTodo, href: "/admin/todos" },
   { label: "Attendance", icon: CalendarCheck, href: "/attendance" },
   { label: "Finance", icon: Wallet, href: "/finance" },
   { label: "Homework", icon: BookOpen, href: "/homework" },

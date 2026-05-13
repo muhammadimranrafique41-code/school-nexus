@@ -13,8 +13,6 @@ import { StatCard } from "./StatCard";
 import { PaymentDueBanner } from "@/components/my-school/PaymentDueBanner";
 import { PerformanceChart } from "./PerformanceChart";
 import { TopCampusesList } from "./TopCampusesList";
-import { MySchoolSubNav } from "../MySchoolSubNav";
-
 function formatPaise(paise: number) {
   return `Rs. ${(paise / 100).toLocaleString()}`;
 }
@@ -72,8 +70,6 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-6">
-      <MySchoolSubNav />
-
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-900">
           Overview

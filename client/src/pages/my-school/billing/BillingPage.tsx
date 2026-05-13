@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useBilling } from "@/hooks/my-school/useBilling";
 import { BillingSummaryCards } from "./BillingSummaryCards";
 import { InvoiceTable } from "./InvoiceTable";
-import { MySchoolSubNav } from "../MySchoolSubNav";
 
 export default function BillingPage() {
   const [selectedTab, setSelectedTab] = useState<string | undefined>();
@@ -10,8 +9,6 @@ export default function BillingPage() {
 
   return (
     <div className="space-y-6">
-      <MySchoolSubNav />
-
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-900">
           Billing
