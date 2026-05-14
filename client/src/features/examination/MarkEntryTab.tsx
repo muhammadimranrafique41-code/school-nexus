@@ -7,7 +7,7 @@ import { useExamMarks, useSaveExamMarks } from "./hooks/useExamMarks";
 import { useExamSessions } from "./hooks/useExamSessions";
 import type { ExamSession, MarkEntryStudent } from "./types";
 
-type ClassOption = { id: number; grade: string; section: string; stream?: string | null };
+type ClassOption = { id: number; grade: string; section: string };
 
 export function MarkEntryTab() {
   const { data: classData } = useClasses();

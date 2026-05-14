@@ -66,7 +66,6 @@ type ClassItem = {
   id: number;
   grade: string;
   section: string;
-  stream?: string | null;
   academicYear: string;
   capacity: number;
   currentCount: number;
@@ -74,8 +73,7 @@ type ClassItem = {
 };
 
 function classLabel(cls: ClassItem) {
-  const base = `${cls.grade} ${cls.section}`;
-  return cls.stream ? `${base} - ${cls.stream}` : base;
+  return `${cls.grade} ${cls.section}`.trim();
 }
 
 function classLabelWithYear(cls: ClassItem) {
@@ -179,12 +177,12 @@ function PromotionHistoryTable({
               </td>
               <td className="px-3 py-2.5 text-slate-600">
                 {item.fromClass
-                  ? `${item.fromClass.grade} ${item.fromClass.section}${item.fromClass.stream ? ` - ${item.fromClass.stream}` : ""}`
+                  ? `${item.fromClass.grade} ${item.fromClass.section}`
                   : <span className="italic text-slate-400">—</span>}
               </td>
               <td className="px-3 py-2.5 text-slate-700">
                 {item.toClass
-                  ? `${item.toClass.grade} ${item.toClass.section}${item.toClass.stream ? ` - ${item.toClass.stream}` : ""}`
+                  ? `${item.toClass.grade} ${item.toClass.section}`
                   : `#${item.toClassId}`}
               </td>
               <td className="px-3 py-2.5 text-slate-600">

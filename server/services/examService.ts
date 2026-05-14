@@ -150,15 +150,13 @@ const toNumber = (value: unknown): number => {
 
 const round2 = (value: number): number => Math.round(value * 100) / 100;
 
-// classLabel: "Grade-9 A" — stream/subject is intentionally excluded from class identity
-const classLabel = (row: { grade: string; section: string; stream?: string | null }): string =>
+const classLabel = (row: { grade: string; section: string }): string =>
   `${row.grade} ${row.section}`.trim();
 
-const classKeys = (row: { grade: string; section: string; stream?: string | null }): string[] => {
+const classKeys = (row: { grade: string; section: string }): string[] => {
   const base = classLabel(row); // "Grade-9 A"
   const gradeNum = row.grade.replace(/^Grade-?/i, "").trim(); // "9"
   const variations: string[] = [
-    // Primary canonical form (no stream/subject)
     base,                                                          // "Grade-9 A"
     `${row.grade}-${row.section}`.trim(),                          // "Grade-9-A"
     `${row.grade}${row.section}`.trim(),                           // "Grade-9A"
@@ -167,13 +165,6 @@ const classKeys = (row: { grade: string; section: string; stream?: string | null
     `${gradeNum}-${row.section}`.trim(),                           // "9-A"
     `${gradeNum} ${row.section}`.trim(),                           // "9 A"
     `${gradeNum}${row.section}`.trim(),                            // "9A"
-
-    // Legacy formats that included stream — kept for backward compat
-    ...(row.stream ? [
-      `${base} - ${row.stream}`.trim(),                            // "Grade-9 A - Urdu"
-      `${row.grade}-${row.section}-${row.stream}`.trim(),          // "Grade-9-A-Urdu"
-      `${row.grade} ${row.section} ${row.stream}`.trim(),          // "Grade-9 A Urdu"
-    ] : []),
   ];
 
   // Remove duplicates and empty strings

@@ -328,7 +328,7 @@ function TimetableEditor({ timetableId, onBack }: { timetableId: number; onBack:
   const isPublished = tt?.status === "published";
   const fitnessScore = tt?.fitnessScore ? Number(tt.fitnessScore) : null;
   const cls = tt?.class;
-  const className = cls ? `${cls.grade}-${cls.section}${cls.stream ? `-${cls.stream}` : ""}` : `Timetable ${timetableId}`;
+  const className = cls ? `${cls.grade}-${cls.section}` : `Timetable ${timetableId}`;
 
   if (isLoading || !settings) {
     return (

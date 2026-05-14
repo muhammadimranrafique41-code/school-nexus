@@ -15,6 +15,10 @@ export function usePublicSchoolSettings() {
     queryKey: [api.settings.publicGet.path],
     queryFn: async () => {
       const res = await fetch(api.settings.publicGet.path, { credentials: "include" })
+      // Handle 304 Not Modified - response has no body, fall back to cached data
+      if (res.status === 304) {
+        return null
+      }
       if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch school settings"))
       const parsed = api.settings.publicGet.responses[200].parse(await res.json())
       setCachedPublicSchoolSettings(parsed)
@@ -29,6 +33,10 @@ export function useAdminSchoolSettings(enabled = true) {
     enabled,
     queryFn: async () => {
       const res = await fetch(api.settings.adminGet.path, { credentials: "include" })
+      // Handle 304 Not Modified - response has no body, fall back to cached data
+      if (res.status === 304) {
+        return null
+      }
       if (!res.ok) throw new Error(await getResponseErrorMessage(res, "Failed to fetch admin settings"))
       const parsed = api.settings.adminGet.responses[200].parse(await res.json())
       setCachedPublicSchoolSettings(parsed.publicSettings)
@@ -127,6 +135,11 @@ export function useTimetableSettings() {
       const url = api.settings.timetableGet.path
       console.log(`Fetching timetable settings from: ${url}`)
       const res = await fetch(url, { credentials: "include" })
+      // Handle 304 Not Modified - response has no body, fall back to cached data
+      if (res.status === 304) {
+        console.log('Received 304 for timetable settings, using cached data')
+        return null
+      }
       if (!res.ok) {
         console.error(`Timetable settings fetch failed: ${res.status} ${res.statusText}`)
         throw new Error(await getResponseErrorMessage(res, "Failed to fetch timetable settings"))

@@ -5,11 +5,12 @@ import {
   staff,
   families,
   billingRecords,
+  expenses,
   type Campus,
   type NewCampus,
   type BillingRecord,
 } from "../../shared/schema.js";
-import { eq, and, sql, count } from "drizzle-orm";
+import { eq, and, sql, count, sum } from "drizzle-orm";
 
 export interface OverviewStats {
   totalCampuses: number;
@@ -41,42 +42,67 @@ export async function getCampusesByOwner(ownerId: number): Promise<CampusRow[]> 
     .from(campuses)
     .where(eq(campuses.ownerId, ownerId));
 
-  const [studCounts, staffCounts, famCounts] = await Promise.all([
-    rows.length > 0
+  const campusIds = rows.map(r => r.id);
+  const idsArr = campusIds.length > 0 ? sql`ARRAY[${sql.join(campusIds, sql`, `)}]::int[]` : null;
+
+  const [studCounts, staffCounts, famCounts, incomeSums, pendingSums] = await Promise.all([
+    idsArr
       ? db
           .select({ campusId: students.campusId, value: count() })
           .from(students)
-          .where(sql`${students.campusId} = ANY(ARRAY[${sql.join(rows.map(r => r.id), sql`, `)}]::int[])`)
+          .where(sql`${students.campusId} = ANY(${idsArr})`)
           .groupBy(students.campusId)
       : Promise.resolve([]),
-    rows.length > 0
+    idsArr
       ? db
           .select({ campusId: staff.campusId, value: count() })
           .from(staff)
-          .where(sql`${staff.campusId} = ANY(ARRAY[${sql.join(rows.map(r => r.id), sql`, `)}]::int[])`)
+          .where(sql`${staff.campusId} = ANY(${idsArr})`)
           .groupBy(staff.campusId)
       : Promise.resolve([]),
-    rows.length > 0
+    idsArr
       ? db
           .select({ campusId: families.campusId, value: count() })
           .from(families)
-          .where(sql`${families.campusId} = ANY(ARRAY[${sql.join(rows.map(r => r.id), sql`, `)}]::int[])`)
+          .where(sql`${families.campusId} = ANY(${idsArr})`)
           .groupBy(families.campusId)
+      : Promise.resolve([]),
+    idsArr
+      ? db
+          .select({ campusId: billingRecords.campusId, value: sum(billingRecords.amountPaise) })
+          .from(billingRecords)
+          .where(and(
+            sql`${billingRecords.campusId} = ANY(${idsArr})`,
+            eq(billingRecords.status, "PAID")
+          ))
+          .groupBy(billingRecords.campusId)
+      : Promise.resolve([]),
+    idsArr
+      ? db
+          .select({ campusId: billingRecords.campusId, value: sum(billingRecords.amountPaise) })
+          .from(billingRecords)
+          .where(and(
+            sql`${billingRecords.campusId} = ANY(${idsArr})`,
+            sql`${billingRecords.status} IN ('PENDING', 'OVERDUE')`
+          ))
+          .groupBy(billingRecords.campusId)
       : Promise.resolve([]),
   ]);
 
   const studMap = new Map(studCounts.map(r => [r.campusId, Number(r.value)]));
   const staffMap = new Map(staffCounts.map(r => [r.campusId, Number(r.value)]));
   const famMap = new Map(famCounts.map(r => [r.campusId, Number(r.value)]));
+  const incomeMap = new Map(incomeSums.map(r => [r.campusId, Number(r.value)]));
+  const pendingMap = new Map(pendingSums.map(r => [r.campusId, Number(r.value)]));
 
   const enriched = rows.map((campus) => ({
     ...campus,
     studentCount: studMap.get(campus.id) ?? 0,
     staffCount: staffMap.get(campus.id) ?? 0,
     familyCount: famMap.get(campus.id) ?? 0,
-    incomePaise: 0,
+    incomePaise: incomeMap.get(campus.id) ?? 0,
     expensesPaise: 0,
-    pendingDuesPaise: 0,
+    pendingDuesPaise: pendingMap.get(campus.id) ?? 0,
   } satisfies CampusRow));
 
   return enriched;
@@ -131,10 +157,14 @@ export async function getOwnerOverview(ownerId: number): Promise<OverviewStats> 
   let totalStaff = 0;
   let totalFamilies = 0;
 
+  let totalIncomePaise = 0;
+  let totalPendingDuesPaise = 0;
+
   if (campusIds.length > 0) {
     const idsArr = sql`ARRAY[${sql.join(campusIds, sql`, `)}]::int[]`;
 
-    const [[pendingCount], [studCount], [staffCount], [famCount]] = await Promise.all([
+    const [[pendingCount], [studCount], [staffCount], [famCount],
+           [incomeSum], [pendingSum]] = await Promise.all([
       db
         .select({ value: count() })
         .from(billingRecords)
@@ -156,12 +186,32 @@ export async function getOwnerOverview(ownerId: number): Promise<OverviewStats> 
         .select({ value: count() })
         .from(families)
         .where(sql`${families.campusId} = ANY(${idsArr})`),
+      db
+        .select({ value: sum(billingRecords.amountPaise) })
+        .from(billingRecords)
+        .where(
+          and(
+            sql`${billingRecords.campusId} = ANY(${idsArr})`,
+            eq(billingRecords.status, "PAID")
+          )
+        ),
+      db
+        .select({ value: sum(billingRecords.amountPaise) })
+        .from(billingRecords)
+        .where(
+          and(
+            sql`${billingRecords.campusId} = ANY(${idsArr})`,
+            sql`${billingRecords.status} IN ('PENDING', 'OVERDUE')`
+          )
+        ),
     ]);
 
     pendingBillingMonths = Number(pendingCount?.value ?? 0);
     totalStudents = Number(studCount?.value ?? 0);
     totalStaff = Number(staffCount?.value ?? 0);
     totalFamilies = Number(famCount?.value ?? 0);
+    totalIncomePaise = Number(incomeSum?.value ?? 0);
+    totalPendingDuesPaise = Number(pendingSum?.value ?? 0);
   }
 
   return {
@@ -169,9 +219,9 @@ export async function getOwnerOverview(ownerId: number): Promise<OverviewStats> 
     totalStudents,
     totalStaff,
     totalFamilies,
-    totalIncomePaise: 0,
+    totalIncomePaise,
     totalExpensesPaise: 0,
-    totalPendingDuesPaise: 0,
+    totalPendingDuesPaise,
     pendingBillingMonths,
   };
 }

@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ExamSession } from "../types";
 
-type ClassOption = { id: number; grade: string; section: string; stream?: string | null };
+type ClassOption = { id: number; grade: string; section: string };
 
 export function MarkEntryToolbar({
   classes,

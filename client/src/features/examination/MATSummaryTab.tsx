@@ -5,7 +5,7 @@ import { useAcademicSessions, useCurrentAcademicSession } from "@/hooks/use-sess
 import { MATAggregateTable } from "./components/MATAggregateTable";
 import { useMATAggregate } from "./hooks/useMATAggregate";
 
-type ClassOption = { id: number; grade: string; section: string; stream?: string | null };
+type ClassOption = { id: number; grade: string; section: string };
 
 export function MATSummaryTab() {
   const { data: classData } = useClasses();

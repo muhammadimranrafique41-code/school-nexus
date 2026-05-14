@@ -26,6 +26,20 @@ import { storage } from "../storage.ts";
  * Extend this map whenever a new permission is introduced.
  */
 const ROLE_PERMISSIONS: Record<string, Set<string>> = {
+  super_admin: new Set([
+    "platform:read",
+    "platform:write",
+    "platform:manage",
+    "owners:read",
+    "owners:write",
+    "billing:read",
+    "billing:write",
+    "audit:read",
+    "system:health",
+    "settings:read",
+    "settings:write",
+    "impersonate",
+  ]),
   admin: new Set([
     "student:history",
     "student:read",
@@ -111,7 +125,7 @@ export function hasPermission(permission: string) {
     }
 
     // 3. Attach user to request for downstream handlers
-    (req as Request & { resolvedUser: typeof user }).resolvedUser = user;
+    req.resolvedUser = user;
     next();
   };
 }

@@ -9,6 +9,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { apiRequest } from "@/lib/queryClient";
 import type { BillingRecord } from "@/hooks/my-school/useBilling";
 
 const MONTH_NAMES = [
@@ -50,6 +52,34 @@ export function InvoiceTable({
   selectedTab,
   onTabChange,
 }: Props) {
+  const [payLoading, setPayLoading] = useState<Record<number, boolean>>({});
+
+  const handlePay = async (record: BillingRecord) => {
+    setPayLoading((prev) => ({ ...prev, [record.id]: true }));
+    try {
+      const res = await apiRequest("POST", `/api/owner/billing/${record.id}/pay`);
+      const body = await res.json();
+      if (!body.success) throw new Error(body.error?.message ?? "Payment initiation failed");
+      const { checkoutUrl, formParams } = body.data;
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = checkoutUrl;
+      form.style.display = "none";
+      for (const [key, value] of Object.entries(formParams)) {
+        const input = document.createElement("input");
+        input.name = key;
+        input.value = value;
+        form.appendChild(input);
+      }
+      document.body.appendChild(form);
+      form.submit();
+    } catch (err) {
+      console.error("Pay error", err);
+    } finally {
+      setPayLoading((prev) => ({ ...prev, [record.id]: false }));
+    }
+  };
+
   const filtered =
     selectedTab && records
       ? records.filter(
@@ -120,6 +150,9 @@ export function InvoiceTable({
                 <TableHead className="text-xs font-semibold uppercase text-slate-500">
                   Due Date
                 </TableHead>
+                <TableHead className="text-xs font-semibold uppercase text-slate-500">
+                  Action
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -146,6 +179,18 @@ export function InvoiceTable({
                   </TableCell>
                   <TableCell className="text-sm text-slate-700">
                     {record.dueDate}
+                  </TableCell>
+                  <TableCell>
+                    {(record.status === "PENDING" || record.status === "OVERDUE") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={payLoading[record.id]}
+                        onClick={() => handlePay(record)}
+                      >
+                        {payLoading[record.id] ? "Processing..." : "Pay now"}
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

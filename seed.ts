@@ -96,9 +96,9 @@ async function seed() {
   const existingClasses = await db.select().from(classes);
   if (existingClasses.length === 0) {
     const seedClasses = [
-      { grade: "Grade 10", section: "A", stream: null, academicYear: currentAcademicYear },
-      { grade: "Grade 11", section: "B", stream: null, academicYear: currentAcademicYear },
-      { grade: "Grade 12", section: "C", stream: null, academicYear: currentAcademicYear },
+      { grade: "Grade 10", section: "A", academicYear: currentAcademicYear },
+      { grade: "Grade 11", section: "B", academicYear: currentAcademicYear },
+      { grade: "Grade 12", section: "C", academicYear: currentAcademicYear },
     ];
 
     const studentsByClassName = await db
@@ -120,7 +120,6 @@ async function seed() {
           return {
             grade: item.grade,
             section: item.section,
-            stream: item.stream,
             academicYear: item.academicYear,
             capacity: 40,
             currentCount: classCounts.get(className) ?? 0,

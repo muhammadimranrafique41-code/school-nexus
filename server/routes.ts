@@ -20,6 +20,8 @@ import {
   expenses,
   insertExpenseSchema,
   EXPENSE_CATEGORIES,
+  campuses,
+  billingRecords,
   type ResultWithStudent,
   type User,
   type InsertFamily,
@@ -66,6 +68,7 @@ import { LedgerService } from "./services/ledgerService.js";
 import { AuditService } from "./services/auditService.js";
 import { chatWithSchoolAssistant } from "./services/aiService.js";
 import { jazzCashService, type JazzCashCallbackPayload } from "./services/jazzcashService.js";
+import { initiatePlatformPayment } from "./services/platformBillingService.js";
 import { AppError } from "./errors.js";
 import {
   bulkUpsertMarks,
@@ -210,10 +213,10 @@ const sendHomeworkError = (res: Response, statusCode: number, error: string, met
   res.status(statusCode).json({ data: null, error, meta });
 
 // buildClassLabel: stream/subject intentionally excluded from class identity label
-const buildClassLabel = (record: { grade: string | null; section: string | null; stream?: string | null }) =>
+const buildClassLabel = (record: { grade: string | null; section: string | null }) =>
   `${record.grade ?? ""} ${record.section ?? ""}`.trim();
 
-const buildClassNameKey = (record: { grade: string | null; section: string | null; stream?: string | null }) =>
+const buildClassNameKey = (record: { grade: string | null; section: string | null }) =>
   `${record.grade ?? ""}-${record.section ?? ""}`.trim();
 
 const normalizeClassKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -6223,6 +6226,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     }
   );
+
+  // ── Pay billing record via JazzCash ──────────────────────────────────────
+  app.post(
+    "/api/owner/billing/:id/pay",
+    async (req, res) => {
+      try {
+        const user = await requireRole(req, res, ["admin"]);
+        if (!user) return;
+        const billingRecordId = parseInt(req.params.id, 10);
+        if (isNaN(billingRecordId)) {
+          res.status(400).json({ success: false, error: { code: "INVALID_ID", message: "Invalid billing record ID" } });
+          return;
+        }
+        const result = await initiatePlatformPayment(billingRecordId, user.id);
+        res.json({ success: true, data: result });
+      } catch (err) {
+        sendStructuredError(res, err);
+      }
+    }
+  );
+
+  // super admin routes are handled by superAdminRouter mounted in app.ts
 
   return httpServer;
 }

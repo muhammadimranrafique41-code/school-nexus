@@ -62,15 +62,13 @@ export default function StudentDailyDiaryPage() {
         if (!classRes.ok) return;
 
         const classData = (await classRes.json()) as {
-          data: Array<{ id: number; grade: string; section: string; stream?: string | null }>;
+          data: Array<{ id: number; grade: string; section: string }>;
         };
 
         const matchedClass = classData.data.find((c) => {
-          const full = `${c.grade}-${c.section}${c.stream ? `-${c.stream}` : ""}`;
           return (
             c.grade === user.className ||
-            `${c.grade}-${c.section}` === user.className ||
-            full === user.className
+            `${c.grade}-${c.section}` === user.className
           );
         });
 

@@ -1,6 +1,7 @@
 import type { InsertUser } from "../shared/schema.js";
 
 export const defaultSeedUsers: InsertUser[] = [
+  { name: "Platform Super Admin", email: "superadmin@school.edu", password: "password123", role: "super_admin" },
   { name: "John Admin", email: "admin@school.edu", password: "password123", role: "admin" },
   { name: "Dr. Sarah Mitchell", email: "s.mitchell@school.edu", password: "password123", role: "teacher", subject: "Mathematics", designation: "Head of Mathematics", department: "STEM Faculty", employeeId: "SNX-T-001" },
   { name: "Prof. Michael Chen", email: "m.chen@school.edu", password: "password123", role: "teacher", subject: "Physics", designation: "Senior Physics Teacher", department: "Science Department", employeeId: "SNX-T-002" },

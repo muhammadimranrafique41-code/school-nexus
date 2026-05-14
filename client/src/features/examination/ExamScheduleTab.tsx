@@ -6,7 +6,7 @@ import { ExamSessionCard } from "./components/ExamSessionCard";
 import { ScheduleExamModal } from "./components/ScheduleExamModal";
 import { useExamSessions } from "./hooks/useExamSessions";
 
-type ClassOption = { id: number; grade: string; section: string; stream?: string | null; academicYear?: string };
+type ClassOption = { id: number; grade: string; section: string; academicYear?: string };
 
 export function ExamScheduleTab() {
   const { data: classData } = useClasses();

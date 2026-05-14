@@ -2686,8 +2686,8 @@ const promotionHistoryItemSchema = z.object({
   createdAt: z.string(),
   // Joined fields
   student: z.object({ id: z.number(), name: z.string(), className: z.string().nullable() }).nullable(),
-  fromClass: z.object({ id: z.number(), grade: z.string(), section: z.string(), stream: z.string().nullable() }).nullable(),
-  toClass: z.object({ id: z.number(), grade: z.string(), section: z.string(), stream: z.string().nullable() }).nullable(),
+  fromClass: z.object({ id: z.number(), grade: z.string(), section: z.string() }).nullable(),
+  toClass: z.object({ id: z.number(), grade: z.string(), section: z.string() }).nullable(),
   session: z.object({ id: z.number(), name: z.string() }).nullable(),
   promotedByUser: z.object({ id: z.number(), name: z.string() }).nullable(),
 });

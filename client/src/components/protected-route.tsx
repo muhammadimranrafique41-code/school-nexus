@@ -25,13 +25,14 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    // If not allowed, redirect to their proper dashboard
-    return <Redirect to={`/${user.role}`} />;
+    const fallback = user.role === "super_admin" ? "/super-admin/overview" : `/${user.role}`;
+    return <Redirect to={fallback} />;
   }
 
   // Generic catch for base routes routing to specific dashboards
   if (location === "/") {
-     return <Redirect to={`/${user.role}`} />;
+    const dashboardPath = user.role === "super_admin" ? "/super-admin/overview" : `/${user.role}`;
+    return <Redirect to={dashboardPath} />;
   }
 
   return <>{children}</>;

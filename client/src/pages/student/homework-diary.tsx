@@ -92,15 +92,14 @@ export default function StudentHomeworkDiaryPage() {
         const classRes = await fetch("/api/v1/classes");
         if (!classRes.ok) return;
         const classData = (await classRes.json()) as {
-          data: Array<{ id: number; grade: string; section: string; stream?: string | null }>;
+          data: Array<{ id: number; grade: string; section: string }>;
         };
         const matched = classData.data.find(c => {
-          const full = `${c.grade}-${c.section}${c.stream ? `-${c.stream}` : ""}`;
-          return c.grade === user.className || `${c.grade}-${c.section}` === user.className || full === user.className;
+          return c.grade === user.className || `${c.grade}-${c.section}` === user.className;
         });
         if (!matched) return;
         setClassId(matched.id);
-        setClassLabel(`${matched.grade}-${matched.section}${matched.stream ? `-${matched.stream}` : ""}`);
+        setClassLabel(`${matched.grade}-${matched.section}`);
         const res = await fetch(`/api/homework-diary/class/${matched.id}`);
         if (res.ok) {
           const list = (await res.json()) as HomeworkDiary[];

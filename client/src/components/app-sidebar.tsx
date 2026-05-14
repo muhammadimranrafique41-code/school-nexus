@@ -1,6 +1,6 @@
 import {
   BookOpen, Users, LayoutDashboard, Calculator,
-  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle, ReceiptText, Wallet, BookMarked, UserCog, FileText, TrendingUp, ClipboardList, ListTodo, Building2,
+  GraduationCap, CalendarDays, WalletCards, Briefcase, LogOut, Settings, Settings2, QrCode, ScanLine, Printer, LayoutGrid, Notebook, ChevronRight, Sparkles, ArrowUpCircle, MessageCircle, ReceiptText, Wallet, BookMarked, UserCog, FileText, TrendingUp, ClipboardList, ListTodo, Building2, Shield, Activity, CreditCard,
 } from "lucide-react";
 import {
   Sidebar,
@@ -94,6 +94,20 @@ const adminSections: SidebarSection[] = [
   },
 ];
 
+const superAdminSections: SidebarSection[] = [
+  {
+    label: "Platform",
+    items: [
+      { title: "Overview", url: "/super-admin/overview", icon: LayoutDashboard },
+      { title: "Owners", url: "/super-admin/owners", icon: Building2 },
+      { title: "Billing", url: "/super-admin/billing", icon: CreditCard },
+      { title: "Audit Logs", url: "/super-admin/audit-logs", icon: ClipboardList },
+      { title: "System Health", url: "/super-admin/system-health", icon: Activity },
+      { title: "Settings", url: "/super-admin/settings", icon: Settings2 },
+    ],
+  },
+];
+
 const teacherSections: SidebarSection[] = [
   {
     label: "Overview",
@@ -176,14 +190,22 @@ export function AppSidebar() {
   };
 
   const role = user?.role?.trim().toLowerCase();
+  const isSuperAdmin = role === "super_admin" || role?.includes("super_admin");
   const isAdmin = role === "admin" || role?.includes("admin");
   const isTeacher = role === "teacher" || role?.includes("teacher");
   const isStudent = role === "student" || role?.includes("student");
 
-  const sections = isAdmin ? adminSections : isTeacher ? teacherSections : isStudent ? studentSections : [];
+  const sections = isSuperAdmin
+    ? [...superAdminSections, ...adminSections]
+    : isAdmin ? adminSections
+    : isTeacher ? teacherSections
+    : isStudent ? studentSections
+    : [];
 
   const roleLabel = role
-    ? `${role.charAt(0).toUpperCase()}${role.slice(1)} Portal`
+    ? role === "super_admin"
+      ? "Super Admin Portal"
+      : `${role.charAt(0).toUpperCase()}${role.slice(1)} Portal`
     : "School Management";
   const schoolName =
     publicSettings?.schoolInformation.shortName ||

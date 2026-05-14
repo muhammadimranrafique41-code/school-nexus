@@ -707,7 +707,8 @@ export const familyTransactions = pgTable("family_transactions", {
 
 export const jazzcashPaymentIntents = pgTable("jazzcash_payment_intents", {
   id: serial("id").primaryKey(),
-  familyId: integer("family_id").notNull().references(() => families.id, { onDelete: "restrict" }),
+  familyId: integer("family_id").references(() => families.id, { onDelete: "restrict" }),
+  billingRecordId: integer("billing_record_id").references(() => billingRecords.id, { onDelete: "set null" }),
   ppTxnRefNo: varchar("pp_txn_ref_no", { length: 50 }).notNull().unique(),
   ppResponseCode: varchar("pp_response_code", { length: 10 }),
   ppResponseMessage: varchar("pp_response_message", { length: 255 }),
@@ -3413,3 +3414,90 @@ export type Campus = typeof campuses.$inferSelect;
 export type NewCampus = typeof campuses.$inferInsert;
 export type BillingRecord = typeof billingRecords.$inferSelect;
 export type NewBillingRecord = typeof billingRecords.$inferInsert;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PLATFORM MANAGEMENT — Super Admin Module
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const ownerStatusEnum = pgEnum("owner_status", [
+  "ACTIVE",
+  "SUSPENDED",
+  "ON_TRIAL",
+  "CANCELLED",
+]);
+
+export const ownerPlanEnum = pgEnum("owner_plan", [
+  "STARTER",
+  "PROFESSIONAL",
+  "ENTERPRISE",
+]);
+
+export const owners = pgTable("owners", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  phone: text("phone"),
+  plan: ownerPlanEnum("plan").notNull().default("STARTER"),
+  status: ownerStatusEnum("status").notNull().default("ACTIVE"),
+  suspendedAt: timestamp("suspended_at"),
+  suspendedReason: text("suspended_reason"),
+  gracePeriodDays: integer("grace_period_days").notNull().default(30),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const auditLogs = pgTable(
+  "audit_logs",
+  {
+    id: serial("id").primaryKey(),
+    actorId: integer("actor_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    actorRole: text("actor_role").notNull(),
+    action: text("action").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: integer("entity_id"),
+    targetOwnerId: integer("target_owner_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    actorIdx: index("idx_audit_actor").on(t.actorId),
+    actionIdx: index("idx_audit_action").on(t.action),
+    targetOwnerIdx: index("idx_audit_target_owner").on(t.targetOwnerId),
+    createdAtIdx: index("idx_audit_created").on(t.createdAt),
+    uniqueEntity: uniqueIndex("uq_audit_entity").on(
+      t.entityType,
+      t.entityId,
+      t.action,
+      t.createdAt
+    ),
+  })
+);
+
+export const platformSettings = pgTable("platform_settings", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  value: jsonb("value").notNull(),
+  description: text("description"),
+  category: text("category").notNull().default("general"),
+  isEncrypted: boolean("is_encrypted").notNull().default(false),
+  updatedBy: integer("updated_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type SelectOwner = typeof owners.$inferSelect;
+export type InsertOwner = typeof owners.$inferInsert;
+export type SelectAuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = typeof auditLogs.$inferInsert;
+export type SelectPlatformSetting = typeof platformSettings.$inferSelect;
+export type InsertPlatformSetting = typeof platformSettings.$inferInsert;

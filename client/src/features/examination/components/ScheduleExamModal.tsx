@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useCreateExamSession } from "../hooks/useExamSessions";
 
-type ClassOption = { id: number; grade: string; section: string; stream?: string | null; academicYear?: string };
+type ClassOption = { id: number; grade: string; section: string; academicYear?: string };
 type AcademicSessionOption = { id: number; name: string; isCurrent?: boolean };
 type SubjectDraft = { subjectName: string; maxTheoryMarks: number; maxPracticalMarks: number; examDate: string };
 

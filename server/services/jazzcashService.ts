@@ -158,7 +158,7 @@ export const jazzCashService = {
 
     // Idempotency check
     const existing = await db.query(
-      `SELECT id, family_id, status, requested_amount_pkr FROM jazzcash_payment_intents WHERE pp_TxnRefNo = $1`,
+      `SELECT id, family_id, billing_record_id, status, requested_amount_pkr FROM jazzcash_payment_intents WHERE pp_TxnRefNo = $1`,
       [pp_TxnRefNo]
     );
     if (!existing.rows[0]) {
@@ -201,45 +201,54 @@ export const jazzCashService = {
         return { success: false, intentId: intent.id };
       }
 
-      // Credit family wallet
-      await trx.query(
-        `UPDATE families SET wallet_balance = wallet_balance + $1, updated_at = NOW() WHERE id = $2`,
-        [amountPKR, intent.family_id]
-      );
+      if (intent.billing_record_id) {
+        // Platform fee payment — update billing record, skip wallet
+        await trx.query(
+          `UPDATE billing_records SET status = 'PAID', paid_at = NOW(), updated_at = NOW() WHERE id = $1`,
+          [intent.billing_record_id]
+        );
+        console.info({ intentId: intent.id, billingRecordId: intent.billing_record_id, amountPKR }, 'Platform billing record settled via JazzCash');
+      } else {
+        // Credit family wallet
+        await trx.query(
+          `UPDATE families SET wallet_balance = wallet_balance + $1, updated_at = NOW() WHERE id = $2`,
+          [amountPKR, intent.family_id]
+        );
 
-      // Record top‑up transaction
-      await trx.query(
-        `INSERT INTO family_transactions (family_id, amount, type, method, jazzcash_intent_id, description)
-         VALUES ($1, $2, 'jazzcash_topup', 'JazzCash', $3, $4)`,
-        [
+        // Record top‑up transaction
+        await trx.query(
+          `INSERT INTO family_transactions (family_id, amount, type, method, jazzcash_intent_id, description)
+           VALUES ($1, $2, 'jazzcash_topup', 'JazzCash', $3, $4)`,
+          [
+            intent.family_id,
+            amountPKR,
+            intent.id,
+            `JazzCash top-up via MCP — Ref: ${pp_TxnRefNo}`,
+          ]
+        );
+
+        console.info({ intentId: intent.id, familyId: intent.family_id, amountPKR }, 'Family wallet credited via JazzCash');
+
+        // Settle outstanding fees using existing payFamily logic (wallet-only)
+        const settlementResult = await storage.payFamily(
           intent.family_id,
-          amountPKR,
-          intent.id,
-          `JazzCash top-up via MCP — Ref: ${pp_TxnRefNo}`,
-        ]
-      );
+          {
+            amount: 0,
+            paymentDate: new Date().toISOString().slice(0, 10),
+            method: 'JazzCash',
+            reference: pp_TxnRefNo,
+            notes: `Settled from JazzCash MCP payment. TxnRef: ${pp_TxnRefNo}`,
+          },
+          {
+            tx,
+            createdBy: intent.initiated_by_user_id ?? undefined,
+          }
+        );
 
-      console.info({ intentId: intent.id, familyId: intent.family_id, amountPKR }, 'Family wallet credited via JazzCash');
+        console.info({ intentId: intent.id, settlementResult }, 'Fee settlement completed after JazzCash top-up');
+      }
 
-      // Settle outstanding fees using existing payFamily logic (wallet-only)
-      const settlementResult = await storage.payFamily(
-        intent.family_id,
-        {
-          amount: 0,
-          paymentDate: new Date().toISOString().slice(0, 10),
-          method: 'JazzCash',
-          reference: pp_TxnRefNo,
-          notes: `Settled from JazzCash MCP payment. TxnRef: ${pp_TxnRefNo}`,
-        },
-        {
-          tx,
-          createdBy: intent.initiated_by_user_id ?? undefined,
-        }
-      );
-
-      console.info({ intentId: intent.id, settlementResult }, 'Fee settlement completed after JazzCash top-up');
-
-      return { success: true, intentId: intent.id, amountCredited: amountPKR, settlementResult };
+      return { success: true, intentId: intent.id, amountCredited: amountPKR };
     });
   },
 

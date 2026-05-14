@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -57,6 +57,14 @@ import { MySchoolLayout } from "@/components/my-school/MySchoolLayout";
 import OverviewPage from "./pages/my-school/overview/OverviewPage";
 import CampusesPage from "./pages/my-school/campuses/CampusesPage";
 import BillingPage from "./pages/my-school/billing/BillingPage";
+
+import { SuperAdminLayout } from "@/pages/super-admin/SuperAdminLayout";
+import PlatformOverviewPage from "./pages/super-admin/overview/PlatformOverviewPage";
+import OwnersPage from "./pages/super-admin/owners/OwnersPage";
+import PlatformBillingPage from "./pages/super-admin/billing/PlatformBillingPage";
+import AuditLogsPage from "./pages/super-admin/audit-logs/AuditLogsPage";
+import SystemHealthPage from "./pages/super-admin/system-health/SystemHealthPage";
+import PlatformSettingsPage from "./pages/super-admin/settings/PlatformSettingsPage";
 
 import TeacherDashboard from "./pages/teacher/dashboard";
 import TeacherAttendance from "./pages/teacher/attendance";
@@ -361,6 +369,73 @@ function Router() {
             <MySchoolLayout>
               <BillingPage />
             </MySchoolLayout>
+          </Layout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Super Admin Routes — Platform Management */}
+      {/* Safety net: handle both snake_case (from role-based redirects) and kebab-case URLs */}
+      <Route path="/super_admin">
+        <ProtectedRoute allowedRoles={["super_admin"]}>
+          <Redirect to="/super-admin/overview" />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/super-admin">
+        <ProtectedRoute allowedRoles={["super_admin"]}>
+          <Redirect to="/super-admin/overview" />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/super-admin/overview">
+        <ProtectedRoute allowedRoles={["super_admin"]}>
+          <Layout>
+            <SuperAdminLayout>
+              <PlatformOverviewPage />
+            </SuperAdminLayout>
+          </Layout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/super-admin/owners">
+        <ProtectedRoute allowedRoles={["super_admin"]}>
+          <Layout>
+            <SuperAdminLayout>
+              <OwnersPage />
+            </SuperAdminLayout>
+          </Layout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/super-admin/billing">
+        <ProtectedRoute allowedRoles={["super_admin"]}>
+          <Layout>
+            <SuperAdminLayout>
+              <PlatformBillingPage />
+            </SuperAdminLayout>
+          </Layout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/super-admin/audit-logs">
+        <ProtectedRoute allowedRoles={["super_admin"]}>
+          <Layout>
+            <SuperAdminLayout>
+              <AuditLogsPage />
+            </SuperAdminLayout>
+          </Layout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/super-admin/system-health">
+        <ProtectedRoute allowedRoles={["super_admin"]}>
+          <Layout>
+            <SuperAdminLayout>
+              <SystemHealthPage />
+            </SuperAdminLayout>
+          </Layout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/super-admin/settings">
+        <ProtectedRoute allowedRoles={["super_admin"]}>
+          <Layout>
+            <SuperAdminLayout>
+              <PlatformSettingsPage />
+            </SuperAdminLayout>
           </Layout>
         </ProtectedRoute>
       </Route>
