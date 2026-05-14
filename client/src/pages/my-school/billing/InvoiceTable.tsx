@@ -11,6 +11,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/queryClient";
+import { CheckCircle2, ExternalLink, AlertCircle } from "lucide-react";
 import type { BillingRecord } from "@/hooks/my-school/useBilling";
 
 const MONTH_NAMES = [
@@ -44,6 +45,30 @@ function statusBadgeClass(status: string) {
     default:
       return "bg-slate-50 text-slate-700";
   }
+}
+
+function formatPaise(paise: number): string {
+  return `Rs. ${(paise / 100).toLocaleString()}`;
+}
+
+function daysFromNow(dateStr: string): string {
+  const now = new Date();
+  const due = new Date(dateStr);
+  const diffMs = due.getTime() - now.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return `${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"} overdue`;
+  if (diffDays === 0) return "Due today";
+  return `${diffDays} day${diffDays === 1 ? "" : "s"} left`;
+}
+
+function daysFromNowClass(dateStr: string): string {
+  const now = new Date();
+  const due = new Date(dateStr);
+  const diffMs = due.getTime() - now.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return "text-red-600 font-medium";
+  if (diffDays <= 3) return "text-amber-600 font-medium";
+  return "text-slate-500";
 }
 
 export function InvoiceTable({
@@ -128,7 +153,9 @@ export function InvoiceTable({
         </div>
       ) : !filtered || filtered.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-12 text-sm text-slate-400">
-          <p className="text-lg font-medium">No invoices found</p>
+          <CheckCircle2 className="h-10 w-10 text-emerald-400" />
+          <p className="text-lg font-medium">All caught up!</p>
+          <p>No invoices to display.</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -157,7 +184,13 @@ export function InvoiceTable({
             </TableHeader>
             <TableBody>
               {filtered.map((record) => (
-                <TableRow key={record.id} className="hover:bg-slate-50">
+                <TableRow
+                  key={record.id}
+                  className={cn(
+                    "hover:bg-slate-50 transition-colors",
+                    record.status === "OVERDUE" && "bg-red-50/40"
+                  )}
+                >
                   <TableCell className="text-sm font-medium text-slate-900">
                     {MONTH_NAMES[record.billingMonth - 1] ?? "Unknown"}
                   </TableCell>
@@ -165,31 +198,61 @@ export function InvoiceTable({
                     {record.billingYear}
                   </TableCell>
                   <TableCell className="text-sm font-medium text-slate-900">
-                    Rs. {(record.amountPaise / 100).toLocaleString()}
+                    {formatPaise(record.amountPaise)}
                   </TableCell>
                   <TableCell>
                     <span
                       className={cn(
-                        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
+                        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
                         statusBadgeClass(record.status)
                       )}
                     >
-                      {record.status}
+                      {record.status === "PAID" && <CheckCircle2 className="h-3 w-3" />}
+                      {record.status === "OVERDUE" && <AlertCircle className="h-3 w-3" />}
+                      {record.status === "PAID" ? "Paid" : record.status}
                     </span>
                   </TableCell>
                   <TableCell className="text-sm text-slate-700">
-                    {record.dueDate}
+                    <span className="block">{record.dueDate}</span>
+                    {record.status !== "PAID" && record.status !== "CANCELLED" && (
+                      <span className={cn("text-xs", daysFromNowClass(record.dueDate))}>
+                        {daysFromNow(record.dueDate)}
+                      </span>
+                    )}
+                    {record.paidAt && (
+                      <span className="block text-xs text-emerald-600">
+                        Paid {new Date(record.paidAt).toLocaleDateString("en-PK")}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
                     {(record.status === "PENDING" || record.status === "OVERDUE") && (
                       <Button
                         size="sm"
-                        variant="outline"
+                        className={cn(
+                          "gap-1.5 transition-all",
+                          record.status === "OVERDUE"
+                            ? "bg-red-600 hover:bg-red-700 text-white"
+                            : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                        )}
                         disabled={payLoading[record.id]}
                         onClick={() => handlePay(record)}
                       >
-                        {payLoading[record.id] ? "Processing..." : "Pay now"}
+                        {payLoading[record.id] ? (
+                          "Processing..."
+                        ) : (
+                          <>
+                            Pay {formatPaise(record.amountPaise)}
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </>
+                        )}
                       </Button>
+                    )}
+                    {record.status === "PAID" && (
+                      <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Receipt
+                      </span>
                     )}
                   </TableCell>
                 </TableRow>

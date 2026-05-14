@@ -24,5 +24,7 @@ export function useBilling(status?: string) {
       const body = await res.json();
       return body.data;
     },
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 }

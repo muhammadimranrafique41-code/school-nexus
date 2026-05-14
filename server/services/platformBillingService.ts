@@ -1,14 +1,8 @@
-import crypto from "crypto";
 import { db } from "../db.js";
-import { eq, and, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { campuses, billingRecords } from "../../shared/schema.js";
 import { AppError } from "../errors.js";
-import { generateJazzCashHash } from "./jazzcashService.js";
-
-function buildTxnRefNo(intentId: number): string {
-  const ts = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
-  return `SNXJC${ts}${String(intentId).padStart(5, "0")}`;
-}
+import { buildTxnRefNo, buildCheckoutForm } from "./jazzcashService.js";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -63,35 +57,17 @@ export async function initiatePlatformPayment(
   const txnRefNo = buildTxnRefNo(intentId);
   await db.query("UPDATE jazzcash_payment_intents SET pp_TxnRefNo = $1 WHERE id = $2", [txnRefNo, intentId]);
 
-  const txnDateTime = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
-  const amountPaisas = String(Math.round(amountPKR * 100));
-  const billReference = `PLAT-${billingRecordId}`;
   const monthLabel = MONTH_NAMES[record.billingMonth - 1] ?? "Unknown";
-  const description = `Platform Fee - ${monthLabel} ${record.billingYear}`;
+  const billReference = `PLAT-${billingRecordId}`;
 
-  const params: Record<string, string> = {
-    pp_MerchantID: process.env.JAZZCASH_MERCHANT_ID!,
-    pp_Password: process.env.JAZZCASH_PASSWORD!,
-    pp_TxnRefNo: txnRefNo,
-    pp_Amount: amountPaisas,
-    pp_TxnCurrency: "PKR",
-    pp_TxnDateTime: txnDateTime,
-    pp_BillReference: billReference,
-    pp_Description: description,
-    pp_ReturnURL: process.env.JAZZCASH_RETURN_URL!,
-    pp_Language: "EN",
-    pp_Version: "1.1",
-    pp_TxnType: "MWALLET",
-  };
-
-  params.pp_SecureHash = generateJazzCashHash(params, process.env.JAZZCASH_HASH_KEY!);
-
-  const gatewayUrl =
-    process.env.JAZZCASH_MODE === "production"
-      ? process.env.JAZZCASH_PRODUCTION_URL!
-      : process.env.JAZZCASH_SANDBOX_URL!;
+  const { checkoutUrl, formParams } = buildCheckoutForm({
+    txnRefNo,
+    amountPKR,
+    billReference,
+    description: `Platform Fee - ${monthLabel} ${record.billingYear}`,
+  });
 
   console.info({ intentId, txnRefNo, amountPKR, billingRecordId }, "Platform JazzCash payment intent created");
 
-  return { checkoutUrl: gatewayUrl, formParams: params, txnRefNo, intentId };
+  return { checkoutUrl, formParams, txnRefNo, intentId };
 }

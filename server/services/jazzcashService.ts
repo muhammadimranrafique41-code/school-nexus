@@ -73,16 +73,59 @@ export function verifyJazzCashHash(
 
 // ─── Transaction Reference ───────────────────────────────────────────────────
 
-function buildTxnRefNo(intentId: number): string {
+export function buildTxnRefNo(intentId: number): string {
   const ts = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
   return `SNXJC${ts}${String(intentId).padStart(5, '0')}`;
+}
+
+// ─── Checkout Form Builder (shared between wallet & platform payments) ──────
+
+export interface CheckoutFormInput {
+  txnRefNo: string;
+  amountPKR: number;
+  billReference: string;
+  description: string;
+}
+
+export interface CheckoutFormResult {
+  checkoutUrl: string;
+  formParams: Record<string, string>;
+}
+
+export function buildCheckoutForm(input: CheckoutFormInput): CheckoutFormResult {
+  const txnDateTime = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
+  const amountPaisas = String(Math.round(input.amountPKR * 100));
+
+  const params: Record<string, string> = {
+    pp_MerchantID: process.env.JAZZCASH_MERCHANT_ID!,
+    pp_Password: process.env.JAZZCASH_PASSWORD!,
+    pp_TxnRefNo: input.txnRefNo,
+    pp_Amount: amountPaisas,
+    pp_TxnCurrency: 'PKR',
+    pp_TxnDateTime: txnDateTime,
+    pp_BillReference: input.billReference,
+    pp_Description: input.description,
+    pp_ReturnURL: process.env.JAZZCASH_RETURN_URL!,
+    pp_Language: 'EN',
+    pp_Version: '1.1',
+    pp_TxnType: 'MWALLET',
+  };
+
+  params.pp_SecureHash = generateJazzCashHash(params, process.env.JAZZCASH_HASH_KEY!);
+
+  const gatewayUrl =
+    process.env.JAZZCASH_MODE === 'production'
+      ? process.env.JAZZCASH_PRODUCTION_URL!
+      : process.env.JAZZCASH_SANDBOX_URL!;
+
+  return { checkoutUrl: gatewayUrl, formParams: params };
 }
 
 // ─── Main Service ─────────────────────────────────────────────────────────────
 
 export const jazzCashService = {
   /**
-   * Step 1 of 3: Create a payment intent and return JazzCash checkout params.
+   * Step 1 of 3: Create a family wallet top-up payment intent and return JazzCash checkout params.
    */
   async initiatePayment(input: JazzCashInitiateInput): Promise<JazzCashInitiateResult> {
     const { familyId, amountPKR, initiatedByUserId, description } = input;
@@ -107,34 +150,16 @@ export const jazzCashService = {
     const txnRefNo = buildTxnRefNo(intentId);
     await db.query('UPDATE jazzcash_payment_intents SET pp_TxnRefNo = $1 WHERE id = $2', [txnRefNo, intentId]);
 
-    const txnDateTime = new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
-    const amountPaisas = String(Math.round(amountPKR * 100));
-
-    const params: Record<string, string> = {
-      pp_MerchantID: process.env.JAZZCASH_MERCHANT_ID!,
-      pp_Password: process.env.JAZZCASH_PASSWORD!,
-      pp_TxnRefNo: txnRefNo,
-      pp_Amount: amountPaisas,
-      pp_TxnCurrency: 'PKR',
-      pp_TxnDateTime: txnDateTime,
-      pp_BillReference: `FAM-${familyId}`,
-      pp_Description: description ?? `School Nexus Fee Payment - Family ${familyId}`,
-      pp_ReturnURL: process.env.JAZZCASH_RETURN_URL!,
-      pp_Language: 'EN',
-      pp_Version: '1.1',
-      pp_TxnType: 'MWALLET',
-    };
-
-    params.pp_SecureHash = generateJazzCashHash(params, process.env.JAZZCASH_HASH_KEY!);
-
-    const gatewayUrl =
-      process.env.JAZZCASH_MODE === 'production'
-        ? process.env.JAZZCASH_PRODUCTION_URL!
-        : process.env.JAZZCASH_SANDBOX_URL!;
+    const { checkoutUrl, formParams } = buildCheckoutForm({
+      txnRefNo,
+      amountPKR,
+      billReference: `FAM-${familyId}`,
+      description: description ?? `School Nexus Fee Payment - Family ${familyId}`,
+    });
 
     console.info({ intentId, txnRefNo, amountPKR }, 'JazzCash payment intent created');
 
-    return { checkoutUrl: gatewayUrl, formParams: params, txnRefNo, intentId };
+    return { checkoutUrl, formParams, txnRefNo, intentId };
   },
 
   /**
