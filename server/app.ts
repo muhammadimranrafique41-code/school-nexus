@@ -274,8 +274,14 @@ export async function initializeApp() {
         SELECT 'trial_period_days', '14'::jsonb, 'Days in trial period before first invoice', 'suspension'
         WHERE NOT EXISTS (SELECT 1 FROM public.platform_settings WHERE key = 'trial_period_days');`);
       await db.execute(sql`INSERT INTO public.platform_settings (key, value, description, category)
-        SELECT 'monthly_fee_pkr', '5000'::jsonb, 'Default monthly platform fee per owner', 'billing'
+        SELECT 'monthly_fee_pkr', '5000'::jsonb, 'Default monthly platform fee (Starter plan)', 'billing'
         WHERE NOT EXISTS (SELECT 1 FROM public.platform_settings WHERE key = 'monthly_fee_pkr');`);
+      await db.execute(sql`INSERT INTO public.platform_settings (key, value, description, category)
+        SELECT 'professional_fee_pkr', '15000'::jsonb, 'Professional plan monthly fee', 'billing'
+        WHERE NOT EXISTS (SELECT 1 FROM public.platform_settings WHERE key = 'professional_fee_pkr');`);
+      await db.execute(sql`INSERT INTO public.platform_settings (key, value, description, category)
+        SELECT 'enterprise_fee_pkr', '30000'::jsonb, 'Enterprise plan monthly fee', 'billing'
+        WHERE NOT EXISTS (SELECT 1 FROM public.platform_settings WHERE key = 'enterprise_fee_pkr');`);
       await db.execute(sql`INSERT INTO public.platform_settings (key, value, description, category)
         SELECT 'late_fee_pkr', '500'::jsonb, 'Late payment penalty', 'billing'
         WHERE NOT EXISTS (SELECT 1 FROM public.platform_settings WHERE key = 'late_fee_pkr');`);

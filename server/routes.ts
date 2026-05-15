@@ -68,7 +68,7 @@ import { LedgerService } from "./services/ledgerService.js";
 import { AuditService } from "./services/auditService.js";
 import { chatWithSchoolAssistant } from "./services/aiService.js";
 import { jazzCashService, type JazzCashCallbackPayload } from "./services/jazzcashService.js";
-import { initiatePlatformPayment } from "./services/platformBillingService.js";
+import { initiatePlatformPayment, createPlatformBillingAndPay } from "./services/platformBillingService.js";
 import { AppError } from "./errors.js";
 import {
   bulkUpsertMarks,
@@ -193,6 +193,13 @@ const sendStructuredError = (res: Response, error: unknown): void => {
     res.status(error.statusCode).json({
       success: false,
       error: { code: error.code, message: error.message, details: error.details },
+    });
+    return;
+  }
+  if (error instanceof Error) {
+    res.status(409).json({
+      success: false,
+      error: { code: "CONFLICT", message: error.message },
     });
     return;
   }
@@ -6240,6 +6247,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           return;
         }
         const result = await initiatePlatformPayment(billingRecordId, user.id);
+        res.json({ success: true, data: result });
+      } catch (err) {
+        sendStructuredError(res, err);
+      }
+    }
+  );
+
+  // ── Subscribe to a monthly plan (create billing + redirect to JazzCash) ──
+  app.post(
+    "/api/owner/billing/subscribe",
+    async (req, res) => {
+      try {
+        const user = await requireRole(req, res, ["admin"]);
+        if (!user) return;
+        const { plan } = req.body;
+        if (!plan || !["STARTER", "PROFESSIONAL", "ENTERPRISE"].includes(plan)) {
+          res.status(400).json({ success: false, error: { code: "INVALID_PLAN", message: "Plan must be STARTER, PROFESSIONAL, or ENTERPRISE" } });
+          return;
+        }
+        const result = await createPlatformBillingAndPay(plan, user.id);
         res.json({ success: true, data: result });
       } catch (err) {
         sendStructuredError(res, err);

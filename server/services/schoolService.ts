@@ -112,6 +112,17 @@ export async function createCampus(
   ownerId: number,
   data: Omit<NewCampus, "ownerId">
 ): Promise<Campus> {
+  // Check if subdomain already exists for this owner
+  const existing = await db.query.campuses.findFirst({
+    where: and(
+      eq(campuses.subdomain, data.subdomain),
+      eq(campuses.ownerId, ownerId)
+    ),
+  });
+  if (existing) {
+    throw new Error(`A campus with subdomain "${data.subdomain}" already exists`);
+  }
+
   const [row] = await db
     .insert(campuses)
     .values({ ...data, ownerId } as NewCampus)
