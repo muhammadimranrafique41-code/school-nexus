@@ -24,6 +24,46 @@ import { Download, GraduationCap, Loader2, Plus, Search, Trash2, Edit2, ChevronR
 import { FamilySelect } from "@/components/family/FamilySelect";
 import { CreateFamilyDialog } from "@/components/family/CreateFamilyDialog";
 import { BulkImportModal } from "@/components/import/BulkImportModal";
+import { useFamilies } from "@/hooks/use-families";
+import { formatCurrency } from "@shared/finance";
+import type { FamilyGuardianDetails } from "@shared/schema";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Phone, Mail, IdCard, MapPin, Briefcase, Users, Wallet, AlertCircle, Eye, Edit2 as Edit2Icon, MoreHorizontal } from "lucide-react";
+
+type FamilyMember = {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  className?: string | null;
+  studentStatus?: string | null;
+  studentPhotoUrl?: string | null;
+  outstandingBalance: number;
+  openInvoices: number;
+};
+
+type FamilyRow = {
+  id: number;
+  name: string;
+  guardianDetails: FamilyGuardianDetails | null | undefined;
+  walletBalance: number;
+  totalOutstanding: number;
+  siblingCount: number;
+  siblings: FamilyMember[];
+};
 
 type ListedStudent = {
   id: number; name: string; email: string; role: string;
@@ -93,6 +133,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function StudentManagement() {
   const { data: users, isLoading } = useUsers();
+  const { data: familiesData } = useFamilies();
   const createUser = useCreateUser();
   const updateUser = useUpdateUserHook();
   const deleteUser = useDeleteUserHook();
@@ -104,6 +145,7 @@ export default function StudentManagement() {
   const [createFamilyOpen, setCreateFamilyOpen] = useState(false);
   const [createFamilySeed, setCreateFamilySeed] = useState<string>("");
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [viewingFamily, setViewingFamily] = useState<FamilyRow | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [classFilter, setClassFilter] = useState("all");
@@ -123,6 +165,13 @@ export default function StudentManagement() {
   });
 
   const students = useMemo(() => (users ?? []).filter(u => u.role === 'student'), [users]);
+
+  const families = useMemo<FamilyRow[]>(() => (familiesData ?? []) as FamilyRow[], [familiesData]);
+
+  const getFamilyForStudent = (student: ListedStudent): FamilyRow | undefined => {
+    if (!student.familyId) return undefined;
+    return families.find(f => f.id === student.familyId);
+  };
 
   // Derived unique classes for filter
   const uniqueClasses = useMemo(() => Array.from(new Set(students.map(s => s.className).filter(Boolean))), [students]);
@@ -290,13 +339,19 @@ export default function StudentManagement() {
           </div>
 
           <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-[700px] border-collapse text-sm">
+            <table className="w-full min-w-[1400px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 cursor-pointer hover:text-slate-600 select-none">
                     Name / ID ↑
                   </th>
-                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Family</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Family Name</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Phone</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Primary Guardian</th>
+                  <th className="px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Members</th>
+                  <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Outstanding</th>
+                  <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Wallet</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Email</th>
                   <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">CNIC</th>
                   <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Class</th>
                   <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Section</th>
@@ -311,9 +366,9 @@ export default function StudentManagement() {
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={12} className="py-14 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-indigo-500" /></td></tr>
+                  <tr><td colSpan={18} className="py-14 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-indigo-500" /></td></tr>
                 ) : filteredStudents.length === 0 ? (
-                  <tr><td colSpan={12} className="py-14 text-center text-[13px] text-slate-400">No students found.</td></tr>
+                  <tr><td colSpan={18} className="py-14 text-center text-[13px] text-slate-400">No students found.</td></tr>
                 ) : (
                   paginated.pageItems.map((student, idx) => (
                     <tr key={student.id} className={cn("group border-b border-slate-100 last:border-b-0 transition-colors duration-100 hover:bg-slate-50/60", idx % 2 === 1 && "bg-slate-50/30")}>
@@ -327,10 +382,105 @@ export default function StudentManagement() {
                         </div>
                       </td>
                       <td className="px-3 py-2.5">
-                        <span className="block text-[13px] font-medium text-slate-700">{student.familyName || "—"}</span>
+                        {student.familyId ? (
+                          <div className="flex items-center gap-1.5">
+                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[9px] font-bold text-indigo-700">
+                              {(student.familyName || "F").charAt(0).toUpperCase()}
+                            </div>
+                            <span className="block text-[12px] font-medium text-slate-700">{student.familyName || "—"}</span>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] italic text-slate-400">Not linked</span>
+                        )}
                       </td>
                       <td className="px-3 py-2.5">
-                        <span className="block text-[12px] font-mono text-slate-600">{student.cnic || "—"}</span>
+                        {(() => {
+                          const family = getFamilyForStudent(student);
+                          const guardian = family?.guardianDetails?.primary ?? null;
+                          return guardian?.phone ? (
+                            <span className="flex items-center gap-1 text-[11px] text-slate-600">
+                              <Phone className="h-3 w-3 text-slate-400" />
+                              {guardian.phone}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">—</span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {(() => {
+                          const family = getFamilyForStudent(student);
+                          const guardian = family?.guardianDetails?.primary ?? null;
+                          return guardian?.name ? (
+                            <div>
+                              <span className="block text-[12px] font-medium text-slate-700">{guardian.name}</span>
+                              <span className="block text-[10px] text-slate-400">{guardian.relation || "Guardian"}</span>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] italic text-slate-400">—</span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        {(() => {
+                          const family = getFamilyForStudent(student);
+                          return family ? (
+                            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                              {family.siblingCount}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">—</span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        {(() => {
+                          const family = getFamilyForStudent(student);
+                          return family ? (
+                            <span className={cn("text-[12px] font-semibold", family.totalOutstanding > 0 ? "text-rose-600" : "text-slate-500")}>
+                              {formatCurrency(family.totalOutstanding)}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">—</span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        {(() => {
+                          const family = getFamilyForStudent(student);
+                          return family ? (
+                            <span className="text-[12px] font-semibold text-violet-600">
+                              {formatCurrency(family.walletBalance)}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">—</span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {(() => {
+                          const family = getFamilyForStudent(student);
+                          const guardian = family?.guardianDetails?.primary ?? null;
+                          return guardian?.email ? (
+                            <span className="flex items-center gap-1 text-[11px] text-slate-600">
+                              <Mail className="h-3 w-3 text-slate-400" />
+                              <span className="truncate max-w-[140px]">{guardian.email}</span>
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">—</span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {(() => {
+                          const family = getFamilyForStudent(student);
+                          const guardian = family?.guardianDetails?.primary ?? null;
+                          return guardian?.cnic ? (
+                            <span className="block text-[11px] font-mono text-slate-600">{guardian.cnic}</span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">—</span>
+                          );
+                        })()}
                       </td>
                       <td className="px-3 py-2.5">
                         <span className="block text-[13px] font-semibold text-slate-700">{student.className || "—"}</span>
@@ -369,9 +519,34 @@ export default function StudentManagement() {
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1 opacity-50 transition-opacity group-hover:opacity-100">
-                          <Button asChild variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-indigo-600 hover:bg-indigo-50" title="View Profile">
-                            <Link href={`/admin/students/${student.id}`}><ChevronRight className="h-4 w-4" /></Link>
-                          </Button>
+                          {student.familyId && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-indigo-600 hover:bg-indigo-50" title="View Family Details">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuItem onClick={() => {
+                                  const family = getFamilyForStudent(student);
+                                  if (family) setViewingFamily(family);
+                                }}>
+                                  <Eye className="mr-2 h-3.5 w-3.5" />View Family Details
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/admin/students/${student.id}`}>
+                                    <ChevronRight className="mr-2 h-3.5 w-3.5" />View Student Profile
+                                  </Link>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                          {!student.familyId && (
+                            <Button asChild variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-indigo-600 hover:bg-indigo-50" title="View Profile">
+                              <Link href={`/admin/students/${student.id}`}><ChevronRight className="h-4 w-4" /></Link>
+                            </Button>
+                          )}
                           <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-slate-500 hover:bg-slate-100" title="Edit student" onClick={() => handleEdit(student)}>
                             <Edit2 className="h-3.5 w-3.5" />
                           </Button>
@@ -589,6 +764,124 @@ export default function StudentManagement() {
             form.setValue("familyName", family.name);
           }}
         />
+
+        {/* ── Family Details Sheet ─────────────────────────────────────── */}
+        <Sheet open={!!viewingFamily} onOpenChange={(open) => !open && setViewingFamily(null)}>
+          <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+            {viewingFamily && (() => {
+              const guardian = viewingFamily.guardianDetails?.primary ?? null;
+              const notes = viewingFamily.guardianDetails?.notes ?? null;
+              return (
+                <>
+                  <SheetHeader>
+                    <SheetTitle className="flex items-center gap-2 text-base font-semibold">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-bold text-indigo-700">
+                        {viewingFamily.name.split(" ").map((p) => p[0]).filter(Boolean).join("").slice(0, 2).toUpperCase()}
+                      </div>
+                      {viewingFamily.name}
+                    </SheetTitle>
+                    <SheetDescription className="text-xs text-slate-500">
+                      Family ID #{viewingFamily.id} · {viewingFamily.siblingCount} linked member{viewingFamily.siblingCount === 1 ? "" : "s"}
+                    </SheetDescription>
+                  </SheetHeader>
+
+                  <div className="mt-5 space-y-5">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg border border-rose-100 bg-rose-50/40 p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-rose-500 flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />Outstanding
+                        </p>
+                        <p className="mt-0.5 text-lg font-bold text-rose-700">{formatCurrency(viewingFamily.totalOutstanding)}</p>
+                      </div>
+                      <div className="rounded-lg border border-violet-100 bg-violet-50/40 p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-500 flex items-center gap-1">
+                          <Wallet className="h-3 w-3" />Wallet
+                        </p>
+                        <p className="mt-0.5 text-lg font-bold text-violet-700">{formatCurrency(viewingFamily.walletBalance)}</p>
+                      </div>
+                    </div>
+
+                    <section className="rounded-lg border border-slate-100 bg-slate-50/40 p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 flex items-center gap-1">
+                        <Users className="h-3 w-3" />Primary Guardian
+                      </p>
+                      {guardian && Object.values(guardian).some(Boolean) ? (
+                        <div className="mt-2 space-y-1.5">
+                          {guardian.name && (
+                            <p className="text-sm font-semibold text-slate-900">
+                              {guardian.name}
+                              {guardian.relation && <span className="ml-2 text-xs font-normal text-slate-500">({guardian.relation})</span>}
+                            </p>
+                          )}
+                          <div className="grid grid-cols-1 gap-1.5 text-[12px] text-slate-600">
+                            {guardian.phone && <p className="flex items-center gap-1.5"><Phone className="h-3 w-3 text-slate-400" />{guardian.phone}</p>}
+                            {guardian.email && <p className="flex items-center gap-1.5"><Mail className="h-3 w-3 text-slate-400" />{guardian.email}</p>}
+                            {guardian.cnic && <p className="flex items-center gap-1.5"><IdCard className="h-3 w-3 text-slate-400" />{guardian.cnic}</p>}
+                            {guardian.occupation && <p className="flex items-center gap-1.5"><Briefcase className="h-3 w-3 text-slate-400" />{guardian.occupation}</p>}
+                            {guardian.address && <p className="flex items-center gap-1.5"><MapPin className="h-3 w-3 text-slate-400" />{guardian.address}</p>}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs italic text-slate-400">No guardian information on file.</p>
+                      )}
+                      {notes && (
+                        <p className="mt-3 border-t border-slate-200 pt-2 text-[12px] text-slate-600"><span className="font-semibold text-slate-700">Notes: </span>{notes}</p>
+                      )}
+                    </section>
+
+                    <section>
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 flex items-center gap-1">
+                          <Users className="h-3 w-3" />Linked Members
+                        </p>
+                        <span className="text-[11px] text-slate-400">{viewingFamily.siblings.length} total</span>
+                      </div>
+                      {viewingFamily.siblings.length === 0 ? (
+                        <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 px-3 py-6 text-center text-xs italic text-slate-400">
+                          No members linked to this family yet.
+                        </p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {viewingFamily.siblings.map((member) => {
+                            const profileHref = member.role === "student"
+                              ? `/admin/students/${member.id}`
+                              : `/admin/users/${member.id}`;
+                            return (
+                              <li key={member.id} className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-semibold text-slate-900">{member.name}</span>
+                                    <span className={cn("inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", member.role === "student" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-slate-50 text-slate-600")}>
+                                      {member.role}
+                                    </span>
+                                  </div>
+                                  <p className="mt-0.5 truncate text-[11px] text-slate-400">
+                                    {member.email}
+                                    {member.className ? ` · ${member.className}` : ""}
+                                  </p>
+                                </div>
+                                <div className="ml-3 flex shrink-0 items-center gap-2">
+                                  {member.role === "student" && (
+                                    <span className={cn("text-[12px] font-semibold", member.outstandingBalance > 0 ? "text-rose-600" : "text-slate-500")}>
+                                      {formatCurrency(member.outstandingBalance)}
+                                    </span>
+                                  )}
+                                  <Button asChild variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-indigo-600 hover:bg-indigo-50">
+                                    <Link href={profileHref}><ChevronRight className="h-4 w-4" /></Link>
+                                  </Button>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </section>
+                  </div>
+                </>
+              );
+            })()}
+          </SheetContent>
+        </Sheet>
 
         {/* ── Bulk Import Modal ────────────────────────────────────────── */}
         <BulkImportModal

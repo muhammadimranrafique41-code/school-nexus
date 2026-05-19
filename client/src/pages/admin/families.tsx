@@ -247,24 +247,27 @@ export default function AdminFamiliesPage() {
           </div>
 
           <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-[800px] border-collapse text-sm">
+            <table className="w-full min-w-[1200px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Family</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Family Name</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Phone</th>
                   <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Primary Guardian</th>
-                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Members</th>
+                  <th className="px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Members</th>
                   <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Outstanding</th>
                   <th className="px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Wallet</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Email Address</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">CNIC</th>
                   <th className="px-4 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={6} className="py-14 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-indigo-500" /></td></tr>
+                  <tr><td colSpan={9} className="py-14 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-indigo-500" /></td></tr>
                 ) : error ? (
-                  <tr><td colSpan={6} className="py-14 text-center text-[13px] text-rose-600">{(error as Error).message}</td></tr>
+                  <tr><td colSpan={9} className="py-14 text-center text-[13px] text-rose-600">{(error as Error).message}</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={6} className="py-14 text-center text-[13px] text-slate-400">
+                  <tr><td colSpan={9} className="py-14 text-center text-[13px] text-slate-400">
                     {families.length === 0 ? "No families yet. Create one to group siblings." : "No families match your search."}
                   </td></tr>
                 ) : (
@@ -277,34 +280,59 @@ export default function AdminFamiliesPage() {
                             <FamilyAvatar name={family.name} />
                             <div>
                               <span className="block text-[13px] font-semibold text-slate-900">{family.name}</span>
-                              <span className="block text-[11px] text-slate-400">ID #{family.id}</span>
+                              <span className="block text-[11px] font-mono text-slate-400">ID #{family.id}</span>
                             </div>
                           </div>
                         </td>
                         <td className="px-3 py-2.5">
-                          {guardian?.name ? (
-                            <>
-                              <span className="block text-[13px] font-medium text-slate-700">{guardian.name}</span>
-                              <span className="block text-[11px] text-slate-400">
-                                {guardian.relation || "Guardian"}{guardian.phone ? ` · ${guardian.phone}` : ""}
-                              </span>
-                            </>
+                          {guardian?.phone ? (
+                            <span className="flex items-center gap-1.5 text-[12px] text-slate-600">
+                              <Phone className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                              {guardian.phone}
+                            </span>
                           ) : (
-                            <span className="text-[12px] italic text-slate-400">Not provided</span>
+                            <span className="text-[11px] italic text-slate-400">—</span>
                           )}
                         </td>
                         <td className="px-3 py-2.5">
-                          <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
-                            {family.siblingCount} member{family.siblingCount === 1 ? "" : "s"}
+                          {guardian?.name ? (
+                            <div>
+                              <span className="block text-[12px] font-medium text-slate-700">{guardian.name}</span>
+                              <span className="block text-[10px] text-slate-400">{guardian.relation || "Guardian"}</span>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] italic text-slate-400">Not provided</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
+                            {family.siblingCount}
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-right">
-                          <span className={cn("text-[13px] font-bold", family.totalOutstanding > 0 ? "text-rose-600" : "text-slate-500")}>
+                          <span className={cn("text-[12px] font-bold", family.totalOutstanding > 0 ? "text-rose-600" : "text-slate-500")}>
                             {formatCurrency(family.totalOutstanding)}
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-right">
-                          <span className="text-[13px] font-semibold text-slate-700">{formatCurrency(family.walletBalance)}</span>
+                          <span className="text-[12px] font-semibold text-violet-600">{formatCurrency(family.walletBalance)}</span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {guardian?.email ? (
+                            <span className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                              <Mail className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                              <span className="truncate max-w-[160px]">{guardian.email}</span>
+                            </span>
+                          ) : (
+                            <span className="text-[11px] italic text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {guardian?.cnic ? (
+                            <span className="block text-[11px] font-mono text-slate-600">{guardian.cnic}</span>
+                          ) : (
+                            <span className="text-[11px] italic text-slate-400">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-2.5 text-right">
                           <DropdownMenu>
