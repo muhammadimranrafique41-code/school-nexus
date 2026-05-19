@@ -80,6 +80,16 @@ const userWriteSchema = insertUserSchema.extend({
   className: optionalUserTextFieldSchema,
   fatherName: optionalUserTextFieldSchema,
   studentPhotoUrl: optionalStudentPhotoUrlSchema,
+  rollNumber: optionalUserTextFieldSchema,
+  dateOfBirth: optionalUserTextFieldSchema,
+  gender: z.enum(["male", "female", "other"]).nullable().optional(),
+  admissionDate: optionalUserTextFieldSchema,
+  studentStatus: z.enum(["active", "inactive", "graduated", "suspended"]).nullable().optional(),
+  phone: optionalUserTextFieldSchema,
+  address: optionalUserTextFieldSchema,
+  cnic: z.string().nullable().optional(),
+  religion: z.string().nullable().optional(),
+  studentDiscount: z.coerce.number().min(0).optional(),
 });
 
 const userUpdateSchema = userWriteSchema.partial();
@@ -97,8 +107,22 @@ const userSchema = z.object({
   className: z.string().nullable().optional(),
   fatherName: z.string().nullable().optional(),
   studentPhotoUrl: z.string().nullable().optional(),
+  rollNumber: z.string().nullable().optional(),
+  dateOfBirth: z.string().nullable().optional(),
+  gender: z.string().nullable().optional(),
+  admissionDate: z.string().nullable().optional(),
+  studentStatus: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
   familyId: z.number().nullable().optional(),
   familyName: z.string().nullable().optional(),
+  cnic: z.string().nullable().optional(),
+  religion: z.string().nullable().optional(),
+  studentDiscount: z.coerce.number().nullable().optional(),
+  whatsappOptIn: z.boolean().nullable().optional(),
+  whatsappPhone: z.string().nullable().optional(),
+  createdAt: z.string().nullable().optional(),
+  updatedAt: z.string().nullable().optional(),
 });
 
 const guardianDetailsSchema = sharedFamilyGuardianDetailsSchema;
@@ -119,6 +143,9 @@ const studentAdmissionSchema = userWriteSchema.extend({
     .enum(["active", "inactive", "graduated", "suspended"])
     .optional()
     .nullable(),
+  cnic: z.string().nullable().optional(),
+  religion: z.string().nullable().optional(),
+  studentDiscount: z.coerce.number().min(0).optional(),
 });
 
 const userCreateSchema = userWriteSchema.extend({
@@ -128,6 +155,9 @@ const userCreateSchema = userWriteSchema.extend({
     .enum(["active", "inactive", "graduated", "suspended"])
     .optional()
     .nullable(),
+  cnic: z.string().nullable().optional(),
+  religion: z.string().nullable().optional(),
+  studentDiscount: z.coerce.number().min(0).optional(),
 });
 
 const apiEnvelope = <T extends z.ZodTypeAny>(dataSchema: T) =>

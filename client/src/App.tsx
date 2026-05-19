@@ -27,7 +27,7 @@ import WalletManagementHub from "./pages/admin/finance/WalletManagementHub";
 import StudentStatementPage from "./pages/admin/finance/StudentStatementPage";
 import AdminQrAttendance from "./pages/admin/qr-attendance";
 import AdminSettings from "./pages/admin/settings";
-import CreateStudent from "./pages/admin/students";
+import StudentManagement from "./pages/admin/students";
 import CreateTeacher from "./pages/admin/teachers";
 import AdminStaff from "./pages/admin/staff";
 import AdminStaffSalary from "./pages/admin/staff-salary";
@@ -162,13 +162,13 @@ function Router() {
         <ProtectedRoute allowedRoles={['admin']}><WhatsappPage /></ProtectedRoute>
       </Route>
       <Route path="/admin/students/create">
-        <ProtectedRoute allowedRoles={['admin']}><CreateStudent /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={['admin']}><StudentManagement /></ProtectedRoute>
       </Route>
       <Route path="/admin/students/:id">
         <ProtectedRoute allowedRoles={['admin']}><AdminStudentProfile /></ProtectedRoute>
       </Route>
       <Route path="/admin/students">
-        <ProtectedRoute allowedRoles={['admin']}><AdminUsers roleFilter="student" /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={['admin']}><StudentManagement /></ProtectedRoute>
       </Route>
       <Route path="/admin/families">
         <ProtectedRoute allowedRoles={['admin']}><AdminFamiliesPage /></ProtectedRoute>

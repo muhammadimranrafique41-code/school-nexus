@@ -13,10 +13,10 @@ import { getFeeStatusClassName } from "@/lib/finance";
 import { StudentHistory } from "@/components/student/StudentHistory";
 import {
   ArrowLeft, Edit2, GraduationCap, MapPin, Phone, CalendarDays,
-  CheckCircle2, XCircle, TrendingUp, Banknote, QrCode, ClockIcon
+  CheckCircle2, XCircle, TrendingUp, Banknote, QrCode, ClockIcon,
+  CreditCard, BookOpen, Percent
 } from "lucide-react";
 
-// ── Avatar initials ───────────────────────────────────────────────────────
 function Avatar({ name, photoUrl }: { name: string; photoUrl?: string | null }) {
   const initials = name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
   return (
@@ -26,7 +26,6 @@ function Avatar({ name, photoUrl }: { name: string; photoUrl?: string | null }) 
   );
 }
 
-// ── Status Badge ────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     active: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -35,9 +34,21 @@ function StatusBadge({ status }: { status: string }) {
     graduated: "border-violet-200 bg-violet-50 text-violet-700",
   };
   return (
-    <span className={cn("inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", map[status] ?? map.active)}>
+    <span className={cn("inline-flex items-center rounded-md border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide", map[status] ?? map.active)}>
       {status || "Active"}
     </span>
+  );
+}
+
+function DetailRow({ label, value, icon }: { label: string; value: string | React.ReactNode; icon?: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3 py-2.5 border-b border-slate-50 last:border-b-0">
+      {icon && <div className="mt-0.5 text-slate-400">{icon}</div>}
+      <div className="flex-1 min-w-0">
+        <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide">{label}</p>
+        <p className="text-sm font-medium text-slate-900 mt-0.5">{value || "—"}</p>
+      </div>
+    </div>
   );
 }
 
@@ -79,66 +90,82 @@ export default function AdminStudentProfile() {
     );
   }
 
-  // Attendance metrics
   const totalAtt = attendance.length;
   const present = attendance.filter(a => a.status === "Present").length;
   const attendanceRate = totalAtt > 0 ? Math.round((present / totalAtt) * 100) : 0;
   const recentAttendance = [...attendance].sort((a, b) => +new Date(b.date) - +new Date(a.date)).slice(0, 10);
 
-  // Financial metrics
   const outstandingBal = fees.reduce((sum, f) => sum + f.remainingBalance, 0);
   const openInvoices = fees.filter(f => f.remainingBalance > 0).sort((a, b) => +new Date(a.dueDate) - +new Date(b.dueDate));
 
+  const formatDisplayDate = (dateStr: string | null | undefined) => {
+    if (!dateStr) return "—";
+    try {
+      return formatDate(dateStr, "MMM dd, yyyy");
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const sectionClass = "rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden";
+  const sectionHeaderClass = "px-5 py-3 border-b border-slate-100 bg-slate-50/50";
+  const sectionBodyClass = "p-5";
+
   return (
     <Layout>
-      <div className="space-y-6 pb-8 max-w-5xl mx-auto">
-        
+      <div className="space-y-5 pb-8 max-w-6xl mx-auto">
+
         {/* Header / Nav */}
-        <div className="flex items-center gap-3">
-          <Button asChild variant="ghost" size="icon" className="h-8 w-8 rounded-full">
-            <Link href="/admin/students"><ArrowLeft className="h-4 w-4" /></Link>
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">Student Profile</h1>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Button asChild variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg">
+              <Link href="/admin/students"><ArrowLeft className="h-4 w-4" /></Link>
+            </Button>
+            <div>
+              <h1 className="text-lg font-bold tracking-tight text-slate-900">Student Profile</h1>
+              <p className="text-[11px] text-slate-400">Complete academic and personal record</p>
+            </div>
           </div>
-          <Button asChild variant="outline" size="sm" className="hidden sm:flex">
-            <Link href="/admin/students"><Edit2 className="mr-2 h-3.5 w-3.5" /> Directory Data</Link>
+          <Button asChild variant="outline" size="sm" className="hidden sm:flex h-8">
+            <Link href="/admin/students"><Edit2 className="mr-2 h-3.5 w-3.5" /> Edit Directory Data</Link>
           </Button>
         </div>
 
         {/* Profile Identity Card */}
-        <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="h-24 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 opacity-90" />
-          <div className="px-6 pb-6 pt-0 sm:px-8">
-            <div className="flex flex-col sm:flex-row sm:items-end gap-5 -mt-10">
+        <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-sm">
+          <div className="h-20 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600" />
+          <div className="px-6 pb-5 pt-0 sm:px-8">
+            <div className="flex flex-col sm:flex-row sm:items-end gap-4 -mt-9">
               <Avatar name={student.name} photoUrl={student.studentPhotoUrl} />
-              
-              <div className="flex-1 space-y-1">
-                <div className="flex items-center gap-3">
-                  <h2 className="text-2xl font-bold text-slate-900 leading-none">{student.name}</h2>
+
+              <div className="flex-1 space-y-1.5 mt-1">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h2 className="text-xl font-bold text-slate-900 leading-none">{student.name}</h2>
                   <StatusBadge status={student.studentStatus || "active"} />
                 </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500 mt-1">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
                   <span className="flex items-center gap-1.5 font-mono">
-                    <QrCode className="h-3.5 w-3.5" /> {student.rollNumber || "No Roll #"}
+                    <QrCode className="h-3 w-3" /> {student.rollNumber || `ID: ${student.id}`}
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <GraduationCap className="h-3.5 w-3.5" /> Class {student.className || "Unassigned"}
+                    <GraduationCap className="h-3 w-3" /> {student.className || "Unassigned"}
                   </span>
-                  <span className="flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5" /> {student.address || "No address"}
-                  </span>
+                  {student.fatherName && (
+                    <span className="flex items-center gap-1.5">
+                      S/D/O {student.fatherName}
+                    </span>
+                  )}
                 </div>
               </div>
 
-              <div className="flex self-start sm:self-auto gap-2 mt-4 sm:mt-0">
+              <div className="flex gap-4 self-start sm:self-auto mt-3 sm:mt-0">
                 <div className="text-right border-r border-slate-200 pr-4">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Attendance</p>
-                  <p className="text-xl font-bold text-slate-900">{attendanceRate}%</p>
+                  <p className="text-lg font-bold text-slate-900">{attendanceRate}%</p>
                 </div>
-                <div className="text-right pl-2">
+                <div className="text-right pl-1">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Balance</p>
-                  <p className="text-xl font-bold text-amber-600">{formatCurrency(outstandingBal)}</p>
+                  <p className={cn("text-lg font-bold", outstandingBal > 0 ? "text-amber-600" : "text-emerald-600")}>{formatCurrency(outstandingBal)}</p>
                 </div>
               </div>
             </div>
@@ -147,78 +174,66 @@ export default function AdminStudentProfile() {
 
         {/* Detailed Tabs */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="w-full justify-start h-12 bg-transparent border-b border-slate-200 rounded-none p-0 overflow-x-auto">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none px-6 shadow-none">Overview</TabsTrigger>
-            <TabsTrigger value="attendance" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none px-6 shadow-none">Attendance</TabsTrigger>
-            <TabsTrigger value="fees" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none px-6 shadow-none">Fees & Billing</TabsTrigger>
-            <TabsTrigger value="results" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none px-6 shadow-none">Results</TabsTrigger>
-            <TabsTrigger value="history" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none px-6 shadow-none flex items-center gap-1.5">
-              <ClockIcon className="h-3.5 w-3.5" aria-hidden="true" />
+          <TabsList className="w-full justify-start h-10 bg-transparent border-b border-slate-200 rounded-none p-0 overflow-x-auto gap-0">
+            <TabsTrigger value="overview" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none px-5 shadow-none text-sm">Overview</TabsTrigger>
+            <TabsTrigger value="attendance" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none px-5 shadow-none text-sm">Attendance</TabsTrigger>
+            <TabsTrigger value="fees" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none px-5 shadow-none text-sm">Fees & Billing</TabsTrigger>
+            <TabsTrigger value="results" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none px-5 shadow-none text-sm">Results</TabsTrigger>
+            <TabsTrigger value="history" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-indigo-600 rounded-none px-5 shadow-none text-sm flex items-center gap-1.5">
+              <ClockIcon className="h-3.5 w-3.5" />
               History
             </TabsTrigger>
           </TabsList>
 
           {/* OVERVIEW TAB */}
-          <TabsContent value="overview" className="pt-6 space-y-4">
-            <div className="grid md:grid-cols-2 gap-4">
-              <Card className="shadow-none border-slate-200">
-                <CardHeader className="pb-3 border-b border-slate-100">
-                  <CardTitle className="text-sm">Personal Information</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-4 space-y-4 text-sm">
-                  <div className="grid grid-cols-3 gap-2 border-b border-slate-50 pb-3">
-                    <span className="text-slate-500">Date of Birth</span>
-                    <span className="col-span-2 font-medium text-slate-900">{student.dateOfBirth ? formatDate(student.dateOfBirth, "MMM dd, yyyy") : "—"}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 border-b border-slate-50 pb-3">
-                    <span className="text-slate-500">Gender</span>
-                    <span className="col-span-2 font-medium text-slate-900 capitalize">{student.gender || "—"}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 border-b border-slate-50 pb-3">
-                    <span className="text-slate-500">Father's Name</span>
-                    <span className="col-span-2 font-medium text-slate-900">{student.fatherName || "—"}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 border-b border-slate-50 pb-3">
-                    <span className="text-slate-500">Phone</span>
-                    <span className="col-span-2 font-medium text-slate-900 flex items-center gap-2">
-                       {student.phone ? <><Phone className="h-3.5 w-3.5" />{student.phone}</> : "—"}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <span className="text-slate-500">Address</span>
-                    <span className="col-span-2 font-medium text-slate-900">{student.address || "—"}</span>
-                  </div>
-                </CardContent>
-              </Card>
+          <TabsContent value="overview" className="pt-5">
+            <div className="grid md:grid-cols-2 gap-5">
+              {/* Personal Information */}
+              <div className={sectionClass}>
+                <div className={sectionHeaderClass}>
+                  <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-md bg-indigo-100 flex items-center justify-center">
+                      <Phone className="h-3.5 w-3.5 text-indigo-600" />
+                    </div>
+                    Personal Information
+                  </h3>
+                </div>
+                <div className={sectionBodyClass}>
+                  <DetailRow label="Date of Birth" value={formatDisplayDate(student.dateOfBirth)} icon={<CalendarDays className="h-3.5 w-3.5" />} />
+                  <DetailRow label="Gender" value={student.gender ? student.gender.charAt(0).toUpperCase() + student.gender.slice(1) : null} />
+                  <DetailRow label="Father's Name" value={student.fatherName} />
+                  <DetailRow label="CNIC" value={student.cnic} icon={<CreditCard className="h-3.5 w-3.5" />} />
+                  <DetailRow label="Religion" value={student.religion} icon={<BookOpen className="h-3.5 w-3.5" />} />
+                  <DetailRow label="Phone" value={student.phone} icon={<Phone className="h-3.5 w-3.5" />} />
+                  <DetailRow label="Address" value={student.address} icon={<MapPin className="h-3.5 w-3.5" />} />
+                </div>
+              </div>
 
-              <Card className="shadow-none border-slate-200">
-                <CardHeader className="pb-3 border-b border-slate-100">
-                  <CardTitle className="text-sm">Academic Details</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-4 space-y-4 text-sm">
-                  <div className="grid grid-cols-3 gap-2 border-b border-slate-50 pb-3">
-                    <span className="text-slate-500">Roll Number</span>
-                    <span className="col-span-2 font-medium font-mono text-slate-900">{student.rollNumber || "—"}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 border-b border-slate-50 pb-3">
-                    <span className="text-slate-500">Class</span>
-                    <span className="col-span-2 font-medium text-slate-900">{student.className || "—"}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 border-b border-slate-50 pb-3">
-                    <span className="text-slate-500">Admission Date</span>
-                    <span className="col-span-2 font-medium text-slate-900">{student.admissionDate ? formatDate(student.admissionDate, "MMM dd, yyyy") : "—"}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <span className="text-slate-500">System ID</span>
-                    <span className="col-span-2 font-mono text-slate-400">USR-{student.id.toString().padStart(6, '0')}</span>
-                  </div>
-                </CardContent>
-              </Card>
+              {/* Academic Details */}
+              <div className={sectionClass}>
+                <div className={sectionHeaderClass}>
+                  <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-md bg-purple-100 flex items-center justify-center">
+                      <GraduationCap className="h-3.5 w-3.5 text-purple-600" />
+                    </div>
+                    Academic Details
+                  </h3>
+                </div>
+                <div className={sectionBodyClass}>
+                  <DetailRow label="Roll Number" value={student.rollNumber} icon={<QrCode className="h-3.5 w-3.5" />} />
+                  <DetailRow label="Class" value={student.className} icon={<GraduationCap className="h-3.5 w-3.5" />} />
+                  <DetailRow label="Admission Date" value={formatDisplayDate(student.admissionDate)} icon={<CalendarDays className="h-3.5 w-3.5" />} />
+                  <DetailRow label="Student Discount" value={student.studentDiscount && Number(student.studentDiscount) > 0 ? `Rs ${Number(student.studentDiscount).toFixed(2)}` : null} icon={<Percent className="h-3.5 w-3.5" />} />
+                  <DetailRow label="System ID" value={`USR-${student.id.toString().padStart(6, '0')}`} />
+                  <DetailRow label="Email" value={student.email} />
+                  <DetailRow label="Family" value={student.familyName} />
+                </div>
+              </div>
             </div>
           </TabsContent>
 
           {/* ATTENDANCE TAB */}
-          <TabsContent value="attendance" className="pt-6">
+          <TabsContent value="attendance" className="pt-5">
             <Card className="shadow-none border-slate-200">
               <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-100">
                 <div>
@@ -275,7 +290,7 @@ export default function AdminStudentProfile() {
           </TabsContent>
 
           {/* FEES TAB */}
-          <TabsContent value="fees" className="pt-6">
+          <TabsContent value="fees" className="pt-5">
             <Card className="shadow-none border-slate-200">
               <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-100 bg-amber-50/30">
                 <div>
@@ -332,7 +347,7 @@ export default function AdminStudentProfile() {
           </TabsContent>
 
           {/* RESULTS TAB */}
-          <TabsContent value="results" className="pt-6">
+          <TabsContent value="results" className="pt-5">
              <Card className="shadow-none border-slate-200">
               <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-100">
                 <div>
@@ -373,11 +388,11 @@ export default function AdminStudentProfile() {
           </TabsContent>
 
           {/* HISTORY TAB */}
-          <TabsContent value="history" className="pt-6">
+          <TabsContent value="history" className="pt-5">
             <Card className="shadow-none border-slate-200">
               <CardHeader className="pb-3 border-b border-slate-100">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <ClockIcon className="h-4 w-4 text-indigo-500" aria-hidden="true" />
+                  <ClockIcon className="h-4 w-4 text-indigo-500" />
                   Student History
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500">

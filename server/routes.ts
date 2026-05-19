@@ -1111,9 +1111,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           : await storage.createUser(userInput);
       res.status(201).json(createdUser);
     } catch (err) {
+      console.error("POST /api/users error:", err);
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join(".") });
       if (isUniqueViolation(err)) return res.status(409).json({ message: "A user with this email already exists.", field: "email" });
-      res.status(500).json({ message: "Internal server error" });
+      res.status(500).json({ message: "Internal server error", detail: err instanceof Error ? err.message : String(err) });
     }
   });
 

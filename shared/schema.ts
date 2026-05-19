@@ -146,6 +146,13 @@ export const users = pgTable("users", {
   whatsappOptIn: boolean("whatsapp_opt_in").notNull().default(true),
   /** Optional separate WhatsApp number (if different from primary phone) */
   whatsappPhone: varchar("whatsapp_phone", { length: 20 }),
+  // ── Extended student profile fields (added by migration 0026) ─────────
+  /** National Identity Card number (Pakistan format: XXXXX-XXXXXXX-X) */
+  cnic: text("cnic"),
+  /** Student's religion */
+  religion: text("religion").default("Islam"),
+  /** Student-level discount in rupees */
+  studentDiscount: numeric("student_discount", { precision: 10, scale: 2 }).notNull().default("0"),
 });
 
 export const sessions = pgTable("session", {
@@ -1889,6 +1896,10 @@ export const insertUserSchema = createInsertSchema(users)
     // ── WhatsApp fields (optional on insert — default handled by DB) ──────
     whatsappOptIn: z.boolean().optional(),
     whatsappPhone: z.string().max(20).nullable().optional(),
+    // ── Extended student profile fields (migration 0026) ─────────────────
+    cnic: z.string().nullable().optional(),
+    religion: z.string().nullable().optional(),
+    studentDiscount: z.coerce.number().min(0).optional(),
   });
 
 export const insertFamilySchema = createInsertSchema(families).omit({ id: true });

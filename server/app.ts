@@ -308,6 +308,22 @@ export async function initializeApp() {
       console.log("Default super admin user seeded / updated.");
 
       await db.execute(sql`UPDATE fees SET remaining_balance = GREATEST(amount - paid_amount - total_discount, 0) WHERE remaining_balance IS NULL OR remaining_balance > 0;`);
+
+      // ── Migration 0026: Student extended profile fields ─────────────
+      await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS cnic text;`);
+      await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS religion text DEFAULT 'Islam';`);
+      await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS student_discount numeric(10,2) NOT NULL DEFAULT 0;`);
+      // Fix: if column was created as integer, convert to numeric
+      await db.execute(sql`ALTER TABLE users ALTER COLUMN student_discount TYPE numeric(10,2) USING student_discount::numeric(10,2);`);
+
+      // ── Students table missing columns from migration 0017 ──────────
+      await db.execute(sql`ALTER TABLE students ADD COLUMN IF NOT EXISTS academic_session_id integer REFERENCES academic_sessions(id) ON DELETE SET NULL;`);
+      await db.execute(sql`ALTER TABLE students ADD COLUMN IF NOT EXISTS previous_session_id integer REFERENCES academic_sessions(id) ON DELETE SET NULL;`);
+      await db.execute(sql`ALTER TABLE students ADD COLUMN IF NOT EXISTS promoted_at timestamp;`);
+      await db.execute(sql`ALTER TABLE students ADD COLUMN IF NOT EXISTS campus_id integer REFERENCES campuses(id) ON DELETE SET NULL;`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_students_session_lookup ON students(academic_session_id);`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_students_campus ON students(campus_id);`);
+
       console.log("Database schema alignment successful.");
     } catch (err) {
       console.error("Database schema alignment failed:", err);

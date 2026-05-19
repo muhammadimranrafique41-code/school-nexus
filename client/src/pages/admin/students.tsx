@@ -31,9 +31,13 @@ type ListedStudent = {
   rollNumber?: string | null; dateOfBirth?: string | null; gender?: string | null;
   admissionDate?: string | null; studentStatus?: string | null; phone?: string | null; address?: string | null;
   familyId?: number | null; familyName?: string | null;
+  cnic?: string | null; religion?: string | null; studentDiscount?: number | null;
+  createdAt?: string | null;
 };
 
 const optionalUrlField = z.union([z.string().trim().url("Enter a valid URL"), z.literal("")]).optional();
+
+const cnicPattern = /^\d{5}-\d{7}-\d{1}$/;
 
 const studentSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -51,6 +55,9 @@ const studentSchema = z.object({
   address: z.string().optional(),
   familyId: z.number().int().positive().nullable().optional(),
   familyName: z.string().optional(),
+  cnic: z.string().regex(cnicPattern, "Invalid CNIC format (XXXXX-XXXXXXX-X)").optional().or(z.literal("")),
+  religion: z.string().optional().default("Islam"),
+  studentDiscount: z.coerce.number().min(0, "Discount cannot be negative").optional().default(0),
 }).superRefine((data, ctx) => {
   if (data.password && data.password.length < 6) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["password"], message: "Password must be at least 6 characters" });
@@ -107,6 +114,7 @@ export default function StudentManagement() {
     name: "", email: "", password: "", className: "", fatherName: "", studentPhotoUrl: "",
     rollNumber: "", dateOfBirth: "", gender: "male", admissionDate: "",
     studentStatus: "active", phone: "", address: "", familyId: null, familyName: "",
+    cnic: "", religion: "Islam", studentDiscount: 0,
   };
 
   const form = useForm<z.infer<typeof studentSchema>>({
@@ -124,7 +132,7 @@ export default function StudentManagement() {
     const matchesClass = classFilter === "all" || student.className === classFilter;
     const matchesStatus = statusFilter === "all" || (student.studentStatus || "active") === statusFilter;
     const query = searchTerm.toLowerCase();
-    const hay = `${student.name} ${student.email} ${student.className} ${student.fatherName} ${student.rollNumber}`.toLowerCase();
+    const hay = `${student.name} ${student.email} ${student.className} ${student.fatherName} ${student.rollNumber} ${student.cnic}`.toLowerCase();
     return matchesClass && matchesStatus && hay.includes(query);
   }), [students, classFilter, statusFilter, searchTerm]);
 
@@ -137,6 +145,10 @@ export default function StudentManagement() {
       password: data.password?.trim() || undefined,
       familyId: data.familyId ?? null,
       familyName: data.familyName ?? "",
+      dateOfBirth: data.dateOfBirth || undefined,
+      admissionDate: data.admissionDate || undefined,
+      cnic: data.cnic || undefined,
+      religion: data.religion || undefined,
     };
 
     if (!editingStudent && !payload.password) {
@@ -168,6 +180,7 @@ export default function StudentManagement() {
       gender: student.gender || "male", admissionDate: student.admissionDate || "",
       studentStatus: student.studentStatus || "active", phone: student.phone || "",
       address: student.address || "", familyId: student.familyId ?? null, familyName: student.familyName || "",
+      cnic: student.cnic || "", religion: student.religion || "Islam", studentDiscount: Number(student.studentDiscount) || 0,
     });
     setEditingStudent(student);
     setIsOpen(true);
@@ -186,7 +199,9 @@ export default function StudentManagement() {
     downloadCsv(`students-export.csv`, filteredStudents.map((s) => ({
       "Roll No": s.rollNumber || "", Name: s.name, Email: s.email, Class: s.className || "",
       "Father Name": s.fatherName || "", Status: s.studentStatus || "active",
-      Phone: s.phone || "", "Admission Date": s.admissionDate || "", DOB: s.dateOfBirth || "", Gender: s.gender || ""
+      Phone: s.phone || "", "Admission Date": s.admissionDate || "", DOB: s.dateOfBirth || "", Gender: s.gender || "",
+      CNIC: s.cnic || "", Religion: s.religion || "", "Discount (Rs)": s.studentDiscount ? Number(s.studentDiscount).toFixed(2) : "0",
+      "Family": s.familyName || "", "Created At": s.createdAt || ""
     })));
   };
 
@@ -278,45 +293,81 @@ export default function StudentManagement() {
             <table className="w-full min-w-[700px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Roll No</th>
-                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Student</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 cursor-pointer hover:text-slate-600 select-none">
+                    Name / ID ↑
+                  </th>
                   <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Family</th>
-                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Class & Form</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">CNIC</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Class</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Section</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">DOB</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Religion</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Admission</th>
                   <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Status</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Discount</th>
+                  <th className="px-4 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Created At</th>
                   <th className="px-4 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={6} className="py-14 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-indigo-500" /></td></tr>
+                  <tr><td colSpan={12} className="py-14 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-indigo-500" /></td></tr>
                 ) : filteredStudents.length === 0 ? (
-                  <tr><td colSpan={6} className="py-14 text-center text-[13px] text-slate-400">No students found.</td></tr>
+                  <tr><td colSpan={12} className="py-14 text-center text-[13px] text-slate-400">No students found.</td></tr>
                 ) : (
                   paginated.pageItems.map((student, idx) => (
                     <tr key={student.id} className={cn("group border-b border-slate-100 last:border-b-0 transition-colors duration-100 hover:bg-slate-50/60", idx % 2 === 1 && "bg-slate-50/30")}>
-                      <td className="px-4 py-2.5 font-mono text-[12px] font-semibold text-slate-600">
-                        {student.rollNumber || "—"}
-                      </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2.5">
                           <Avatar name={student.name} photoUrl={student.studentPhotoUrl} />
                           <div>
                             <span className="block text-[13px] font-semibold text-slate-900">{student.name}</span>
-                            <span className="block text-[11px] text-slate-400">{student.email}</span>
+                            <span className="block text-[11px] font-mono text-slate-500">{student.rollNumber || `ID: ${student.id}`}</span>
                           </div>
                         </div>
                       </td>
                       <td className="px-3 py-2.5">
-                        <span className="block text-[13px] font-medium text-slate-700">{student.className || "—"}</span>
-                        {student.fatherName && <span className="block text-[11px] text-slate-400">D/O, S/O {student.fatherName}</span>}
+                        <span className="block text-[13px] font-medium text-slate-700">{student.familyName || "—"}</span>
                       </td>
                       <td className="px-3 py-2.5">
-  <StatusBadge status={student.studentStatus || "active"} />
-</td>
-<td className="px-3 py-2.5">
-  <span className="block text-[13px] font-semibold text-slate-600">{student.familyName || "None"}</span>
-</td>
-<td className="px-4 py-2.5 text-right">
+                        <span className="block text-[12px] font-mono text-slate-600">{student.cnic || "—"}</span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="block text-[13px] font-semibold text-slate-700">{student.className || "—"}</span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="block text-[13px] text-slate-600">
+                          {(() => {
+                            const parts = (student.className || "").split(/[-\s]+/);
+                            return parts.length > 1 ? parts[parts.length - 1] : "—";
+                          })()}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="block text-[12px] text-slate-600">{student.dateOfBirth ? (() => { try { const d = new Date(student.dateOfBirth); return isNaN(d.getTime()) ? "—" : d.toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return "—"; } })() : "—"}</span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="block text-[13px] text-slate-600">{student.religion || "—"}</span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="block text-[12px] text-slate-600">{student.admissionDate ? (() => { try { const d = new Date(student.admissionDate); return isNaN(d.getTime()) ? "—" : d.toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return "—"; } })() : "—"}</span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <StatusBadge status={student.studentStatus || "active"} />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {student.studentDiscount && Number(student.studentDiscount) > 0 ? (
+                          <span className="block text-[13px] font-semibold text-emerald-600">Rs {Number(student.studentDiscount).toFixed(2)}</span>
+                        ) : (
+                          <span className="block text-[12px] text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <span className="block text-[11px] text-slate-500">
+                          {student.createdAt ? (() => { try { const d = new Date(student.createdAt); return isNaN(d.getTime()) ? "—" : d.toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return "—"; } })() : "—"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1 opacity-50 transition-opacity group-hover:opacity-100">
                           <Button asChild variant="ghost" size="icon" className="h-7 w-7 rounded-lg text-indigo-600 hover:bg-indigo-50" title="View Profile">
                             <Link href={`/admin/students/${student.id}`}><ChevronRight className="h-4 w-4" /></Link>
@@ -444,6 +495,28 @@ export default function StudentManagement() {
                   <FormField control={form.control} name="address" render={({ field }) => (
                     <FormItem><FormLabel className="text-xs font-medium text-slate-700">Address / Location</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="Current address..." {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
                   )} />
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <FormField control={form.control} name="cnic" render={({ field }) => (
+                      <FormItem><FormLabel className="text-xs font-medium text-slate-700">CNIC</FormLabel><FormControl><Input className="h-8 text-sm" placeholder="XXXXX-XXXXXXX-X" {...field} value={field.value ?? ""} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                    )} />
+                    <FormField control={form.control} name="religion" render={({ field }) => (
+                      <FormItem><FormLabel className="text-xs font-medium text-slate-700">Religion</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl><SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger></FormControl>
+                          <SelectContent>
+                            <SelectItem value="Islam">Islam</SelectItem>
+                            <SelectItem value="Christianity">Christianity</SelectItem>
+                            <SelectItem value="Hinduism">Hinduism</SelectItem>
+                            <SelectItem value="Ahmadiyya">Ahmadiyya</SelectItem>
+                            <SelectItem value="Other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      <FormMessage className="text-[11px]" /></FormItem>
+                    )} />
+                    <FormField control={form.control} name="studentDiscount" render={({ field }) => (
+                      <FormItem><FormLabel className="text-xs font-medium text-slate-700">Discount (Rs)</FormLabel><FormControl><Input type="number" min="0" className="h-8 text-sm" placeholder="0" {...field} value={field.value ?? 0} /></FormControl><FormMessage className="text-[11px]" /></FormItem>
+                    )} />
+                  </div>
                 </div>
 
                 {/* Family linkage */}
