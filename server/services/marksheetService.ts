@@ -1,3 +1,4 @@
+import { readFile } from "fs/promises";
 import puppeteer from "puppeteer";
 import { getStudentMarksheetData, type StudentMarksheetData } from "./examService.js";
 
@@ -5,6 +6,7 @@ export type SchoolInfo = {
   name: string;
   address: string;
   phone: string;
+  logo: string;
 };
 
 const escapeHtml = (value: unknown): string =>
@@ -18,7 +20,46 @@ const defaultSchoolInfo: SchoolInfo = {
   name: "School Nexus",
   address: "",
   phone: "",
+  logo: "",
 };
+
+const mimeMap: Record<string, string> = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+  gif: "image/gif", svg: "image/svg+xml", webp: "image/webp",
+};
+
+async function resolveLogo(src: string): Promise<string> {
+  if (!src || src.startsWith("data:")) return src;
+
+  // 1. Try reading as a local file (handles Windows "C:\..." and Unix absolute paths)
+  try {
+    let filePath = src;
+    if (src.startsWith("file://")) filePath = src.slice(7);
+    const buf = await readFile(filePath);
+    const ext = filePath.split(".").pop()?.toLowerCase() ?? "png";
+    return `data:${mimeMap[ext] || "image/png"};base64,${buf.toString("base64")}`;
+  } catch {}
+
+  // 2. Try fetching as an HTTP(S) URL
+  try {
+    const url = src.startsWith("http://") || src.startsWith("https://")
+      ? src
+      : `https://${src}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) {
+      console.error(`[marksheet] logo fetch failed: ${res.status} for ${url}`);
+      return "";
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    const ct = res.headers.get("content-type")
+      ?? mimeMap[url.split(".").pop()?.toLowerCase() ?? "png"]
+      ?? "image/png";
+    return `data:${ct};base64,${buf.toString("base64")}`;
+  } catch (err) {
+    console.error(`[marksheet] logo fetch error for "${src}":`, err);
+    return "";
+  }
+}
 
 function renderMarksheet(data: StudentMarksheetData, schoolInfo: SchoolInfo): string {
   const status = data.result.isPassed ? `PASSED - ${data.result.division}` : "FAIL";
@@ -26,7 +67,7 @@ function renderMarksheet(data: StudentMarksheetData, schoolInfo: SchoolInfo): st
   return `
     <section class="marksheet">
       <header class="letterhead">
-        <div class="logo-box">LOGO</div>
+        ${schoolInfo.logo ? `<img src="${escapeHtml(schoolInfo.logo)}" alt="School logo" class="logo-img" />` : `<div class="logo-box">LOGO</div>`}
         <div>
           <h1>${escapeHtml(schoolInfo.name).toUpperCase()}</h1>
           <p>${escapeHtml(schoolInfo.address)}</p>
@@ -99,11 +140,12 @@ function renderMarksheet(data: StudentMarksheetData, schoolInfo: SchoolInfo): st
     </section>`;
 }
 
-function renderDocument(markSheets: string[], bulk: boolean): string {
+function renderDocument(markSheets: string[], bulk: boolean, baseUrl?: string): string {
   return `<!doctype html>
   <html>
     <head>
       <meta charset="utf-8" />
+      ${baseUrl ? `<base href="${escapeHtml(baseUrl)}/" />` : ""}
       <style>
         @page { size: A4 portrait; margin: 8mm; }
         * { box-sizing: border-box; }
@@ -114,6 +156,7 @@ function renderDocument(markSheets: string[], bulk: boolean): string {
         .cut-line { border-top: 1pt dashed #000; height: 0; margin: 1mm 0; }
         .letterhead { display: grid; grid-template-columns: 18mm 1fr; gap: 4mm; align-items: center; text-align: center; border-bottom: 1pt solid #000; padding-bottom: 2mm; }
         .logo-box { width: 16mm; height: 16mm; border: 1pt solid #000; display: flex; align-items: center; justify-content: center; font-size: 8pt; }
+        .logo-img { width: 16mm; height: 16mm; object-fit: contain; }
         h1 { margin: 0; font-size: ${bulk ? "13pt" : "18pt"}; font-weight: 700; letter-spacing: 0; }
         h2 { margin: 1mm 0 0; font-size: ${bulk ? "9pt" : "12pt"}; }
         p { margin: 0.5mm 0; font-size: ${bulk ? "7pt" : "9pt"}; }
@@ -159,14 +202,16 @@ async function renderPdf(html: string): Promise<Buffer> {
   }
 }
 
-export async function generateSingleMarksheetPDF(examSessionId: number, studentId: number, schoolInfo: Partial<SchoolInfo> = {}): Promise<Buffer> {
+export async function generateSingleMarksheetPDF(examSessionId: number, studentId: number, schoolInfo: Partial<SchoolInfo> = {}, baseUrl?: string): Promise<Buffer> {
   const data = await getStudentMarksheetData(examSessionId, studentId);
   const info = { ...defaultSchoolInfo, ...schoolInfo };
-  return renderPdf(renderDocument([renderMarksheet(data, info)], false));
+  info.logo = await resolveLogo(info.logo);
+  return renderPdf(renderDocument([renderMarksheet(data, info)], false, baseUrl));
 }
 
-export async function generateBulkMarksheetPDF(examSessionId: number, studentIds: number[], schoolInfo: Partial<SchoolInfo> = {}): Promise<Buffer> {
+export async function generateBulkMarksheetPDF(examSessionId: number, studentIds: number[], schoolInfo: Partial<SchoolInfo> = {}, baseUrl?: string): Promise<Buffer> {
   const info = { ...defaultSchoolInfo, ...schoolInfo };
+  info.logo = await resolveLogo(info.logo);
   const data = await Promise.all(studentIds.map((studentId) => getStudentMarksheetData(examSessionId, studentId)));
-  return renderPdf(renderDocument(data.map((item) => renderMarksheet(item, info)), true));
+  return renderPdf(renderDocument(data.map((item) => renderMarksheet(item, info)), true, baseUrl));
 }

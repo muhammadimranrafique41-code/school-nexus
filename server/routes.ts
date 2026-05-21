@@ -3,6 +3,9 @@ import type { Server } from "http";
 import { and, asc, avg, count, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { api } from "../shared/routes.js";
 import {
   attendanceSessionSchema,
@@ -505,22 +508,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Initialise rate limiters (no-op in development, active in production)
   await initRateLimiters();
 
-  // Temporary debug route to fix DB schema issues
-  app.get("/api/debug/fix-db", async (req, res) => {
-    try {
-      console.log("Running manual DB fix via debug route...");
-      await db.execute(sql`ALTER TABLE fees ADD COLUMN IF NOT EXISTS paid_amount integer NOT NULL DEFAULT 0;`);
-      await db.execute(sql`ALTER TABLE fees ADD COLUMN IF NOT EXISTS total_discount integer NOT NULL DEFAULT 0;`);
-      await db.execute(sql`ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS discount integer NOT NULL DEFAULT 0;`);
-      await db.execute(sql`ALTER TABLE fee_payments ADD COLUMN IF NOT EXISTS discount_reason text;`);
-      await db.execute(sql`UPDATE fees SET remaining_balance = GREATEST(amount - paid_amount - total_discount, 0);`);
-      res.json({ success: true, message: "Database columns verified/added and balances recalculated." });
-    } catch (err: any) {
-      console.error("Debug DB fix failed:", err);
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
   app.use(createSessionMiddleware());
 
   // Activity logging middleware for audit trail
@@ -890,6 +877,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Timetable settings moved to line 1340+
+
+  // ── School logo upload ────────────────────────────────────────────────
+  const logoUpload = multer({
+    storage: multer.diskStorage({
+      destination: path.resolve(__dirname, "public", "uploads"),
+      filename: (_req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase() || ".png";
+        cb(null, `logo-${Date.now()}${ext}`);
+      },
+    }),
+    limits: { fileSize: 2 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"];
+      cb(null, allowed.includes(file.mimetype));
+    },
+  });
+
+  app.post("/api/admin/settings/upload-logo", (req, res) => {
+    logoUpload.single("logo")(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        return res.status(400).json({ message: err.code === "LIMIT_FILE_SIZE" ? "File too large (max 2 MB)" : err.message });
+      }
+      if (err) return res.status(400).json({ message: "Upload failed" });
+      if (!req.file) return res.status(400).json({ message: "No file provided" });
+      const url = `/uploads/${req.file.filename}`;
+      res.json({ url });
+    });
+  });
 
   app.get(api.users.list.path, async (req, res) => {
     const user = await requireRole(req, res, ["admin", "teacher"]);
@@ -5201,12 +5216,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Examination Management ------------------------------------------------
-  const getSchoolInfo = async (): Promise<Partial<SchoolInfo>> => {
+  const getSchoolInfo = async (baseUrl?: string): Promise<Partial<SchoolInfo>> => {
     const settings = await storage.getPublicSchoolSettings().catch(() => null);
+    let logo = settings?.schoolInformation?.schoolLogo ?? "";
+    if (logo && logo.startsWith("/") && baseUrl) {
+      logo = `${baseUrl}${logo}`;
+    }
     return {
       name: settings?.schoolInformation?.schoolName ?? settings?.schoolInformation?.shortName ?? "School Nexus",
       address: settings?.schoolInformation?.schoolAddress ?? "",
       phone: settings?.schoolInformation?.schoolPhone ?? "",
+      logo,
     };
   };
 
@@ -5301,7 +5321,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!user) return;
       const query = marksheetQuerySchema.parse(req.query);
       if (!query.studentId) throw new AppError("studentId is required", "STUDENT_ID_REQUIRED", 422);
-      const pdf = await generateSingleMarksheetPDF(query.examSessionId, query.studentId, await getSchoolInfo());
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const pdf = await generateSingleMarksheetPDF(query.examSessionId, query.studentId, await getSchoolInfo(baseUrl), baseUrl);
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", 'inline; filename="marksheet.pdf"');
       res.send(pdf);
@@ -5315,7 +5336,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!user) return;
       const query = marksheetQuerySchema.parse(req.query);
       if (!query.studentIds.length) throw new AppError("studentIds are required", "STUDENT_IDS_REQUIRED", 422);
-      const pdf = await generateBulkMarksheetPDF(query.examSessionId, query.studentIds, await getSchoolInfo());
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const pdf = await generateBulkMarksheetPDF(query.examSessionId, query.studentIds, await getSchoolInfo(baseUrl), baseUrl);
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", 'inline; filename="marksheets.pdf"');
       res.send(pdf);

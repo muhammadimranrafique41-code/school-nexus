@@ -484,6 +484,33 @@ export default function AdminSettings() {
                   <FieldShell label="School phone"><Input className="h-8 text-sm" value={draft.schoolInformation.schoolPhone} onChange={(e) => patchSection("schoolInformation", { schoolPhone: e.target.value })} /></FieldShell>
                   <FieldShell label="Website URL"><Input className="h-8 text-sm" value={draft.schoolInformation.websiteUrl} onChange={(e) => patchSection("schoolInformation", { websiteUrl: e.target.value })} /></FieldShell>
                   <FieldShell label="Motto"><Input className="h-8 text-sm" value={draft.schoolInformation.motto} onChange={(e) => patchSection("schoolInformation", { motto: e.target.value })} /></FieldShell>
+                  <FieldShell label="School logo URL" hint="Used on marksheets and certificates">
+                    <div className="flex gap-2">
+                      <Input className="h-8 text-sm flex-1" value={draft.schoolInformation.schoolLogo} onChange={(e) => patchSection("schoolInformation", { schoolLogo: e.target.value })} />
+                      <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1" onClick={async () => {
+                        const input = document.createElement("input");
+                        input.type = "file";
+                        input.accept = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
+                        input.onchange = async () => {
+                          const file = input.files?.[0];
+                          if (!file) return;
+                          if (file.size > 2 * 1024 * 1024) { toast({ variant: "destructive", title: "File too large", description: "Max 2 MB" }); return; }
+                          const fd = new FormData();
+                          fd.append("logo", file);
+                          try {
+                            const res = await fetch("/api/admin/settings/upload-logo", { method: "POST", body: fd });
+                            if (!res.ok) { toast({ variant: "destructive", title: "Upload failed" }); return; }
+                            const { url } = await res.json();
+                            patchSection("schoolInformation", { schoolLogo: url });
+                            toast({ title: "Logo uploaded" });
+                          } catch { toast({ variant: "destructive", title: "Upload failed" }); }
+                        };
+                        input.click();
+                      }}>
+                        <Upload className="h-3.5 w-3.5" />Upload
+                      </Button>
+                    </div>
+                  </FieldShell>
                   <div className="sm:col-span-2">
                     <FieldShell label="School address"><Textarea className="text-sm" value={draft.schoolInformation.schoolAddress} onChange={(e) => patchSection("schoolInformation", { schoolAddress: e.target.value })} rows={3} /></FieldShell>
                   </div>

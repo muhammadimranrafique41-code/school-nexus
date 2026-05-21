@@ -16,6 +16,7 @@ const fallbackPublicSchoolSettings: PublicSchoolSettings = {
     schoolAddress: defaultSchoolSettingsData.schoolInformation.schoolAddress,
     websiteUrl: defaultSchoolSettingsData.schoolInformation.websiteUrl,
     motto: defaultSchoolSettingsData.schoolInformation.motto,
+    schoolLogo: defaultSchoolSettingsData.schoolInformation.schoolLogo,
   },
   academicConfiguration: {
     currentAcademicYear: defaultSchoolSettingsData.academicConfiguration.currentAcademicYear,

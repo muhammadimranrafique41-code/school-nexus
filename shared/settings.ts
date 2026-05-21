@@ -12,7 +12,8 @@ export const schoolInformationSettingsSchema = z.object({
   schoolAddress: z.string().trim().max(250).default(""),
   websiteUrl: optionalUrlSchema,
   principalName: z.string().trim().max(80).default(""),
-  motto: z.string().trim().max(120).default("Empowering every learner.")
+  motto: z.string().trim().max(120).default("Empowering every learner."),
+  schoolLogo: z.string().trim().default(""),
 });
 
 export const academicConfigurationSettingsSchema = z.object({
@@ -149,7 +150,7 @@ export const schoolSettingsAuditEntrySchema = z.object({
 });
 
 export const publicSchoolSettingsSchema = z.object({
-  schoolInformation: schoolInformationSettingsSchema.pick({ schoolName: true, shortName: true, schoolEmail: true, schoolPhone: true, schoolAddress: true, websiteUrl: true, motto: true }),
+  schoolInformation: schoolInformationSettingsSchema.pick({ schoolName: true, shortName: true, schoolEmail: true, schoolPhone: true, schoolAddress: true, websiteUrl: true, motto: true, schoolLogo: true }),
   academicConfiguration: academicConfigurationSettingsSchema.pick({ currentAcademicYear: true, currentTerm: true, weekStartsOn: true }),
   financialSettings: financialSettingsSchema.pick({ locale: true, currencyCode: true, currencySymbol: true, timezone: true, dateFormat: true, invoicePrefix: true, receiptPrefix: true }),
   branding: brandingSettingsSchema,

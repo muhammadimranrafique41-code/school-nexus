@@ -1,5 +1,9 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { registerRoutes } from "./routes.js";
 import { serveStatic } from "./static.js";
 import superAdminRouter from "./routes/superAdminRouter.js";
@@ -76,6 +80,10 @@ export async function initializeApp() {
   initializePromise = (async () => {
     // Attach Socket.io server
     attachSocketServer(httpServer);
+
+    // Ensure uploads directory exists
+    const uploadsDir = path.resolve(__dirname, "public", "uploads");
+    fs.mkdirSync(uploadsDir, { recursive: true });
 
     // Guaranteed DB schema alignment on startup
     try {
@@ -363,6 +371,9 @@ export async function initializeApp() {
 
       return res.status(status).json({ message });
     });
+
+    // Serve uploaded files (logos, etc.) regardless of environment
+    app.use("/uploads", express.static(path.resolve(__dirname, "public", "uploads")));
 
     if (process.env.NODE_ENV === "production") {
       if (!process.env.VERCEL) {
