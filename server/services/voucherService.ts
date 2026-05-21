@@ -23,6 +23,7 @@ import type {
   StudentBillingProfileWithStudent,
 } from "../../shared/schema.js";
 import type { PublicSchoolSettings } from "../../shared/settings.js";
+import { resolveImageBuffer } from "./logoService.js";
 
 const jobProgress = new Map<number, FinanceVoucherProgressSnapshot>();
 const jobSubscribers = new Map<number, Set<(chunk: string) => void>>();
@@ -199,6 +200,7 @@ function generateVoucherPdf(params: {
   documentNumber: string;
   schoolName: string;
   schoolAddress: string | null | undefined;
+  logo?: Buffer | null;
 }): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({ size: "A5", margin: 30 });
@@ -213,6 +215,9 @@ function generateVoucherPdf(params: {
     const borderColor = "#a78bfa";
 
     doc.rect(30, 30, width, 50).fill(schoolColor);
+    if (params.logo) {
+      doc.image(params.logo, 34, 33, { fit: [24, 44] });
+    }
     doc.fillColor("white")
       .fontSize(14)
       .font("Helvetica-Bold")
@@ -305,6 +310,7 @@ function generateConsolidatedVoucherPdf(params: {
     totalCurrentFees: number;
     totalAmount: number;
   };
+  logo?: Buffer | null;
 }): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", margin: 40 });
@@ -321,6 +327,9 @@ function generateConsolidatedVoucherPdf(params: {
 
     // Header
     doc.rect(40, 40, width, 60).fill(schoolColor);
+    if (params.logo) {
+      doc.image(params.logo, 44, 43, { fit: [32, 54] });
+    }
     doc.fillColor("white")
       .fontSize(18)
       .font("Helvetica-Bold")
@@ -487,6 +496,7 @@ async function generateConsolidatedVouchers({
   requestedBy,
   schoolName,
   schoolAddress,
+  logo,
   profileByStudentId,
   snapshot,
   errorLog,
@@ -498,6 +508,7 @@ async function generateConsolidatedVouchers({
   requestedBy?: number;
   schoolName: string;
   schoolAddress: string | undefined;
+  logo?: Buffer | null;
   profileByStudentId: Map<number, StudentBillingProfileWithStudent>;
   snapshot: FinanceVoucherProgressSnapshot;
   errorLog: FinanceVoucherOperationError[];
@@ -717,6 +728,7 @@ async function generateConsolidatedVouchers({
         documentNumber,
         schoolName,
         schoolAddress,
+        logo,
         summary: {
           totalPreviousDues: summarySnapshot.totalPreviousDues,
           totalCurrentFees: summarySnapshot.totalCurrentFees,
@@ -828,6 +840,8 @@ async function runGenerationJob(
     }
     const schoolName = schoolSettings?.schoolInformation?.schoolName || "School Management System";
     const schoolAddress = schoolSettings?.schoolInformation?.address || undefined;
+    const rawLogo = schoolSettings?.schoolInformation?.schoolLogo ?? "";
+    const logo = rawLogo ? await resolveImageBuffer(rawLogo) : null;
 
     const [preview, billingProfiles] = await Promise.all([
       storage.previewFinanceVoucherSelection({ ...input, previewLimit: 100000 }),
@@ -935,6 +949,7 @@ async function runGenerationJob(
           requestedBy,
           schoolName,
           schoolAddress,
+          logo,
           profileByStudentId,
           snapshot,
           errorLog,
@@ -996,6 +1011,7 @@ async function runGenerationJob(
               documentNumber,
               schoolName,
               schoolAddress,
+              logo,
             });
 
             entries.push({ fileName, buffer: pdfBuffer });
@@ -1259,6 +1275,7 @@ export type FamilyVoucherPdfParams = {
   };
   schoolName: string;
   schoolAddress: string | null | undefined;
+  logo?: Buffer | null;
 };
 
 // ── Monochrome design constants ───────────────────────────────────────────────
@@ -1308,6 +1325,12 @@ function renderFamilyVoucherCopy(
   const headerH = 44;
   strokeRect(doc, margin, y, contentWidth, headerH);
 
+  // Logo on left side of header
+  const logoOffset = params.logo ? 32 : 0;
+  if (params.logo) {
+    doc.image(params.logo, margin + 6, y + 3, { fit: [28, 38] });
+  }
+
   // Copy label (top-right, inside header)
   const pillW = 88;
   const pillX = margin + contentWidth - pillW - 6;
@@ -1317,17 +1340,19 @@ function renderFamilyVoucherCopy(
     .text(copyLabel, pillX, pillY + 3, { width: pillW, align: "center", lineBreak: false });
 
   // School name (single line, no wrap)
+  const textX = margin + 8 + logoOffset;
+  const textW = contentWidth - logoOffset - pillW - 20;
   doc.fillColor(BLACK).fontSize(12).font(FONT_MONO_BOLD)
-    .text(params.schoolName, margin + 8, y + 7, {
-      width: contentWidth - pillW - 20,
+    .text(params.schoolName, textX, y + 7, {
+      width: textW,
       align: "left",
       lineBreak: false,
       ellipsis: true,
     });
   if (params.schoolAddress) {
     doc.fillColor(BLACK).fontSize(6.5).font(FONT_MONO)
-      .text(params.schoolAddress, margin + 8, y + 22, {
-        width: contentWidth - pillW - 20,
+      .text(params.schoolAddress, textX, y + 22, {
+        width: textW,
         lineBreak: false,
         ellipsis: true,
       });

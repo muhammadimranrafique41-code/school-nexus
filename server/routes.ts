@@ -3883,6 +3883,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const settings = await storage.getPublicSchoolSettings();
       const schoolName = settings?.schoolInformation?.schoolName ?? "School Management System";
       const schoolAddress = (settings?.schoolInformation?.schoolAddress as string | undefined) ?? undefined;
+      const { resolveImageBuffer } = await import("./services/logoService.js");
+      const rawLogo = settings?.schoolInformation?.schoolLogo ?? "";
+      const logo = rawLogo ? await resolveImageBuffer(rawLogo) : null;
 
       const { generateFamilyVoucherPdf } = await import("./services/voucherService.js");
 
@@ -3922,6 +3925,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         summary: payload.summary,
         schoolName,
         schoolAddress,
+        logo,
       });
 
       const safeFamily = payload.family.name.replace(/[^A-Za-z0-9]+/g, "-").toLowerCase();
