@@ -1,6 +1,6 @@
 import { useLocation, useSearch } from "wouter";
 import { useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, ExternalLink, Loader2, Printer, Search } from "lucide-react";
+import { AlertCircle, ArrowLeft, ExternalLink, FileText, Loader2, Printer, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -135,13 +135,18 @@ export default function StudentPreviewPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
+    <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Family Preview</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Review sibling groups, print one family challan, and generate invoices in one pass.
-          </p>
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-500 text-white shadow-md shadow-violet-200">
+            <FileText className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Family Preview</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Review sibling groups, print one family challan, and generate invoices in one pass.
+            </p>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => navigate("/admin/finance/vouchers/generate")}>
@@ -162,20 +167,29 @@ export default function StudentPreviewPage() {
       </div>
 
       {query.data ? (
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Families</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900">{query.data.summary.totalFamilies}</p>
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+            <div className="h-1 bg-violet-500" />
+            <div className="p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Families</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">{query.data.summary.totalFamilies}</p>
+            </div>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Students</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900">{query.data.summary.totalStudents}</p>
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+            <div className="h-1 bg-cyan-500" />
+            <div className="p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Students</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">{query.data.summary.totalStudents}</p>
+            </div>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Outstanding</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900">
-              {formatCurrency(query.data.summary.totalOutstanding)}
-            </p>
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+            <div className="h-1 bg-emerald-500" />
+            <div className="p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-400">Outstanding</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">
+                {formatCurrency(query.data.summary.totalOutstanding)}
+              </p>
+            </div>
           </div>
         </div>
       ) : null}
@@ -212,7 +226,7 @@ export default function StudentPreviewPage() {
           {filteredFamilies.map((family) => {
             const isExpanded = expandedRows.has(family.familyId);
             return (
-              <div key={family.familyId} className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <div key={family.familyId} className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
                 <button
                   className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left"
                   onClick={() => toggleExpand(family.familyId)}

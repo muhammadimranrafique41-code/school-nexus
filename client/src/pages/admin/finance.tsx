@@ -33,7 +33,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Banknote, CalendarDays, Clock, CreditCard, Download, Eye, FilePlus2, Filter, Layers, Loader2, Pencil, Printer, ReceiptText, RefreshCcw, Search, Settings2, Trash2, Users, X, Zap, Gift, Wallet } from "lucide-react";
 import { buildInvoicePrintHtml, buildPaymentReceiptPrintHtml, type FeePaymentRecord, type FeeRecord, getCurrentBillingMonth, getFeeStatusClassName, getLatestRecordedPayment } from "@/lib/finance";
-import { downloadCsv, formatCurrency, formatDate, getErrorMessage, openPrintWindow, paginateItems } from "@/lib/utils";
+import { cn, downloadCsv, formatCurrency, formatDate, getErrorMessage, openPrintWindow, paginateItems } from "@/lib/utils";
 import { Link } from "wouter";
 
 const PAGE_SIZE = 10;
@@ -243,7 +243,7 @@ export default function Finance() {
 
   return (
     <Layout>
-      <div className="space-y-6 pb-8">
+      <div className="space-y-4 md:space-y-6 p-4 md:p-6">
 
         {/* ── Page header ───────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -274,31 +274,31 @@ export default function Finance() {
         {/* ── KPI strip ─────────────────────────────────────────────────── */}
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
           {[
-            { label: "Total billed", value: formatCurrency(report?.summary.totalBilled ?? 0), hint: `${report?.summary.totalInvoices ?? 0} invoices`, icon: Banknote, iconBg: "bg-indigo-50", iconColor: "text-indigo-600", border: "border-indigo-100/60" },
-            { label: "Collected", value: formatCurrency(report?.summary.totalPaid ?? 0), hint: `${report?.summary.paymentsCount ?? 0} payments`, icon: ReceiptText, iconBg: "bg-emerald-50", iconColor: "text-emerald-600", border: "border-emerald-100/60" },
-            { label: "Collection rate", value: formatPercentage(report?.summary.collectionRate ?? 0), hint: `${report?.summary.studentsWithOutstanding ?? 0} with balance`, icon: ReceiptText, iconBg: "bg-blue-50", iconColor: "text-blue-600", border: "border-blue-100/60" },
-            { label: "Outstanding", value: formatCurrency(report?.summary.totalOutstanding ?? 0), hint: `${balanceSummary?.openInvoices ?? 0} open`, icon: CreditCard, iconBg: "bg-amber-50", iconColor: "text-amber-600", border: "border-amber-100/60" },
-            { label: "Overdue", value: formatCurrency(report?.summary.overdueBalance ?? 0), hint: `${report?.summary.overdueInvoices ?? 0} overdue`, icon: CalendarDays, iconBg: "bg-rose-50", iconColor: "text-rose-600", border: "border-rose-100/60" },
-            { label: "Due soon / No profile", value: `${balanceSummary?.dueSoonInvoices ?? 0} / ${missingProfiles.length}`, hint: `${profiles.length} profiles set`, icon: Users, iconBg: "bg-slate-100", iconColor: "text-slate-500", border: "border-slate-200/60" },
+            { label: "Total billed", value: formatCurrency(report?.summary.totalBilled ?? 0), hint: `${report?.summary.totalInvoices ?? 0} invoices`, icon: Banknote, iconBg: "bg-indigo-50", iconColor: "text-indigo-600", border: "border-indigo-100/60", accent: "bg-indigo-500" },
+            { label: "Collected", value: formatCurrency(report?.summary.totalPaid ?? 0), hint: `${report?.summary.paymentsCount ?? 0} payments`, icon: ReceiptText, iconBg: "bg-emerald-50", iconColor: "text-emerald-600", border: "border-emerald-100/60", accent: "bg-emerald-500" },
+            { label: "Collection rate", value: formatPercentage(report?.summary.collectionRate ?? 0), hint: `${report?.summary.studentsWithOutstanding ?? 0} with balance`, icon: ReceiptText, iconBg: "bg-blue-50", iconColor: "text-blue-600", border: "border-blue-100/60", accent: "bg-blue-500" },
+            { label: "Outstanding", value: formatCurrency(report?.summary.totalOutstanding ?? 0), hint: `${balanceSummary?.openInvoices ?? 0} open`, icon: CreditCard, iconBg: "bg-amber-50", iconColor: "text-amber-600", border: "border-amber-100/60", accent: "bg-amber-500" },
+            { label: "Overdue", value: formatCurrency(report?.summary.overdueBalance ?? 0), hint: `${report?.summary.overdueInvoices ?? 0} overdue`, icon: CalendarDays, iconBg: "bg-rose-50", iconColor: "text-rose-600", border: "border-rose-100/60", accent: "bg-rose-500" },
+            { label: "Due soon / No profile", value: `${balanceSummary?.dueSoonInvoices ?? 0} / ${missingProfiles.length}`, hint: `${profiles.length} profiles set`, icon: Users, iconBg: "bg-slate-100", iconColor: "text-slate-500", border: "border-slate-200/60", accent: "bg-slate-400" },
           ].map((item) => (
-            <div
-              key={item.label}
-              className={`flex flex-col items-center justify-center gap-2 rounded-xl border bg-white px-3 py-4 text-center shadow-none transition-shadow hover:shadow-sm ${item.border}`}
-            >
-              <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${item.iconBg} ${item.iconColor}`}>
-                <item.icon className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 leading-tight">{item.label}</p>
-                <p className="mt-1 text-xl font-bold leading-none text-slate-900 sm:text-2xl">{item.value}</p>
-                <p className="mt-1 text-[11px] text-slate-400 leading-tight">{item.hint}</p>
-              </div>
-            </div>
+            <Card key={item.label} className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+              <div className={cn("h-1 w-full", item.accent)} />
+              <CardContent className="flex flex-col items-center justify-center gap-2 px-3 py-4 text-center">
+                <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${item.iconBg} ${item.iconColor}`}>
+                  <item.icon className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 leading-tight">{item.label}</p>
+                  <p className="mt-1 text-xl font-bold leading-none text-slate-900 sm:text-2xl">{item.value}</p>
+                  <p className="mt-1 text-[11px] text-slate-400 leading-tight">{item.hint}</p>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </section>
 
         {/* ── Filters ───────────────────────────────────────────────────── */}
-        <Card className="border-slate-200/80 bg-white shadow-none">
+        <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
           {/* Filter bar header label */}
           <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50">
@@ -393,7 +393,7 @@ export default function Finance() {
         </Card>
 
         {/* ── Invoice table — full width ────────────────────────────────── */}
-        <Card className="overflow-hidden border-slate-200/80 bg-white shadow-none">
+        <Card className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
           {/* Card header */}
           <CardHeader className="flex flex-row items-center justify-between gap-4 border-b border-slate-100 px-4 py-3">
             <div>
@@ -567,7 +567,7 @@ export default function Finance() {
         <div className="grid gap-4 md:grid-cols-3">
 
           {/* Status breakdown */}
-          <Card className="border-slate-200/80 bg-white shadow-none">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50">
                 <ReceiptText className="h-3.5 w-3.5 text-indigo-500" />
@@ -601,7 +601,7 @@ export default function Finance() {
           </Card>
 
           {/* Balance monitor */}
-          <Card className="border-slate-200/80 bg-white shadow-none">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50">
                 <CalendarDays className="h-3.5 w-3.5 text-amber-500" />
@@ -640,7 +640,7 @@ export default function Finance() {
           </Card>
 
           {/* Outstanding students */}
-          <Card className="border-slate-200/80 bg-white shadow-none">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50">
                 <Users className="h-3.5 w-3.5 text-rose-500" />
@@ -682,7 +682,7 @@ export default function Finance() {
         <div className="grid gap-5 xl:grid-cols-3">
 
           {/* Recent payments */}
-          <Card className="border-slate-200/80 bg-white shadow-none">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <CardHeader className="px-4 py-3 pb-2">
               <CardTitle className="text-sm font-semibold">Recent payments</CardTitle>
             </CardHeader>
@@ -710,7 +710,7 @@ export default function Finance() {
           </Card>
 
           {/* Monthly revenue */}
-          <Card className="border-slate-200/80 bg-white shadow-none">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <CardHeader className="px-4 py-3 pb-2">
               <CardTitle className="text-sm font-semibold">Monthly revenue</CardTitle>
             </CardHeader>
@@ -739,7 +739,7 @@ export default function Finance() {
           </Card>
 
           {/* Billing profiles */}
-          <Card className="border-slate-200/80 bg-white shadow-none">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between px-4 py-3 pb-2">
               <CardTitle className="text-sm font-semibold">Billing profiles</CardTitle>
               <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => openProfileDialog()}><Settings2 className="mr-1 h-3 w-3" />Add</Button>
@@ -781,7 +781,7 @@ export default function Finance() {
 
         {/* ── Payment method + Class breakdown ─────────────────────────── */}
         <div className="grid gap-5 xl:grid-cols-2">
-          <Card className="border-slate-200/80 bg-white shadow-none">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <CardHeader className="px-4 py-3 pb-2">
               <CardTitle className="text-sm font-semibold">Collections by payment method</CardTitle>
             </CardHeader>
@@ -802,7 +802,7 @@ export default function Finance() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200/80 bg-white shadow-none">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <CardHeader className="px-4 py-3 pb-2">
               <CardTitle className="text-sm font-semibold">Class balance & collection</CardTitle>
             </CardHeader>
@@ -1071,53 +1071,6 @@ export default function Finance() {
     </Layout>
   );
 }
-// import { useEffect, useMemo, useState } from "react";
-// import { feeStatuses, buildDueDateForBillingMonth, formatBillingPeriod } from "@shared/finance";
-// import { Layout } from "@/components/layout";
-// import { useToast } from "@/hooks/use-toast";
-// import { usePublicSchoolSettings } from "@/hooks/use-settings";
-// import { useStudents } from "@/hooks/use-users";
-// import {
-//   type BillingProfileRecord,
-//   type FinanceReportFilters,
-//   type MonthlyGenerationResult,
-//   useBillingProfiles,
-//   useCreateFee,
-//   useDeleteFee,
-//   useFeeBalanceSummary,
-//   useFinanceReport,
-//   useGenerateMonthlyFees,
-//   useOverdueBalances,
-//   useRecordFeePayment,
-//   useUpdateFee,
-//   useUpsertBillingProfile,
-// } from "@/hooks/use-fees";
-// import { FeeAdjustmentDialog } from "./finance/FeeAdjustmentDialog";
-// import { GenerateSingleStudentFeeDialog } from "./finance/GenerateSingleStudentFeeDialog";
-// import { ApplyLateFeeDialog } from "./finance/ApplyLateFeeDialog";
-// import { Badge } from "@/components/ui/badge";
-// import { Button } from "@/components/ui/button";
-// import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-// import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-// import { Input } from "@/components/ui/input";
-// import { Pagination, PaginationContent, PaginationItem, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-// import { Textarea } from "@/components/ui/textarea";
-// import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-// import { Banknote, CalendarDays, Clock, CreditCard, Download, Eye, FilePlus2, Loader2, Pencil, Printer, ReceiptText, RefreshCcw, Search, Settings2, Trash2, Users, Zap, Gift } from "lucide-react";
-// import { buildInvoicePrintHtml, buildPaymentReceiptPrintHtml, type FeePaymentRecord, type FeeRecord, getCurrentBillingMonth, getFeeStatusClassName, getLatestRecordedPayment } from "@/lib/finance";
-// import { downloadCsv, formatCurrency, formatDate, getErrorMessage, openPrintWindow, paginateItems } from "@/lib/utils";
-
-// const PAGE_SIZE = 10;
-// type InvoiceFormState = { studentId: string; amount: string; billingMonth: string; dueDate: string; description: string; feeType: string; notes: string; discount: string; discountReason: string };
-// type PaymentFormState = { amount: string; paymentDate: string; method: "Cash" | "Bank Transfer" | "Card" | "Mobile Money" | "Cheque" | "Other"; reference: string; notes: string; discount: string; discountReason: string };
-// type BillingProfileFormState = { studentId: string; monthlyAmount: string; dueDay: string; isActive: boolean; notes: string };
-// type GenerationFormState = { billingMonth: string; dueDayOverride: string };
-
-// function createDefaultInvoiceForm(studentId = ""): InvoiceFormState {
-//   const billingMonth = getCurrentBillingMonth();
-//   return { studentId, amount: "", billingMonth, dueDate: buildDueDateForBillingMonth(billingMonth, 5), description: "Monthly tuition fee", feeType: "Monthly Fee", notes: "", discount: "", discountReason: "" };
-// }
 // function createDefaultPaymentForm(balance = 0): PaymentFormState {
 //   return { amount: balance > 0 ? String(balance) : "", paymentDate: new Date().toISOString().slice(0, 10), method: "Cash", reference: "", notes: "", discount: "", discountReason: "" };
 // }
@@ -1348,7 +1301,7 @@ export default function Finance() {
 //         </section>
 
 //         {/* ── Filters ───────────────────────────────────────────────────── */}
-//         <Card className="border-slate-200/80 bg-white shadow-none">
+//         <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
 //           <CardContent className="p-3">
 //             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
 //               {/* Search — full width on mobile, grows on desktop */}
@@ -1379,7 +1332,7 @@ export default function Finance() {
 //         </Card>
 
 //         {/* ── Invoice table — full width ────────────────────────────────── */}
-//         <Card className="overflow-hidden border-slate-200/80 bg-white shadow-none">
+//         <Card className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
 //           {/* Card header */}
 //           <CardHeader className="flex flex-row items-center justify-between gap-4 border-b border-slate-100 px-4 py-3">
 //             <div>
@@ -1553,7 +1506,7 @@ export default function Finance() {
 //         <div className="grid gap-4 md:grid-cols-3">
 
 //           {/* Status breakdown */}
-//           <Card className="border-slate-200/80 bg-white shadow-none">
+//           <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
 //             <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
 //               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50">
 //                 <ReceiptText className="h-3.5 w-3.5 text-indigo-500" />
@@ -1587,7 +1540,7 @@ export default function Finance() {
 //           </Card>
 
 //           {/* Balance monitor */}
-//           <Card className="border-slate-200/80 bg-white shadow-none">
+//           <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
 //             <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
 //               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50">
 //                 <CalendarDays className="h-3.5 w-3.5 text-amber-500" />
@@ -1626,7 +1579,7 @@ export default function Finance() {
 //           </Card>
 
 //           {/* Outstanding students */}
-//           <Card className="border-slate-200/80 bg-white shadow-none">
+//           <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
 //             <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
 //               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50">
 //                 <Users className="h-3.5 w-3.5 text-rose-500" />
@@ -1668,7 +1621,7 @@ export default function Finance() {
 //         <div className="grid gap-5 xl:grid-cols-3">
 
 //           {/* Recent payments */}
-//           <Card className="border-slate-200/80 bg-white shadow-none">
+//           <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
 //             <CardHeader className="px-4 py-3 pb-2">
 //               <CardTitle className="text-sm font-semibold">Recent payments</CardTitle>
 //             </CardHeader>
@@ -1696,7 +1649,7 @@ export default function Finance() {
 //           </Card>
 
 //           {/* Monthly revenue */}
-//           <Card className="border-slate-200/80 bg-white shadow-none">
+//           <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
 //             <CardHeader className="px-4 py-3 pb-2">
 //               <CardTitle className="text-sm font-semibold">Monthly revenue</CardTitle>
 //             </CardHeader>
@@ -1725,7 +1678,7 @@ export default function Finance() {
 //           </Card>
 
 //           {/* Billing profiles */}
-//           <Card className="border-slate-200/80 bg-white shadow-none">
+//           <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
 //             <CardHeader className="flex flex-row items-center justify-between px-4 py-3 pb-2">
 //               <CardTitle className="text-sm font-semibold">Billing profiles</CardTitle>
 //               <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => openProfileDialog()}><Settings2 className="mr-1 h-3 w-3" />Add</Button>
@@ -1767,7 +1720,7 @@ export default function Finance() {
 
 //         {/* ── Payment method + Class breakdown ─────────────────────────── */}
 //         <div className="grid gap-5 xl:grid-cols-2">
-//           <Card className="border-slate-200/80 bg-white shadow-none">
+//           <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
 //             <CardHeader className="px-4 py-3 pb-2">
 //               <CardTitle className="text-sm font-semibold">Collections by payment method</CardTitle>
 //             </CardHeader>
@@ -1788,7 +1741,7 @@ export default function Finance() {
 //             </CardContent>
 //           </Card>
 
-//           <Card className="border-slate-200/80 bg-white shadow-none">
+//           <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
 //             <CardHeader className="px-4 py-3 pb-2">
 //               <CardTitle className="text-sm font-semibold">Class balance & collection</CardTitle>
 //             </CardHeader>

@@ -197,7 +197,7 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
 
   return (
     <Layout>
-      <div className="space-y-5 pb-8">
+      <div className="space-y-4 md:space-y-6 p-4 md:p-6">
 
         {/* ── Page header ─────────────────────────────────────────────── */}
         <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -231,12 +231,13 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
         {/* ── KPI strip ───────────────────────────────────────────────── */}
         <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
-            { label: "Total users", value: summary.total, icon: Users, color: "text-indigo-600 bg-indigo-50", border: "border-indigo-100" },
-            { label: "Students", value: summary.students, icon: GraduationCap, color: "text-sky-600 bg-sky-50", border: "border-sky-100" },
-            { label: "Teachers", value: summary.teachers, icon: Users, color: "text-emerald-600 bg-emerald-50", border: "border-emerald-100" },
-            { label: "Admins", value: summary.admins, icon: ShieldCheck, color: "text-violet-600 bg-violet-50", border: "border-violet-100" },
+            { label: "Total users", value: summary.total, icon: Users, color: "text-indigo-600 bg-indigo-50", border: "border-indigo-100", accent: "bg-indigo-500" },
+            { label: "Students", value: summary.students, icon: GraduationCap, color: "text-sky-600 bg-sky-50", border: "border-sky-100", accent: "bg-sky-500" },
+            { label: "Teachers", value: summary.teachers, icon: Users, color: "text-emerald-600 bg-emerald-50", border: "border-emerald-100", accent: "bg-emerald-500" },
+            { label: "Admins", value: summary.admins, icon: ShieldCheck, color: "text-violet-600 bg-violet-50", border: "border-violet-100", accent: "bg-violet-500" },
           ].map((item) => (
-            <Card key={item.label} className={cn("border bg-white shadow-none", item.border)}>
+            <Card key={item.label} className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+              <div className={cn("h-1 w-full", item.accent)} />
               <CardContent className="flex items-center gap-3 p-4">
                 <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", item.color)}>
                   <item.icon className="h-4 w-4" />
@@ -251,7 +252,7 @@ export default function UsersManagement({ roleFilter }: UsersManagementProps) {
         </section>
 
         {/* ── Table card ──────────────────────────────────────────────── */}
-        <Card className="overflow-hidden border-slate-200/80 bg-white shadow-none">
+        <Card className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
 
           {/* Toolbar */}
           <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">

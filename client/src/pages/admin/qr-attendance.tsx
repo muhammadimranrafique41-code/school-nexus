@@ -175,7 +175,7 @@ export default function AdminQrAttendance() {
 
   return (
     <Layout>
-      <div className="space-y-4 pb-8">
+      <div className="p-4 md:p-6 space-y-4 pb-8">
 
         {/* ── Page header ─────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

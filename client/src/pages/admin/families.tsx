@@ -191,7 +191,7 @@ export default function AdminFamiliesPage() {
 
   return (
     <Layout>
-      <div className="space-y-5 pb-8">
+      <div className="space-y-5 p-4 md:p-6">
         <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
@@ -216,7 +216,7 @@ export default function AdminFamiliesPage() {
             { label: "Outstanding", value: formatCurrency(summary.totalOutstanding), icon: AlertCircle, color: "text-rose-600 bg-rose-50", border: "border-rose-100" },
             { label: "Wallet balance", value: formatCurrency(summary.totalWallet), icon: Wallet, color: "text-violet-600 bg-violet-50", border: "border-violet-100" },
           ].map((item) => (
-            <Card key={item.label} className={cn("border bg-white shadow-none", item.border)}>
+            <Card key={item.label} className={cn("rounded-xl border border-slate-200/80 bg-white shadow-sm", item.border)}>
               <CardContent className="flex items-center gap-3 p-4">
                 <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", item.color)}>
                   <item.icon className="h-4 w-4" />
@@ -230,7 +230,7 @@ export default function AdminFamiliesPage() {
           ))}
         </section>
 
-        <Card className="overflow-hidden border-slate-200/80 bg-white shadow-none">
+        <Card className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
           <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />

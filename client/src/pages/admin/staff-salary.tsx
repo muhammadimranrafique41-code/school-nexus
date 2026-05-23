@@ -124,17 +124,22 @@ export default function StaffSalaryPage() {
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold">Salary Configuration Dashboard</h1>
-            <p className="text-muted-foreground mt-1">Manage salary structures, allowances, and deductions for staff members</p>
+      <div className="p-4 md:p-6 space-y-6">
+        <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+              <DollarSign className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">Salary Configuration Dashboard</h1>
+              <p className="text-[12px] text-slate-400">Manage salary structures, allowances, and deductions for staff members</p>
+            </div>
           </div>
-        </div>
+        </section>
 
         {/* Staff Salary Overview */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <Card>
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Staff</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -144,7 +149,7 @@ export default function StaffSalaryPage() {
               <p className="text-xs text-muted-foreground">Active staff members</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">With Salary Structures</CardTitle>
               <Plus className="h-4 w-4 text-muted-foreground" />
@@ -156,7 +161,7 @@ export default function StaffSalaryPage() {
               <p className="text-xs text-muted-foreground">Configured salary structures</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Pending Setup</CardTitle>
               <Edit2 className="h-4 w-4 text-muted-foreground" />
@@ -171,11 +176,12 @@ export default function StaffSalaryPage() {
         </div>
 
         {/* Staff List with Salary Structures */}
-        <Card>
+        <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
           <CardHeader>
             <CardTitle>Staff Salary Structures</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -241,6 +247,7 @@ export default function StaffSalaryPage() {
                 )}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
 
@@ -419,7 +426,7 @@ export default function StaffSalaryPage() {
                 <Separator />
 
                 {/* Salary Summary */}
-                <Card>
+                <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
                   <CardHeader>
                     <CardTitle className="text-base">Salary Summary</CardTitle>
                   </CardHeader>

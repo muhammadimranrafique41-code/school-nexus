@@ -186,9 +186,9 @@ export default function AdminDailyDiaryPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 p-6">
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 p-4 md:p-6">
         <div className="max-w-5xl mx-auto">
-          <Card className="p-12 text-center">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm p-12 text-center">
             <Loader2 className="animate-spin mx-auto mb-4" size={32} />
             <p className="text-slate-600">Loading...</p>
           </Card>
@@ -199,7 +199,7 @@ export default function AdminDailyDiaryPage() {
 
   if (!template) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 p-6">
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 p-4 md:p-6">
         <div className="max-w-5xl mx-auto">
           <Button
             onClick={() => navigate("/admin/")}
@@ -209,7 +209,7 @@ export default function AdminDailyDiaryPage() {
             <ArrowLeft size={18} />
             Back to Dashboard
           </Button>
-          <Card className="p-12 text-center">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm p-12 text-center">
             <p className="text-slate-600">No template found for this class</p>
           </Card>
         </div>
@@ -218,7 +218,7 @@ export default function AdminDailyDiaryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 p-6">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 p-4 md:p-6">
       <div className="max-w-5xl mx-auto">
         {/* Back Button */}
         <Button
@@ -231,7 +231,7 @@ export default function AdminDailyDiaryPage() {
         </Button>
 
         {/* Gradient Hero Card */}
-        <Card className="mb-8 bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-8 rounded-lg">
+        <Card className="mb-8 bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-4 md:p-6 rounded-xl">
           <h1 className="text-4xl font-bold mb-2">{template.title}</h1>
           <p className="text-indigo-100 mb-4">
             {format(parseISO(currentDate), "EEEE, MMMM d, yyyy")}
@@ -257,7 +257,7 @@ export default function AdminDailyDiaryPage() {
           {template.questions.map((question) => {
             const gradient = subjectColors[question.subject] || "from-gray-400 to-gray-600";
             return (
-              <Card key={question.id} className="overflow-hidden">
+              <Card key={question.id} className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
                 <div className={`bg-gradient-to-r ${gradient} p-4`}>
                   <div className="text-white">
                     <h3 className="font-bold text-lg">{question.subject}</h3>

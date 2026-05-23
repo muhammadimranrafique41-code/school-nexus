@@ -6,6 +6,7 @@ import {
   TrendingUp,
   TrendingDown,
   AlertCircle,
+  LayoutDashboard,
 } from "lucide-react";
 import { useOverview } from "@/hooks/my-school/useOverview";
 import { useCampuses } from "@/hooks/my-school/useCampuses";
@@ -69,24 +70,25 @@ export default function OverviewPage() {
     : [];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight text-slate-900">
-          Overview
-        </h1>
-        <p className="text-sm text-slate-500">
-          Summary of all your campuses and their performance.
-        </p>
+    <div className="space-y-4 md:space-y-6 p-4 md:p-6">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-white">
+          <LayoutDashboard className="h-5 w-5" />
+        </div>
+        <div>
+          <h1 className="text-xl font-semibold text-slate-950 md:text-2xl">Overview</h1>
+          <p className="text-sm text-slate-500">Summary of all your campuses and their performance.</p>
+        </div>
       </div>
 
       <PaymentDueBanner pendingMonths={stats?.pendingBillingMonths ?? 0} />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 md:gap-4">
         {isLoading
           ? Array.from({ length: 7 }).map((_, i) => (
               <div
                 key={i}
-                className="h-28 animate-pulse rounded-2xl bg-slate-100"
+                className="h-28 animate-pulse rounded-xl bg-slate-100"
               />
             ))
           : statCards.map((card) => (
@@ -94,7 +96,7 @@ export default function OverviewPage() {
             ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <PerformanceChart isLoading={isLoading} />
         </div>

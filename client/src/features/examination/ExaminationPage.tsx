@@ -30,12 +30,16 @@ export default function ExaminationPage() {
           </div>
         </div>
         <Tabs defaultValue="schedule" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="schedule">Schedule</TabsTrigger>
-            <TabsTrigger value="marks">Mark Entry</TabsTrigger>
-            <TabsTrigger value="results">Results</TabsTrigger>
-            <TabsTrigger value="mat">MAT Summary</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto -mx-4 md:-mx-0">
+            <div className="px-4 md:px-0 min-w-max">
+              <TabsList>
+                <TabsTrigger value="schedule">Schedule</TabsTrigger>
+                <TabsTrigger value="marks">Mark Entry</TabsTrigger>
+                <TabsTrigger value="results">Results</TabsTrigger>
+                <TabsTrigger value="mat">MAT Summary</TabsTrigger>
+              </TabsList>
+            </div>
+          </div>
           <Suspense fallback={<PageSkeleton />}>
             <TabsContent value="schedule"><ExamScheduleTab /></TabsContent>
             <TabsContent value="marks"><MarkEntryTab /></TabsContent>

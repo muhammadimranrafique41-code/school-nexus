@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { DollarSign } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useBilling } from "@/hooks/my-school/useBilling";
 import { BillingSummaryCards } from "./BillingSummaryCards";
@@ -16,15 +17,16 @@ export default function BillingPage() {
   }, [queryClient]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Billing
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            View your subscription billing history and manage invoice payments.
-          </p>
+    <div className="space-y-4 md:space-y-6 p-4 md:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-white">
+            <DollarSign className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-slate-950 md:text-2xl">Billing</h1>
+            <p className="text-sm text-slate-500">View your subscription billing history and manage invoice payments.</p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button

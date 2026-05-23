@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DollarSign } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useBilling, useOverrideBilling } from "@/hooks/super-admin/useBilling";
 import { BillingTable } from "./BillingTable";
@@ -31,29 +32,36 @@ export default function PlatformBillingPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Platform Billing</h1>
-        <p className="text-sm text-slate-500">View and manage billing records across all campuses.</p>
+    <div className="space-y-4 md:space-y-6 p-4 md:p-6">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-white">
+          <DollarSign className="h-5 w-5" />
+        </div>
+        <div>
+          <h1 className="text-xl font-semibold text-slate-950 md:text-2xl">Platform Billing</h1>
+          <p className="text-sm text-slate-500">View and manage billing records across all campuses.</p>
+        </div>
       </div>
 
-      <div className="flex gap-1 border-b border-slate-200">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => { setStatusTab(tab); setPage(1); }}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              statusTab === tab
-                ? "border-indigo-600 text-indigo-600"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            {tab === "all" ? "All" : tab.charAt(0) + tab.slice(1).toLowerCase()}
-          </button>
-        ))}
+      <div className="overflow-x-auto -mx-4 md:-mx-0">
+        <div className="flex gap-1 border-b border-slate-200 px-4 md:px-0 min-w-max">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => { setStatusTab(tab); setPage(1); }}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
+                statusTab === tab
+                  ? "border-indigo-600 text-indigo-600"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {tab === "all" ? "All" : tab.charAt(0) + tab.slice(1).toLowerCase()}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-sm">
         <BillingTable
           records={data?.data ?? []}
           isLoading={isLoading}

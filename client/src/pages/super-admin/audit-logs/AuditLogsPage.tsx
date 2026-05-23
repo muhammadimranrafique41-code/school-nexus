@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ClipboardList } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuditLogs } from "@/hooks/super-admin/useAuditLogs";
@@ -23,13 +24,18 @@ export default function AuditLogsPage() {
   const totalPages = Math.ceil(total / 50);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Audit Logs</h1>
-        <p className="text-sm text-slate-500">Track all platform-level actions and changes.</p>
+    <div className="space-y-4 md:space-y-6 p-4 md:p-6">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-white">
+          <ClipboardList className="h-5 w-5" />
+        </div>
+        <div>
+          <h1 className="text-xl font-semibold text-slate-950 md:text-2xl">Audit Logs</h1>
+          <p className="text-sm text-slate-500">Track all platform-level actions and changes.</p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         <div className="space-y-1">
           <Label className="text-xs text-slate-500">Action</Label>
           <Input
@@ -64,12 +70,12 @@ export default function AuditLogsPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-sm">
         <AuditLogTable logs={logs} isLoading={isLoading} />
       </div>
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-slate-500">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm text-slate-500">
           <span>Page {page} of {totalPages} ({total} total)</span>
           <div className="flex gap-2">
             <button

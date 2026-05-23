@@ -97,7 +97,7 @@ export default function StudentDailyDiaryPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-sky-50 to-cyan-50 p-6 flex items-center justify-center">
-        <Card className="p-12 text-center">
+        <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm p-12 text-center">
           <Loader2 className="animate-spin mx-auto mb-4" size={32} />
           <p className="text-slate-600">Loading diary...</p>
         </Card>
@@ -106,7 +106,7 @@ export default function StudentDailyDiaryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sky-50 to-cyan-50 p-6">
+    <div className="min-h-screen bg-gradient-to-b from-sky-50 to-cyan-50 p-4 md:p-6">
       <style>{`
         @media print {
           body { background: white; }
@@ -116,27 +116,37 @@ export default function StudentDailyDiaryPage() {
       `}</style>
 
       <div className="max-w-4xl mx-auto">
-        <Button onClick={() => navigate("/student/")} variant="ghost" className="no-print mb-6 gap-2">
-          <ArrowLeft size={18} />
-          Back to Dashboard
-        </Button>
+        <div className="flex items-center justify-between mb-6 no-print">
+          <Button onClick={() => navigate("/student/")} variant="ghost" className="gap-2">
+            <ArrowLeft size={18} />
+            Back to Dashboard
+          </Button>
+          <Button onClick={() => window.print()} variant="outline" className="gap-2">
+            <Printer size={18} /> Print / PDF
+          </Button>
+        </div>
 
-        <Card className="mb-8 bg-gradient-to-r from-sky-400 to-cyan-500 text-white p-8 rounded-lg print-area">
-          <h1 className="text-3xl font-bold mb-2">Homework Diary</h1>
-          <p className="text-sky-100 mb-4">{format(parseISO(selectedDate), "EEEE, MMMM d, yyyy")}</p>
+        <div className="flex items-center gap-3 mb-6 print-area">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-cyan-400 text-white shadow-md shadow-sky-200">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
+          </div>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">Homework Diary</h1>
+            <p className="text-[12px] text-slate-400">{format(parseISO(selectedDate), "EEEE, MMMM d, yyyy")}</p>
+          </div>
           {currentDiary && (
-            <span className="inline-flex items-center gap-1 font-semibold text-green-200 animate-pulse">
-              ✅ Published
+            <span className="ml-auto inline-flex items-center gap-1 rounded-xl bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
+              Published
             </span>
           )}
-        </Card>
+        </div>
 
         {/* Date Navigation */}
         <div className="no-print flex justify-between items-center mb-8 gap-4">
           <Button onClick={() => setSelectedDate(format(subDays(parseISO(selectedDate), 1), "yyyy-MM-dd"))} variant="outline" className="gap-2">
             <ChevronLeft size={18} /> Previous
           </Button>
-          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border">
+          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200/80 shadow-sm">
             <Calendar size={18} className="text-slate-600" />
             <input
               type="date"
@@ -152,7 +162,7 @@ export default function StudentDailyDiaryPage() {
 
         {/* Content */}
         {!currentDiary ? (
-          <Card className="p-12 text-center print-area">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm p-12 text-center print-area">
             <p className="text-slate-600 mb-2">
               No diary available for {format(parseISO(selectedDate), "MMMM d, yyyy")}
             </p>
@@ -170,7 +180,7 @@ export default function StudentDailyDiaryPage() {
                   key={index}
                   style={{ animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both` }}
                 >
-                  <Card className={`border-l-4 overflow-hidden ${color.border} print-area`}>
+                  <Card className={`rounded-xl border border-slate-200/80 bg-white shadow-sm border-l-4 overflow-hidden ${color.border} print-area`}>
                     <div className={`${color.bg} p-6`}>
                       <div className="flex items-start gap-4">
                         <div className="text-4xl">{icon}</div>
@@ -192,13 +202,6 @@ export default function StudentDailyDiaryPage() {
           </div>
         )}
 
-        {currentDiary && (
-          <div className="no-print flex justify-end mt-8">
-            <Button onClick={() => window.print()} variant="outline" className="gap-2">
-              <Printer size={18} /> Print / PDF
-            </Button>
-          </div>
-        )}
       </div>
 
       <style>{`

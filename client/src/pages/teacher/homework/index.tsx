@@ -93,11 +93,11 @@ export default function TeacherHomeworkDashboard() {
   /* ═══════════════════════════════════════════════════════════════ */
   return (
     <Layout>
-      <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-screen-xl px-4 py-6 space-y-5">
+        <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-screen-xl p-4 md:p-6 space-y-5">
 
           {/* ── Hero header ── */}
-          <div className="relative overflow-hidden rounded-2xl bg-amber-500 px-5 py-5 text-white shadow-lg shadow-amber-100">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 px-5 py-5 text-white shadow-lg shadow-amber-100">
             <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/5" />
             <div className="absolute right-14 top-16 h-20 w-20 rounded-full bg-white/5" />
             <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
@@ -142,7 +142,7 @@ export default function TeacherHomeworkDashboard() {
           </div>
 
           {/* ── Filter bar ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm p-4 space-y-3">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm p-4 space-y-3">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Filters</p>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -227,11 +227,11 @@ export default function TeacherHomeworkDashboard() {
             {isLoading ? (
               <div className="space-y-2.5">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-28 w-full rounded-2xl" />
+                  <Skeleton key={i} className="h-28 w-full rounded-xl" />
                 ))}
               </div>
             ) : filteredHomework.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6">
+              <div className="rounded-xl border border-dashed border-slate-200 bg-white p-6">
                 <HomeworkEmptyState ctaHref="/teacher/homework/new" />
               </div>
             ) : (
@@ -241,7 +241,7 @@ export default function TeacherHomeworkDashboard() {
 
                 return (
                   <div key={item.id}
-                    className="rounded-2xl border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-amber-200 transition-all overflow-hidden">
+                    className="rounded-xl border border-slate-200/80 bg-white shadow-sm hover:shadow-md hover:border-amber-200 transition-all overflow-hidden">
 
                     {/* left accent bar */}
                     <div className="flex">
@@ -323,7 +323,7 @@ export default function TeacherHomeworkDashboard() {
 
           {/* ── Pagination ── */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-5 py-3 shadow-sm">
+            <div className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-white px-5 py-3 shadow-sm">
               <p className="text-xs font-semibold text-slate-500">
                 Page <strong className="text-slate-800">{page}</strong> of <strong className="text-slate-800">{totalPages}</strong>
               </p>

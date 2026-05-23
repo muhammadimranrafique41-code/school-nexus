@@ -18,7 +18,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, Plus, Edit2, Trash2, Wallet, Calendar, FileText } from "lucide-react";
+import { Loader2, Plus, Edit2, Trash2, Wallet, Calendar, FileText, Users } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -110,11 +110,16 @@ export default function StaffManagement() {
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold">Staff Management</h1>
-            <p className="text-muted-foreground mt-1">Manage all staff members, payroll, and attendance.</p>
+      <div className="p-4 md:p-6 space-y-6">
+        <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+              <Users className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">Staff Management</h1>
+              <p className="text-[12px] text-slate-400">Manage all staff members, payroll, and attendance.</p>
+            </div>
           </div>
           <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>
@@ -230,9 +235,10 @@ export default function StaffManagement() {
               </Form>
             </DialogContent>
           </Dialog>
-        </div>
+        </section>
 
-        <div className="bg-white dark:bg-card border rounded-2xl overflow-hidden shadow-sm">
+        <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-slate-50/50 dark:bg-slate-900/50">
               <TableRow>
@@ -277,6 +283,7 @@ export default function StaffManagement() {
               )}
             </TableBody>
           </Table>
+          </div>
         </div>
       </div>
     </Layout>

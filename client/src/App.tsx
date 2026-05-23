@@ -5,9 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TimetableSettingsProvider } from "@/lib/timetable-settings-bus";
 import { UiStateProvider } from "@/hooks/useUiState";
-import { Layout } from "@/components/layout";
-import { Header } from "@/components/layout/Header";
-import { SideNav } from "@/components/layout/SideNav";
+import { Layout, ResponsivePageShell } from "@/components/layout";
 import NotFound from "@/pages/not-found";
 
 import Login from "./pages/login";
@@ -95,57 +93,19 @@ function Router() {
 
       {/* PRD Module Routes */}
       <Route path="/dashboard">
-        <UiStateProvider>
-          <div className="flex h-screen w-full overflow-hidden bg-slate-50">
-            <SideNav />
-            <div className="flex flex-1 flex-col min-w-0">
-              <Header />
-              <main className="flex-1 overflow-y-auto p-5">
-                <DashboardPage />
-              </main>
-            </div>
-          </div>
-        </UiStateProvider>
+        <ResponsivePageShell><DashboardPage /></ResponsivePageShell>
       </Route>
 
       <Route path="/attendance">
-        <UiStateProvider>
-          <div className="flex h-screen w-full overflow-hidden bg-slate-50">
-            <SideNav />
-            <div className="flex flex-1 flex-col min-w-0">
-              <Header />
-              <main className="flex-1 overflow-y-auto p-5">
-                <AttendancePage />
-              </main>
-            </div>
-          </div>
-        </UiStateProvider>
+        <ResponsivePageShell><AttendancePage /></ResponsivePageShell>
       </Route>
+
       <Route path="/finance">
-        <UiStateProvider>
-          <div className="flex h-screen w-full overflow-hidden bg-slate-50">
-            <SideNav />
-            <div className="flex flex-1 flex-col min-w-0">
-              <Header />
-              <main className="flex-1 overflow-y-auto p-5">
-                <FinancePage />
-              </main>
-            </div>
-          </div>
-        </UiStateProvider>
+        <ResponsivePageShell><FinancePage /></ResponsivePageShell>
       </Route>
+
       <Route path="/homework">
-        <UiStateProvider>
-          <div className="flex h-screen w-full overflow-hidden bg-slate-50">
-            <SideNav />
-            <div className="flex flex-1 flex-col min-w-0">
-              <Header />
-              <main className="flex-1 overflow-y-auto p-5">
-                <HomeworkPage />
-              </main>
-            </div>
-          </div>
-        </UiStateProvider>
+        <ResponsivePageShell><HomeworkPage /></ResponsivePageShell>
       </Route>
 
       {/* Admin Routes */}

@@ -4,7 +4,9 @@ import { Layout } from "@/components/layout";
 export default function AiAssistantPage() {
   return (
     <Layout>
-      <AiAssistantChat />
+      <div className="p-4 md:p-6">
+        <AiAssistantChat />
+      </div>
     </Layout>
   );
 }

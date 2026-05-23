@@ -149,7 +149,7 @@ function TimetableSettingsTab() {
   const totalHoursStr = `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`
 
   return (
-    <Card className="border-slate-200/80 bg-white shadow-none">
+    <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
       <CardHeader className="border-b border-slate-100 px-4 py-3">
         <CardTitle className="text-sm font-semibold text-slate-900">Timetable Defaults</CardTitle>
         <CardDescription className="text-[11px]">School hours, working days, and period configuration.</CardDescription>
@@ -291,7 +291,7 @@ function TimetableSettingsTab() {
 // ── Content card wrapper for tab panels ───────────────────────────────────
 function SettingsCard({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (
-    <Card className="border-slate-200/80 bg-white shadow-none">
+    <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
       <CardHeader className="border-b border-slate-100 px-4 py-3">
         <CardTitle className="text-sm font-semibold text-slate-900">{title}</CardTitle>
         <CardDescription className="text-[11px]">{description}</CardDescription>
@@ -382,12 +382,12 @@ export default function AdminSettings() {
 
   return (
     <Layout>
-      <div className="space-y-4 pb-8">
+      <div className="space-y-4 p-4 md:p-6">
 
         {/* ── Page header ─────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
               <Settings2 className="h-5 w-5" />
             </div>
             <div>
@@ -415,7 +415,7 @@ export default function AdminSettings() {
         </section>
 
         {/* ── Action bar: change summary + save/export/import ──────────── */}
-        <Card className="border-slate-200/80 bg-white shadow-none">
+        <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
           <CardContent className="p-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Input
@@ -647,7 +647,7 @@ export default function AdminSettings() {
           <div className="space-y-4">
 
             {/* Setup progress */}
-            <Card className="border-slate-200/80 bg-white shadow-none">
+            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
                 <div className={cn("flex h-7 w-7 items-center justify-center rounded-lg",
                   data.settings.isSetupComplete ? "bg-emerald-50" : "bg-amber-50")}>
@@ -682,7 +682,7 @@ export default function AdminSettings() {
             </Card>
 
             {/* Version history */}
-            <Card className="border-slate-200/80 bg-white shadow-none">
+            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-50">
                   <History className="h-3.5 w-3.5 text-slate-500" />
@@ -719,7 +719,7 @@ export default function AdminSettings() {
             </Card>
 
             {/* Audit trail */}
-            <Card className="border-slate-200/80 bg-white shadow-none">
+            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-50">
                   <ShieldCheck className="h-3.5 w-3.5 text-slate-500" />

@@ -216,33 +216,38 @@ export default function TeacherAttendance() {
   /* ══════════════════════════════════════════════════════════════ */
   return (
     <Layout>
-      <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-screen-xl px-4 py-6 space-y-5">
+        <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-screen-xl p-4 md:p-6 space-y-5">
 
           {/* ── Page header ── */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500 shadow-md shadow-amber-200">
-                <ClipboardCheck className="h-5 w-5 text-white" />
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 px-5 py-5 text-white shadow-lg shadow-amber-100">
+            <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/5" />
+            <div className="absolute right-14 top-16 h-20 w-20 rounded-full bg-white/5" />
+            <div className="relative z-10 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400/30">
+                  <ClipboardCheck className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight text-white leading-tight">Attendance</h1>
+                  <p className="text-sm text-amber-100">Mark by class & session · edit history</p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight text-slate-900 leading-tight">Attendance</h1>
-                <p className="text-xs text-slate-500">Mark by class & session · edit history</p>
-              </div>
+              <button
+                onClick={saveAttendance}
+                disabled={bulkUpsert.isPending || !selectedClass || students.length === 0}
+                className="flex h-10 items-center gap-2 rounded-xl bg-white px-5 text-sm font-bold text-amber-700 shadow-sm hover:bg-amber-50 transition-colors disabled:opacity-40 self-start sm:self-auto">
+                {bulkUpsert.isPending
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <Save className="h-4 w-4" />}
+                Save Attendance
+              </button>
             </div>
-            <button
-              onClick={saveAttendance}
-              disabled={bulkUpsert.isPending || !selectedClass || students.length === 0}
-              className="flex h-10 items-center gap-2 rounded-xl bg-amber-500 px-5 text-sm font-bold text-white shadow-sm shadow-amber-200 hover:bg-amber-600 transition-colors disabled:opacity-40 self-start sm:self-auto">
-              {bulkUpsert.isPending
-                ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <Save className="h-4 w-4" />}
-              Save Attendance
-            </button>
+          </div>
           </div>
 
           {/* ── Controls bar ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm p-4">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Session Controls</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {/* Class */}
@@ -298,13 +303,16 @@ export default function TeacherAttendance() {
               { icon: Clock4, label: "Late / Excused", value: summary.late + summary.excused, accent: "bg-amber-50 text-amber-600" },
             ].map(s => (
               <div key={s.label}
-                className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${s.accent}`}>
-                  <s.icon className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] text-slate-500 truncate">{s.label}</p>
-                  <p className="text-lg font-bold text-slate-900 leading-tight">{s.value}</p>
+                className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+                <div className={`h-1 w-full rounded-t-xl ${s.accent.split(' ')[0].replace('50', '400')}`} />
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${s.accent}`}>
+                    <s.icon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-slate-500 truncate">{s.label}</p>
+                    <p className="text-lg font-bold text-slate-900 leading-tight">{s.value}</p>
+                  </div>
                 </div>
               </div>
             ))}
@@ -312,7 +320,7 @@ export default function TeacherAttendance() {
 
           {/* Attendance rate bar */}
           {summary.total > 0 && (
-            <div className="rounded-2xl border border-slate-100 bg-white px-5 py-3.5 shadow-sm">
+            <div className="rounded-xl border border-slate-200/80 bg-white px-5 py-3.5 shadow-sm">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-bold text-slate-700">Attendance Rate (saved)</p>
                 <p className="text-xs font-black text-amber-600">{summary.rate}%</p>
@@ -341,7 +349,7 @@ export default function TeacherAttendance() {
           )}
 
           {/* ── Bulk Marking ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
             {/* header */}
             <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 pb-4 border-b border-slate-50">
               <div>
@@ -370,7 +378,7 @@ export default function TeacherAttendance() {
                   <Loader2 className="h-5 w-5 animate-spin text-amber-400" />
                 </div>
               ) : students.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-10 text-center">
+                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 py-10 text-center">
                   <Users className="h-7 w-7 text-slate-300" />
                   <p className="text-sm font-semibold text-slate-500">No students found</p>
                   <p className="text-xs text-slate-400">Select a class to load students.</p>
@@ -385,7 +393,7 @@ export default function TeacherAttendance() {
 
                   return (
                     <div key={student.id}
-                      className="rounded-2xl border border-slate-100 overflow-hidden">
+                      className="rounded-xl border border-slate-200/80 overflow-hidden">
                       {/* main row */}
                       <div className="flex items-center gap-3 px-4 py-3 bg-slate-50/60">
                         {/* index */}
@@ -475,7 +483,7 @@ export default function TeacherAttendance() {
           </div>
 
           {/* ── Attendance History ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-50">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">Attendance History</h2>
@@ -544,7 +552,7 @@ export default function TeacherAttendance() {
                   const StatusIcon = cfg.icon;
                   return (
                     <div key={record.id}
-                      className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-3">
+                      className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
                       <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${cfg.inactive}`}>
                         <StatusIcon className="h-3.5 w-3.5" />
                       </div>
@@ -570,11 +578,10 @@ export default function TeacherAttendance() {
           </div>
 
         </div>
-      </div>
 
       {/* ── Edit Dialog ── */}
       <Dialog open={!!editingRecordId} onOpenChange={open => !open && setEditingRecordId(null)}>
-        <DialogContent className="max-w-md bg-white border-slate-100 rounded-2xl shadow-2xl p-0 overflow-hidden">
+        <DialogContent className="max-w-md bg-white border-slate-200/80 rounded-xl shadow-2xl p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-100">
             <DialogTitle className="text-base font-bold text-slate-900">Edit Attendance Record</DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
@@ -584,7 +591,7 @@ export default function TeacherAttendance() {
 
           <div className="px-6 py-4 space-y-4">
             {/* student info */}
-            <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+            <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 font-black text-sm">
                 {editingRecord?.student?.name?.charAt(0).toUpperCase() ?? "S"}
               </div>

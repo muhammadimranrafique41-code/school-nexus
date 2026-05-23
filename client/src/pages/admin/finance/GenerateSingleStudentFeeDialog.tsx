@@ -100,21 +100,21 @@ export function GenerateSingleStudentFeeDialog({ open, onOpenChange }: GenerateS
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Generate Single Student Fee</DialogTitle>
-          <DialogDescription>Create a custom invoice for an individual student with specific amount and due date.</DialogDescription>
+      <DialogContent className="sm:max-w-xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <DialogHeader className="px-5 pt-5 pb-3 border-b border-slate-100 shrink-0">
+          <DialogTitle className="text-base">Generate Single Student Fee</DialogTitle>
+          <DialogDescription className="text-xs">Create a custom invoice for an individual student.</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 pt-4">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+
           {/* Student Selection */}
-          <div className="space-y-2">
-            <Label htmlFor="student-select" className="text-sm font-medium flex items-center gap-2">
-              <User className="h-4 w-4" />
-              Select Student *
+          <div className="space-y-1.5">
+            <Label htmlFor="student-select" className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5" /> Student *
             </Label>
             <Select value={studentId} onValueChange={setStudentId}>
-              <SelectTrigger id="student-select">
+              <SelectTrigger id="student-select" className="h-9 text-sm">
                 <SelectValue placeholder="Choose a student..." />
               </SelectTrigger>
               <SelectContent>
@@ -129,16 +129,16 @@ export function GenerateSingleStudentFeeDialog({ open, onOpenChange }: GenerateS
 
           {/* Student Details Card */}
           {selectedStudent && (
-            <Card className="border-2 border-blue-100 bg-blue-50/50">
-              <CardContent className="grid gap-3 pt-4 sm:grid-cols-2 text-sm">
+            <Card className="border border-blue-100 bg-blue-50/50">
+              <CardContent className="grid gap-2 p-3 sm:grid-cols-2 text-xs">
                 <div>
-                  <p className="text-xs text-slate-600">Full Name</p>
-                  <p className="mt-1 font-semibold text-slate-900">{selectedStudent.name}</p>
+                  <p className="text-slate-500">Full Name</p>
+                  <p className="font-semibold text-slate-900">{selectedStudent.name}</p>
                 </div>
                 {selectedStudent.className && (
                   <div>
-                    <p className="text-xs text-slate-600">Class</p>
-                    <p className="mt-1 font-semibold text-slate-900">{selectedStudent.className}</p>
+                    <p className="text-slate-500">Class</p>
+                    <p className="font-semibold text-slate-900">{selectedStudent.className}</p>
                   </div>
                 )}
               </CardContent>
@@ -146,183 +146,95 @@ export function GenerateSingleStudentFeeDialog({ open, onOpenChange }: GenerateS
           )}
 
           {/* Billing Info */}
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="billing-month" className="text-sm font-medium flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                Billing Month *
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="billing-month" className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5" /> Month *
               </Label>
-              <Input type="month" id="billing-month" value={billingMonth} onChange={(e) => setBillingMonth(e.target.value)} />
+              <Input type="month" id="billing-month" className="h-9 text-sm" value={billingMonth} onChange={(e) => setBillingMonth(e.target.value)} />
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="due-day" className="text-sm font-medium">
-                Due Day *
-              </Label>
-              <Input
-                type="number"
-                id="due-day"
-                min="1"
-                max="28"
-                value={dueDay}
-                onChange={(e) => setDueDay(e.target.value)}
-                placeholder="5"
-              />
+            <div className="space-y-1.5">
+              <Label htmlFor="due-day" className="text-xs font-semibold text-slate-700">Due Day *</Label>
+              <Input type="number" id="due-day" min="1" max="28" className="h-9 text-sm" value={dueDay} onChange={(e) => setDueDay(e.target.value)} placeholder="5" />
             </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm font-medium text-slate-600">Calculated Due Date</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-500">Due Date</Label>
               {dueDate && (
-                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2">
-                  <Calendar className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm font-medium text-slate-900">{formatDate(dueDate, "MMM dd, yyyy")}</span>
+                <div className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50/80 px-3 text-sm font-medium text-slate-900">
+                  <Calendar className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                  {formatDate(dueDate, "MMM dd, yyyy")}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Amount & Fee Details */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="amount" className="text-sm font-medium flex items-center gap-2">
-                <DollarSign className="h-4 w-4" />
-                Amount *
+          {/* Amount & Fee Type */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="amount" className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <DollarSign className="h-3.5 w-3.5" /> Amount *
               </Label>
-              <Input
-                id="amount"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-              {amount && <p className="text-xs text-slate-600">Total: {formatCurrency(Number(amount))}</p>}
+              <Input id="amount" type="number" min="0" step="0.01" placeholder="0.00" className="h-9 text-sm" value={amount} onChange={(e) => setAmount(e.target.value)} />
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="fee-type" className="text-sm font-medium">
-                Fee Type *
-              </Label>
-              <Input
-                id="fee-type"
-                placeholder="Monthly Fee"
-                value={feeType}
-                onChange={(e) => setFeeType(e.target.value)}
-              />
+            <div className="space-y-1.5">
+              <Label htmlFor="fee-type" className="text-xs font-semibold text-slate-700">Fee Type *</Label>
+              <Input id="fee-type" placeholder="Monthly Fee" className="h-9 text-sm" value={feeType} onChange={(e) => setFeeType(e.target.value)} />
             </div>
           </div>
 
-          {/* Discount Fields (Optional) */}
-          <div className="grid gap-4 sm:grid-cols-2 rounded-2xl border-2 border-amber-100 bg-amber-50/50 p-4">
-            <div className="space-y-2">
-              <Label htmlFor="discount" className="text-sm font-medium flex items-center gap-2">
-                🎁 Discount (Optional)
+          {/* Discount */}
+          <div className="grid gap-3 sm:grid-cols-2 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="discount" className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
+                <DollarSign className="h-3.5 w-3.5" /> Discount (optional)
               </Label>
-              <Input
-                id="discount"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-                value={discount}
-                onChange={(e) => setDiscount(e.target.value)}
-              />
-              {discount && <p className="text-xs text-amber-700">Discount: {formatCurrency(Number(discount))}</p>}
+              <Input id="discount" type="number" min="0" step="0.01" placeholder="0.00" className="h-9 text-sm" value={discount} onChange={(e) => setDiscount(e.target.value)} />
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="discount-reason" className="text-sm font-medium">
-                Discount Reason
-              </Label>
-              <Input
-                id="discount-reason"
-                placeholder="e.g., Merit award, scholarship"
-                value={discountReason}
-                onChange={(e) => setDiscountReason(e.target.value)}
-                maxLength={200}
-                disabled={!discount}
-              />
+            <div className="space-y-1.5">
+              <Label htmlFor="discount-reason" className="text-xs font-semibold text-amber-800">Reason</Label>
+              <Input id="discount-reason" placeholder="e.g., Merit award" className="h-9 text-sm" value={discountReason} onChange={(e) => setDiscountReason(e.target.value)} maxLength={200} disabled={!discount} />
             </div>
           </div>
 
           {/* Description */}
-          <div className="space-y-2">
-            <Label htmlFor="description" className="text-sm font-medium flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              Description / Item Label *
+          <div className="space-y-1.5">
+            <Label htmlFor="description" className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5" /> Description *
             </Label>
-            <Textarea
-              id="description"
-              placeholder="e.g., Monthly tuition fee, School uniforms, Exam fees"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              maxLength={200}
-              className="min-h-16 resize-none"
-            />
-            <p className="text-xs text-slate-500">{description.length}/200 characters</p>
+            <Textarea id="description" placeholder="e.g., Monthly tuition fee" className="min-h-[60px] text-sm resize-none" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} />
+            <p className="text-[11px] text-slate-400">{description.length}/200</p>
           </div>
 
           {/* Notes */}
-          <div className="space-y-2">
-            <Label htmlFor="notes" className="text-sm font-medium">
-              Notes (optional)
-            </Label>
-            <Textarea
-              id="notes"
-              placeholder="Additional information or special instructions..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              maxLength={300}
-              className="min-h-16 resize-none"
-            />
-            <p className="text-xs text-slate-500">{notes.length}/300 characters</p>
+          <div className="space-y-1.5">
+            <Label htmlFor="notes" className="text-xs font-semibold text-slate-700">Notes</Label>
+            <Textarea id="notes" placeholder="Additional information..." className="min-h-[60px] text-sm resize-none" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={300} />
+            <p className="text-[11px] text-slate-400">{notes.length}/300</p>
           </div>
 
-          {/* Preview Card */}
+          {/* Preview */}
           {selectedStudent && amount && (
-            <Card className="border-blue-200 bg-blue-50/50">
-              <CardContent className="space-y-3 pt-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600">Bill to:</span>
-                  <span className="font-semibold text-slate-900">{selectedStudent.name}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-600">Description:</span>
-                  <span className="font-semibold text-slate-900">{description || "—"}</span>
-                </div>
-                <div className="border-t border-blue-200 pt-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-slate-900">Invoice Amount:</span>
-                    <span className="text-lg font-bold text-slate-900">{formatCurrency(Number(amount) || 0)}</span>
-                  </div>
-                  {discount && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-slate-900">Discount:</span>
-                      <span className="text-lg font-bold text-amber-600">-{formatCurrency(Number(discount))}</span>
-                    </div>
-                  )}
-                  {(Number(amount) || 0) + (Number(discount) || 0) > 0 && (
-                    <div className="flex items-center justify-between border-t border-blue-200 pt-2">
-                      <span className="text-sm font-bold text-blue-700">Net Amount:</span>
-                      <span className="text-xl font-bold text-blue-700">{formatCurrency((Number(amount) || 0) - (Number(discount) || 0))}</span>
-                    </div>
-                  )}
+            <Card className="border border-blue-200 bg-blue-50/50">
+              <CardContent className="p-3 space-y-1.5 text-xs">
+                <div className="flex justify-between"><span className="text-slate-500">Bill to:</span><span className="font-semibold text-slate-900">{selectedStudent.name}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Description:</span><span className="font-semibold text-slate-900">{description || "—"}</span></div>
+                <div className="border-t border-blue-200 pt-1.5 space-y-1">
+                  <div className="flex justify-between"><span>Amount:</span><span className="font-semibold">{formatCurrency(Number(amount) || 0)}</span></div>
+                  {discount && <div className="flex justify-between"><span>Discount:</span><span className="font-semibold text-amber-600">-{formatCurrency(Number(discount))}</span></div>}
+                  <div className="flex justify-between border-t border-blue-200 pt-1"><span className="font-bold text-blue-700">Net:</span><span className="font-bold text-blue-700">{formatCurrency((Number(amount) || 0) - (Number(discount) || 0))}</span></div>
                 </div>
               </CardContent>
             </Card>
           )}
+        </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit} disabled={createFee.isPending || !studentId || !amount || !description}>
-              {createFee.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-              Create Invoice
-            </Button>
-          </div>
+        {/* Actions - sticky at bottom */}
+        <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3 shrink-0">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleSubmit} disabled={createFee.isPending || !studentId || !amount || !description}>
+            {createFee.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1.5 h-3.5 w-3.5" />}
+            Create Invoice
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

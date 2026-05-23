@@ -87,7 +87,7 @@ export default function StudentQrCard() {
 
   return (
     <Layout>
-      <div className="space-y-4 pb-8">
+      <div className="space-y-4 p-4 md:p-6">
 
         {/* ── Page header ─────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden">
@@ -114,7 +114,7 @@ export default function StudentQrCard() {
         <div className="grid gap-4 xl:grid-cols-[400px_1fr]">
 
           {/* ── Left: ID card preview ──────────────────────────────────── */}
-          <Card className="border-slate-200/80 bg-white shadow-none">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50">
                 <QrCode className="h-3.5 w-3.5 text-indigo-600" />
@@ -139,7 +139,7 @@ export default function StudentQrCard() {
           <div className="space-y-4">
 
             {/* Card details */}
-            <Card className="border-slate-200/80 bg-white shadow-none">
+            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50">
                   <BadgeCheck className="h-3.5 w-3.5 text-emerald-600" />
@@ -215,7 +215,7 @@ export default function StudentQrCard() {
             </Card>
 
             {/* Recent QR activity */}
-            <Card className="overflow-hidden border-slate-200/80 bg-white shadow-none">
+            <Card className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50">
                   <Clock className="h-3.5 w-3.5 text-amber-600" />

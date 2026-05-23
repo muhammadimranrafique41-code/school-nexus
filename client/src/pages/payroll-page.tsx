@@ -56,6 +56,7 @@ import {
   BookOpen,
   PlusCircle,
   Pencil,
+  Wallet,
 } from "lucide-react";
 import { useQueries, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
@@ -696,10 +697,10 @@ function SalaryHistorySection() {
   }, [selectedStaffId, staffList]);
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
+      <CardHeader className="pb-2 md:pb-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-base md:text-lg">
             <History className="h-5 w-5" />
             Salary History &amp; Ledger Reconciliation
           </CardTitle>
@@ -1247,46 +1248,47 @@ export default function PayrollPage() {
 
   return (
     <Layout>
-      <div className="container mx-auto p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Payroll Dashboard</h1>
-            <p className="text-muted-foreground">
-              Process monthly salary payments for staff
-            </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-white">
+              <Wallet className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold text-slate-950 md:text-2xl">Payroll Dashboard</h1>
+              <p className="text-sm text-slate-500">Process monthly salary payments for staff</p>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Array.from({ length: 12 }, (_, i) => {
-                  const date = new Date();
-                  date.setMonth(date.getMonth() - i);
-                  const value = `${date.getFullYear()}-${String(
-                    date.getMonth() + 1
-                  ).padStart(2, "0")}`;
-                  const label = date.toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "long",
-                  });
-                  return (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          </div>
+          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: 12 }, (_, i) => {
+                const date = new Date();
+                date.setMonth(date.getMonth() - i);
+                const value = `${date.getFullYear()}-${String(
+                  date.getMonth() + 1
+                ).padStart(2, "0")}`;
+                const label = date.toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "long",
+                });
+                return (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Summary Cards */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+        <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
+          <CardHeader className="pb-2 md:pb-4">
+            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
               <Calculator className="h-5 w-5" />
               Payroll Summary &ndash;{" "}
               {new Date(selectedMonth + "-01").toLocaleDateString("en-US", {
@@ -1301,36 +1303,41 @@ export default function PayrollPage() {
                 <Loader2 className="h-8 w-8 animate-spin" />
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {payrollEntries.length}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
+                <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+                  <div className="h-1.5 bg-blue-500" />
+                  <div className="p-3 md:p-4">
+                    <div className="text-xl md:text-2xl font-bold text-blue-600">{payrollEntries.length}</div>
+                    <div className="text-xs md:text-sm text-slate-500">Total Staff</div>
                   </div>
-                  <div className="text-sm text-blue-600">Total Staff</div>
                 </div>
-                <div className="bg-green-50 p-4 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
-                    {formatCurrency(totalGross)}
+                <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+                  <div className="h-1.5 bg-green-500" />
+                  <div className="p-3 md:p-4">
+                    <div className="text-xl md:text-2xl font-bold text-green-600">{formatCurrency(totalGross)}</div>
+                    <div className="text-xs md:text-sm text-slate-500">Total Gross</div>
                   </div>
-                  <div className="text-sm text-green-600">Total Gross</div>
                 </div>
-                <div className="bg-red-50 p-4 rounded-lg">
-                  <div className="text-2xl font-bold text-red-600">
-                    {formatCurrency(totalDeductions)}
+                <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+                  <div className="h-1.5 bg-red-500" />
+                  <div className="p-3 md:p-4">
+                    <div className="text-xl md:text-2xl font-bold text-red-600">{formatCurrency(totalDeductions)}</div>
+                    <div className="text-xs md:text-sm text-slate-500">Total Deductions</div>
                   </div>
-                  <div className="text-sm text-red-600">Total Deductions</div>
                 </div>
-                <div className="bg-purple-50 p-4 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-600">
-                    {formatCurrency(totalNet)}
+                <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+                  <div className="h-1.5 bg-purple-500" />
+                  <div className="p-3 md:p-4">
+                    <div className="text-xl md:text-2xl font-bold text-purple-600">{formatCurrency(totalNet)}</div>
+                    <div className="text-xs md:text-sm text-slate-500">Total Net</div>
                   </div>
-                  <div className="text-sm text-purple-600">Total Net</div>
                 </div>
-                <div className="bg-orange-50 p-4 rounded-lg">
-                  <div className="text-2xl font-bold text-orange-600">
-                    {formatCurrency(totalBalance)}
+                <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+                  <div className="h-1.5 bg-orange-500" />
+                  <div className="p-3 md:p-4">
+                    <div className="text-xl md:text-2xl font-bold text-orange-600">{formatCurrency(totalBalance)}</div>
+                    <div className="text-xs md:text-sm text-slate-500">Total Balance</div>
                   </div>
-                  <div className="text-sm text-orange-600">Total Balance</div>
                 </div>
               </div>
             )}
@@ -1338,11 +1345,11 @@ export default function PayrollPage() {
         </Card>
 
         {/* Payroll Preview Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Payroll Preview for {selectedMonth}</CardTitle>
+        <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
+          <CardHeader className="pb-2 md:pb-4">
+            <CardTitle className="text-base md:text-lg">Payroll Preview for {selectedMonth}</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-2 md:p-6">
             {isLoading ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin" />

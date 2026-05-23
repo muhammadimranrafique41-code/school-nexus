@@ -43,20 +43,25 @@ export default function AdminClassDetail() {
 
   return (
     <Layout>
-      <div className="space-y-6">
+      <div className="space-y-6 p-4 md:p-6">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="text-3xl font-display font-bold">
-              {current.grade} {current.section}
-            </h1>
-            <p className="mt-1 text-muted-foreground">
-              Academic year {current.academicYear}. Capacity {current.currentCount}/{current.capacity}.
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+              <BookOpen className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-display font-bold">
+                {current.grade} {current.section}
+              </h1>
+              <p className="mt-1 text-muted-foreground">
+                Academic year {current.academicYear}. Capacity {current.currentCount}/{current.capacity}.
+              </p>
+            </div>
           </div>
           <Badge variant={current.status === "active" ? "outline" : "secondary"}>{current.status}</Badge>
         </div>
 
-        <Card className="shadow-sm">
+        <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
           <CardContent className="p-4">
             <h2 className="text-lg font-semibold mb-4">Class teachers</h2>
             <ClassTeachersTab classId={classId} />

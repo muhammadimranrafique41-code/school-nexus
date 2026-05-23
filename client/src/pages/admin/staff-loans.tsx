@@ -8,7 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, Landmark } from "lucide-react";
 
 const loanSchema = z.object({
   staffId: z.number(),
@@ -33,9 +33,17 @@ export default function StaffLoansPage() {
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold">Staff Loans</h1>
+      <div className="p-4 md:p-6 space-y-6">
+        <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+              <Landmark className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">Staff Loans</h1>
+              <p className="text-[12px] text-slate-400">Manage staff loan applications and repayments</p>
+            </div>
+          </div>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" /> Add Loan</Button>
@@ -68,9 +76,10 @@ export default function StaffLoansPage() {
               </Form>
             </DialogContent>
           </Dialog>
-        </div>
+        </section>
 
-        <div className="bg-white dark:bg-card border rounded-2xl overflow-hidden shadow-sm">
+        <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader><TableRow>
               <TableHead>Employee</TableHead>
@@ -99,6 +108,7 @@ export default function StaffLoansPage() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </div>
       </div>
     </Layout>

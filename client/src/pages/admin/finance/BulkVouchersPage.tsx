@@ -218,7 +218,7 @@ function RecentOperationsCard({ onResume }: { onResume?: (id: number) => void })
   const { data: ops = [], isLoading } = useRecentVoucherOperations(8);
 
   return (
-    <Card className="overflow-hidden border-slate-200/80 bg-white shadow-none">
+    <Card className="overflow-hidden rounded-xl border-slate-200/80 bg-white shadow-sm">
       <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-50">
           <Clock className="h-3.5 w-3.5 text-slate-500" />
@@ -439,7 +439,7 @@ export default function BulkVouchersPage() {
 
   return (
     <Layout>
-      <div className="space-y-4 pb-10">
+      <div className="space-y-4 p-4 md:p-6 pb-10">
 
         {/* ── Page header ─────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -509,7 +509,7 @@ export default function BulkVouchersPage() {
         <div className="grid gap-4 xl:grid-cols-[1fr_300px]">
 
           {/* ── Month grid ──────────────────────────────────────────────── */}
-          <Card className="overflow-hidden border-slate-200/80 bg-white shadow-none">
+          <Card className="overflow-hidden rounded-xl border-slate-200/80 bg-white shadow-sm">
             <CardHeader className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50">
@@ -584,7 +584,7 @@ export default function BulkVouchersPage() {
           <div className="space-y-4">
 
             {/* Class filter */}
-            <Card className="overflow-hidden border-slate-200/80 bg-white shadow-none">
+            <Card className="overflow-hidden rounded-xl border-slate-200/80 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 px-4 py-3">
                 <div className="flex items-center gap-2">
                   <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50">
@@ -628,7 +628,7 @@ export default function BulkVouchersPage() {
             </Card>
 
             {/* Options + summary */}
-            <Card className="border-slate-200/80 bg-white shadow-none">
+            <Card className="rounded-xl border-slate-200/80 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-50">
                   <Settings2 className="h-3.5 w-3.5 text-slate-500" />

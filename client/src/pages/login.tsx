@@ -50,44 +50,46 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4 relative overflow-hidden">
+    <div className="min-h-dvh bg-slate-50 flex flex-col justify-center items-center p-3 sm:p-4 relative overflow-hidden">
       {/* Decorative background blobs */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px]" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-accent/30 rounded-full blur-[120px]" />
+      <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-primary/20 rounded-full blur-[120px]" />
+      <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] bg-accent/30 rounded-full blur-[120px]" />
 
       <div className="w-full max-w-[420px] relative z-10">
-        <div className="flex flex-col items-center mb-8 text-center">
-          <div className="h-16 w-16 bg-primary rounded-2xl flex items-center justify-center mb-6 overflow-hidden shadow-xl shadow-primary/25">
+        <div className="flex flex-col items-center mb-6 sm:mb-8 text-center">
+          <div className="h-14 w-14 sm:h-16 sm:w-16 bg-primary rounded-2xl flex items-center justify-center mb-4 sm:mb-6 overflow-hidden shadow-xl shadow-primary/25">
             {publicSettings?.branding.logoUrl ? (
               <img src={publicSettings.branding.logoUrl} alt={publicSettings.schoolInformation.schoolName} className="h-full w-full object-cover" />
             ) : (
-              <GraduationCap className="h-8 w-8 text-primary-foreground" />
+              <GraduationCap className="h-7 w-7 sm:h-8 sm:w-8 text-primary-foreground" />
             )}
           </div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-primary/70">{publicSettings?.schoolInformation.shortName || "School Nexus"}</p>
-          <h1 className="text-3xl font-display font-bold text-foreground">{publicSettings?.branding.loginWelcomeTitle || "Welcome back"}</h1>
-          <p className="text-muted-foreground mt-2">{publicSettings?.branding.loginWelcomeSubtitle || "Enter your credentials to access your portal"}</p>
-          <p className="mt-3 text-sm text-slate-500">{publicSettings?.schoolInformation.motto || "Empowering every learner."}</p>
+          <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-[0.28em] text-primary/70">{publicSettings?.schoolInformation.shortName || "School Nexus"}</p>
+          <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{publicSettings?.branding.loginWelcomeTitle || "Welcome back"}</h1>
+          <p className="text-muted-foreground mt-1.5 sm:mt-2 text-sm">{publicSettings?.branding.loginWelcomeSubtitle || "Enter your credentials to access your portal"}</p>
+          {publicSettings?.schoolInformation.motto && (
+            <p className="mt-2 sm:mt-3 text-xs sm:text-sm text-slate-500">{publicSettings.schoolInformation.motto}</p>
+          )}
         </div>
 
-        <Card className="border-0 shadow-2xl shadow-black/5 rounded-2xl overflow-hidden glass-panel">
-          <CardHeader className="space-y-1 pb-6 px-8 pt-8">
-            <CardTitle className="text-2xl">Sign In</CardTitle>
-            <CardDescription>Use your school email and password to access {publicSettings?.schoolInformation.schoolName || "your school workspace"}.</CardDescription>
+        <Card className="border-0 shadow-2xl shadow-black/5 rounded-xl sm:rounded-2xl overflow-hidden glass-panel">
+          <CardHeader className="space-y-1 pb-4 sm:pb-6 px-5 sm:px-8 pt-6 sm:pt-8">
+            <CardTitle className="text-xl sm:text-2xl">Sign In</CardTitle>
+            <CardDescription className="text-sm">Use your school email and password to access {publicSettings?.schoolInformation.schoolName || "your school workspace"}.</CardDescription>
           </CardHeader>
-          <CardContent className="px-8 pb-8">
+          <CardContent className="px-5 sm:px-8 pb-6 sm:pb-8">
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 sm:space-y-5">
                 <FormField
                   control={form.control}
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground/80 font-medium">Email Address</FormLabel>
+                      <FormLabel className="text-foreground/80 font-medium text-sm">Email Address</FormLabel>
                       <FormControl>
                         <Input
                           placeholder="name@school.edu"
-                          className="h-12 px-4 rounded-xl bg-slate-50/50 border-slate-200 focus-visible:ring-primary/20 focus-visible:ring-offset-2"
+                          className="h-11 sm:h-12 px-4 rounded-xl bg-slate-50/50 border-slate-200 focus-visible:ring-primary/20 focus-visible:ring-offset-2"
                           {...field}
                         />
                       </FormControl>
@@ -100,12 +102,12 @@ export default function Login() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-foreground/80 font-medium">Password</FormLabel>
+                      <FormLabel className="text-foreground/80 font-medium text-sm">Password</FormLabel>
                       <FormControl>
                         <Input
                           type="password"
                           placeholder="••••••••"
-                          className="h-12 px-4 rounded-xl bg-slate-50/50 border-slate-200 focus-visible:ring-primary/20 focus-visible:ring-offset-2"
+                          className="h-11 sm:h-12 px-4 rounded-xl bg-slate-50/50 border-slate-200 focus-visible:ring-primary/20 focus-visible:ring-offset-2"
                           {...field}
                         />
                       </FormControl>
@@ -115,7 +117,7 @@ export default function Login() {
                 />
                 <Button
                   type="submit"
-                  className="w-full h-12 rounded-xl text-base font-semibold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all hover:-translate-y-0.5"
+                  className="w-full h-11 sm:h-12 rounded-xl text-sm sm:text-base font-semibold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all hover:-translate-y-0.5"
                   disabled={login.isPending}
                 >
                   {login.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : "Sign In to Portal"}

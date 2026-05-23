@@ -115,17 +115,17 @@ export default function StudentFees() {
   return (
     <Layout>
       <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-screen-xl px-4 py-6 space-y-5">
+        <div className="mx-auto max-w-screen-xl p-4 md:p-6 space-y-5">
 
           {/* ── Page header ── */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-600 shadow-md shadow-emerald-200">
-                <Wallet className="h-5 w-5 text-white" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-green-500 text-white shadow-md shadow-emerald-200">
+                <Wallet className="h-5 w-5" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold tracking-tight text-slate-900 leading-tight">My Fees</h1>
-                <p className="text-xs text-slate-500">Invoices, payments & balance overview</p>
+                <h1 className="text-xl font-bold tracking-tight text-slate-900">My Fees</h1>
+                <p className="text-[12px] text-slate-400">Invoices, payments & balance overview</p>
               </div>
             </div>
             <Button size="sm" variant="outline"
@@ -180,13 +180,16 @@ export default function StudentFees() {
               { icon: CalendarDays, label: "Due Soon", value: studentBalance?.dueSoonInvoices ?? 0, accent: "bg-amber-50 text-amber-600" },
             ].map(stat => (
               <div key={stat.label}
-                className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${stat.accent}`}>
-                  <stat.icon className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] text-slate-500 truncate">{stat.label}</p>
-                  <p className="text-base font-bold text-slate-900 leading-tight">{stat.value}</p>
+                className="flex flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+                <div className={`h-1 w-full shrink-0 ${stat.accent.split(" ")[0]}`} />
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${stat.accent}`}>
+                    <stat.icon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-slate-500 truncate">{stat.label}</p>
+                    <p className="text-base font-bold text-slate-900 leading-tight">{stat.value}</p>
+                  </div>
                 </div>
               </div>
             ))}
@@ -208,7 +211,7 @@ export default function StudentFees() {
             />
 
             {/* Balance summary (moved here from below) */}
-            <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+            <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
               <div className="px-5 pt-5 pb-3 border-b border-slate-50">
                 <h2 className="text-sm font-bold text-slate-900">Balance Summary</h2>
                 <p className="text-xs text-slate-400 mt-0.5">Current billing position</p>
@@ -255,7 +258,7 @@ export default function StudentFees() {
           </div>
 
           {/* ── Payment reminders (full width now that balance summary moved up) ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-50">
                 <div>
                   <h2 className="text-sm font-bold text-slate-900">Payment Reminders</h2>
@@ -322,7 +325,7 @@ export default function StudentFees() {
             </div>
 
           {/* ── Invoice Register — DESKTOP TABLE / MOBILE CARDS ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-50">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">Invoice Register</h2>
@@ -449,7 +452,7 @@ export default function StudentFees() {
           <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
 
             {/* Payment History */}
-            <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+            <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-50">
                 <div>
                   <h2 className="text-sm font-bold text-slate-900">Payment History</h2>
@@ -531,7 +534,7 @@ export default function StudentFees() {
             </div>
 
             {/* Open Balance Follow-up */}
-            <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+            <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-50">
                 <div>
                   <h2 className="text-sm font-bold text-slate-900">Open Balances</h2>

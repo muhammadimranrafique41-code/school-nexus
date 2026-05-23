@@ -101,10 +101,10 @@ export default function TeacherQrCard() {
   return (
     <Layout>
       <div className="min-h-screen bg-slate-50 print:bg-white">
-        <div className="mx-auto max-w-screen-xl px-4 py-6 space-y-5 print:hidden">
+        <div className="mx-auto max-w-screen-xl p-4 md:p-6 space-y-5 print:hidden">
 
           {/* ── Hero banner ── */}
-          <div className="relative overflow-hidden rounded-2xl bg-amber-500 px-5 py-5 text-white shadow-lg shadow-amber-100">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 px-5 py-5 text-white shadow-lg shadow-amber-100">
             <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/5" />
             <div className="absolute right-14 top-16 h-20 w-20 rounded-full bg-white/5" />
             <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
@@ -164,7 +164,7 @@ export default function TeacherQrCard() {
           <div className="grid gap-5 xl:grid-cols-[420px_1fr]">
 
             {/* ── Left: ID Card Preview ── */}
-            <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+            <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
               <div className="flex items-center gap-2 px-5 pt-5 pb-4 border-b border-slate-50">
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-50">
                   <QrCode className="h-4 w-4 text-amber-600" />
@@ -177,7 +177,7 @@ export default function TeacherQrCard() {
 
               <div className="p-5">
                 {isLoading || !data ? (
-                  <div className="flex h-72 items-center justify-center rounded-2xl bg-slate-50 border border-slate-100">
+                  <div className="flex h-72 items-center justify-center rounded-xl bg-slate-50 border border-slate-100">
                     <div className="flex flex-col items-center gap-3">
                       <Loader2 className="h-7 w-7 animate-spin text-amber-400" />
                       <p className="text-xs text-slate-400">Loading your ID card…</p>
@@ -207,7 +207,7 @@ export default function TeacherQrCard() {
             <div className="space-y-5">
 
               {/* Card details */}
-              <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+              <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
                 <div className="flex items-center gap-2 px-5 pt-5 pb-4 border-b border-slate-50">
                   <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-50">
                     <BadgeCheck className="h-4 w-4 text-amber-600" />
@@ -230,7 +230,7 @@ export default function TeacherQrCard() {
                       { label: "Public ID", value: data?.profile.publicId ?? "—" },
                     ].map(row => (
                       <div key={row.label}
-                        className="rounded-2xl border border-slate-100 bg-slate-50/60 px-3.5 py-2.5">
+                        className="rounded-xl border border-slate-100 bg-slate-50/60 px-3.5 py-2.5">
                         <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{row.label}</p>
                         <p className="text-xs font-bold text-slate-800 mt-0.5 leading-tight truncate">{row.value}</p>
                       </div>
@@ -244,7 +244,7 @@ export default function TeacherQrCard() {
                       { icon: CalendarDays, label: "Last Used", value: data?.profile.lastUsedAt ? formatDate(data.profile.lastUsedAt, "MMM dd, yyyy · h:mm a") : "Not used yet" },
                     ].map(row => (
                       <div key={row.label}
-                        className="flex items-start gap-2.5 rounded-2xl border border-slate-100 bg-slate-50/60 px-3.5 py-3">
+                        className="flex items-start gap-2.5 rounded-xl border border-slate-100 bg-slate-50/60 px-3.5 py-3">
                         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-50">
                           <row.icon className="h-3.5 w-3.5 text-amber-500" />
                         </div>
@@ -258,7 +258,7 @@ export default function TeacherQrCard() {
 
                   {/* fallback token */}
                   {data && (
-                    <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 space-y-2">
+                    <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Fallback Token</p>
                         <button onClick={handleCopy}
@@ -271,7 +271,7 @@ export default function TeacherQrCard() {
                   )}
 
                   {/* security notice */}
-                  <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
                     <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
                     <p className="text-[10px] text-emerald-700 leading-relaxed">
                       Your QR token is protected server-side. The visual card uses live staff data and falls back gracefully if any profile field is missing — scan reliability is never affected.
@@ -281,7 +281,7 @@ export default function TeacherQrCard() {
               </div>
 
               {/* Recent QR Activity */}
-              <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+              <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-50">
                   <div className="flex items-center gap-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-50">
@@ -352,7 +352,7 @@ export default function TeacherQrCard() {
                       const isIn = event.direction === "Check In";
                       return (
                         <div key={event.id}
-                          className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-3">
+                          className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
                           <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border
                             ${isIn ? "bg-emerald-50 border-emerald-200" : "bg-sky-50 border-sky-200"}`}>
                             <QrCode className={`h-4 w-4 ${isIn ? "text-emerald-500" : "text-sky-500"}`} />

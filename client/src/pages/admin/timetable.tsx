@@ -89,7 +89,7 @@ function TimetableListView({ onSelect }: { onSelect: (id: number) => void }) {
   };
 
   return (
-    <div className="space-y-5 pb-8">
+    <div className="space-y-5 p-4 md:p-6">
 
       {/* ── Page header ─────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -105,7 +105,7 @@ function TimetableListView({ onSelect }: { onSelect: (id: number) => void }) {
       </div>
 
       {/* ── Create new ──────────────────────────────────────────────── */}
-      <Card className="border-slate-200/80 bg-white shadow-none">
+      <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
         <CardHeader className="border-b border-slate-100 px-4 py-3">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50">
@@ -168,7 +168,7 @@ function TimetableListView({ onSelect }: { onSelect: (id: number) => void }) {
                 <button
                   key={tt.id}
                   onClick={() => onSelect(tt.id)}
-                  className="group relative flex flex-col gap-2.5 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-none transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-sm"
+                  className="group relative flex flex-col gap-2.5 rounded-xl border border-slate-200/80 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md"
                 >
                   {/* top accent bar */}
                   <div className={cn(
@@ -332,7 +332,7 @@ function TimetableEditor({ timetableId, onBack }: { timetableId: number; onBack:
 
   if (isLoading || !settings) {
     return (
-      <div className="space-y-4 pb-8">
+      <div className="space-y-4 p-4 md:p-6">
         <Skeleton className="h-24 rounded-xl" />
         <Skeleton className="h-[500px] rounded-xl" />
       </div>
@@ -340,7 +340,7 @@ function TimetableEditor({ timetableId, onBack }: { timetableId: number; onBack:
   }
 
   return (
-    <div className="space-y-4 pb-8">
+    <div className="space-y-4 p-4 md:p-6">
 
       {/* ── Editor header ───────────────────────────────────────────── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -418,7 +418,7 @@ function TimetableEditor({ timetableId, onBack }: { timetableId: number; onBack:
       </div>
 
       {/* ── Grid ────────────────────────────────────────────────────── */}
-      <Card className="overflow-hidden border-slate-200/80 bg-white shadow-none">
+      <Card className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
         <CardHeader className="flex flex-row items-center gap-2 border-b border-slate-100 px-4 py-3">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50">
             <CalendarCheck2 className="h-3.5 w-3.5 text-indigo-600" />

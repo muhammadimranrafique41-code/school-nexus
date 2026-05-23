@@ -298,7 +298,7 @@ export default function HomeworkCreatorPage() {
       <div className="space-y-8">
         <div className="rounded-[2.5rem] bg-gradient-to-r from-emerald-500 to-blue-600 p-8 text-white shadow-[0_24px_60px_-35px_rgba(15,23,42,0.4)]">
           <div className="flex items-center gap-5">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/20">
+            <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-white/20">
               <BookOpen className="h-8 w-8" />
             </div>
             <div>
@@ -402,7 +402,7 @@ export default function HomeworkCreatorPage() {
                 {subjectEntries.map((entry, index) => {
                   const errors = subjectErrors[entry.id] ?? {};
                   return (
-                    <div key={entry.id} className="rounded-2xl border border-slate-200 bg-white/70 p-5">
+                    <div key={entry.id} className="rounded-xl border border-slate-200/80 bg-white/70 p-5">
                       <div className="flex items-center justify-between">
                         <h3 className="text-sm font-semibold text-slate-700">Subject {index + 1}</h3>
                         {subjectEntries.length > 1 && !homeworkId ? (
@@ -513,7 +513,7 @@ export default function HomeworkCreatorPage() {
                   )}
                 </FormItem>
 
-                <div className="sticky bottom-4 flex flex-col gap-3 rounded-2xl border border-white/70 bg-white/90 p-4 shadow-lg backdrop-blur md:flex-row">
+                <div className="sticky bottom-4 flex flex-col gap-3 rounded-xl border border-white/70 bg-white/90 p-4 shadow-lg backdrop-blur md:flex-row">
                   <Button
                     type="submit"
                     className="h-14 flex-1"

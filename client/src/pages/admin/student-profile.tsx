@@ -107,13 +107,13 @@ export default function AdminStudentProfile() {
     }
   };
 
-  const sectionClass = "rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden";
+  const sectionClass = "rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden";
   const sectionHeaderClass = "px-5 py-3 border-b border-slate-100 bg-slate-50/50";
   const sectionBodyClass = "p-5";
 
   return (
     <Layout>
-      <div className="space-y-5 pb-8 max-w-6xl mx-auto">
+      <div className="space-y-5 p-4 md:p-6 max-w-6xl mx-auto">
 
         {/* Header / Nav */}
         <div className="flex items-center justify-between">
@@ -121,6 +121,9 @@ export default function AdminStudentProfile() {
             <Button asChild variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg">
               <Link href="/admin/students"><ArrowLeft className="h-4 w-4" /></Link>
             </Button>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+              <GraduationCap className="h-5 w-5" />
+            </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight text-slate-900">Student Profile</h1>
               <p className="text-[11px] text-slate-400">Complete academic and personal record</p>
@@ -132,7 +135,7 @@ export default function AdminStudentProfile() {
         </div>
 
         {/* Profile Identity Card */}
-        <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-sm">
+        <div className="relative overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
           <div className="h-20 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600" />
           <div className="px-6 pb-5 pt-0 sm:px-8">
             <div className="flex flex-col sm:flex-row sm:items-end gap-4 -mt-9">
@@ -234,7 +237,7 @@ export default function AdminStudentProfile() {
 
           {/* ATTENDANCE TAB */}
           <TabsContent value="attendance" className="pt-5">
-            <Card className="shadow-none border-slate-200">
+            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-100">
                 <div>
                   <CardTitle className="text-sm">Attendance History</CardTitle>
@@ -291,7 +294,7 @@ export default function AdminStudentProfile() {
 
           {/* FEES TAB */}
           <TabsContent value="fees" className="pt-5">
-            <Card className="shadow-none border-slate-200">
+            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-100 bg-amber-50/30">
                 <div>
                   <CardTitle className="text-sm">Open Invoices</CardTitle>
@@ -348,7 +351,7 @@ export default function AdminStudentProfile() {
 
           {/* RESULTS TAB */}
           <TabsContent value="results" className="pt-5">
-             <Card className="shadow-none border-slate-200">
+            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-100">
                 <div>
                    <CardTitle className="text-sm">Academic Results</CardTitle>
@@ -389,7 +392,7 @@ export default function AdminStudentProfile() {
 
           {/* HISTORY TAB */}
           <TabsContent value="history" className="pt-5">
-            <Card className="shadow-none border-slate-200">
+            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
               <CardHeader className="pb-3 border-b border-slate-100">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <ClockIcon className="h-4 w-4 text-indigo-500" />

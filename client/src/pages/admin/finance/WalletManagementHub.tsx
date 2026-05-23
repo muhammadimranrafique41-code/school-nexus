@@ -117,7 +117,7 @@ function StudentWalletRow({
   };
 
   return (
-    <div className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-white px-4 py-3.5 shadow-sm hover:shadow-md transition-shadow">
+    <div className="flex items-center gap-4 rounded-xl border border-slate-200/80 bg-white px-4 py-3.5 shadow-sm hover:shadow-md transition-shadow">
       {/* Avatar */}
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100">
         <span className="text-sm font-bold text-violet-700">
@@ -267,7 +267,7 @@ export default function WalletManagementHub() {
   return (
     <Layout>
       <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-screen-xl px-4 py-6 space-y-5">
+        <div className="mx-auto max-w-screen-xl p-4 md:p-6 space-y-5">
 
           {/* ── Page header ── */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -300,24 +300,29 @@ export default function WalletManagementHub() {
                 label: "Total Students",
                 value: studentList.length,
                 accent: "bg-violet-50 text-violet-600",
+                bar: "bg-violet-500",
               },
               {
                 icon: AlertTriangle,
                 label: "Students with Overdue",
                 value: studentsWithOverdue,
                 accent: studentsWithOverdue > 0 ? "bg-red-50 text-red-600" : "bg-slate-50 text-slate-400",
+                bar: studentsWithOverdue > 0 ? "bg-red-500" : "bg-slate-300",
               },
             ].map((stat) => (
               <div
                 key={stat.label}
-                className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3.5 shadow-sm"
+                className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden"
               >
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${stat.accent}`}>
-                  <stat.icon className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-500">{stat.label}</p>
-                  <p className="text-lg font-bold text-slate-900">{stat.value}</p>
+                <div className={`h-1 ${stat.bar}`} />
+                <div className="flex items-center gap-3 px-4 py-3.5">
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${stat.accent}`}>
+                    <stat.icon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-500">{stat.label}</p>
+                    <p className="text-lg font-bold text-slate-900">{stat.value}</p>
+                  </div>
                 </div>
               </div>
             ))}
@@ -341,7 +346,7 @@ export default function WalletManagementHub() {
                 <Loader2 className="h-6 w-6 animate-spin text-violet-400" />
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-white py-14 text-center">
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200/80 bg-white py-14 text-center">
                 <Wallet className="h-8 w-8 text-slate-300" />
                 <p className="text-sm font-semibold text-slate-500">No students found</p>
                 <p className="text-xs text-slate-400">

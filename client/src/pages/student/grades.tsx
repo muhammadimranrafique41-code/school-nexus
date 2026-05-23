@@ -125,17 +125,17 @@ export default function StudentGrades() {
   return (
     <Layout>
       <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-screen-xl px-4 py-6 space-y-5">
+            <div className="mx-auto max-w-screen-xl p-4 md:p-6 space-y-5">
 
           {/* ── Page header ── */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 shadow-md shadow-indigo-200">
-                <GraduationCap className="h-5 w-5 text-white" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+                <GraduationCap className="h-5 w-5" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold tracking-tight text-slate-900 leading-tight">My Results</h1>
-                <p className="text-xs text-slate-500">Exam performance, GPA & grade analytics</p>
+                <h1 className="text-xl font-bold tracking-tight text-slate-900">My Results</h1>
+                <p className="text-[12px] text-slate-400">Exam performance, GPA & grade analytics</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -212,7 +212,7 @@ export default function StudentGrades() {
           <div className="grid gap-5 lg:grid-cols-[1.4fr_0.6fr]">
 
             {/* Performance Trend */}
-            <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+            <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
               <div className="px-5 pt-5 pb-3 border-b border-slate-50">
                 <h2 className="text-sm font-bold text-slate-900">Performance Trend</h2>
                 <p className="text-xs text-slate-400 mt-0.5">Exam-wise % and GPA over time</p>
@@ -256,7 +256,7 @@ export default function StudentGrades() {
             </div>
 
             {/* Grade Distribution */}
-            <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+            <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
               <div className="px-5 pt-5 pb-3 border-b border-slate-50">
                 <h2 className="text-sm font-bold text-slate-900">Grade Distribution</h2>
                 <p className="text-xs text-slate-400 mt-0.5">All published results</p>
@@ -301,7 +301,7 @@ export default function StudentGrades() {
           </div>
 
           {/* ── Subject Performance ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
             <div className="px-5 pt-5 pb-3 border-b border-slate-50">
               <h2 className="text-sm font-bold text-slate-900">Subject Performance</h2>
               <p className="text-xs text-slate-400 mt-0.5">Average marks with latest grade snapshots</p>
@@ -342,7 +342,7 @@ export default function StudentGrades() {
           </div>
 
           {/* ── Exam-wise Results — desktop table / mobile accordion ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-50">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">Exam Results</h2>
@@ -474,7 +474,7 @@ export default function StudentGrades() {
           </div>
 
           {/* ── Recent Subject Results ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
             <div className="px-5 pt-5 pb-3 border-b border-slate-50">
               <h2 className="text-sm font-bold text-slate-900">Recent Subject Results</h2>
               <p className="text-xs text-slate-400 mt-0.5">Latest subject-level records</p>

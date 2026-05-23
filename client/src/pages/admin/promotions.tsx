@@ -745,15 +745,22 @@ export default function AdminPromotions() {
 
   return (
     <Layout>
-      <div className="space-y-5 pb-8">
+      <div className="space-y-5 p-4 md:p-6">
         {/* ── Page header ─────────────────────────────────────────────── */}
-        <section className="flex flex-col gap-1">
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">Student Promotions</h1>
-          <p className="text-sm text-slate-500">
-            Promote students individually or bulk-promote an entire class to the next grade.
-          </p>
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+              <GraduationCap className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">Student Promotions</h1>
+              <p className="text-[12px] text-slate-400">
+                Promote students individually or bulk-promote an entire class to the next grade.
+              </p>
+            </div>
+          </div>
           {currentSession && (
-            <div className="mt-1 inline-flex items-center gap-1.5 self-start rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+            <div className="inline-flex items-center gap-1.5 self-start rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
               <CheckCircle2 className="h-3 w-3" />
               Active session: {currentSession.name}
             </div>
@@ -784,7 +791,7 @@ export default function AdminPromotions() {
               bg: "bg-slate-50",
             },
           ].map((item) => (
-            <Card key={item.label} className="border-slate-200/80 shadow-none">
+            <Card key={item.label} className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
               <CardContent className="flex items-center gap-3 p-4">
                 <div
                   className={cn(
@@ -806,7 +813,7 @@ export default function AdminPromotions() {
         </section>
 
         {/* ── Tabs ─────────────────────────────────────────────────── */}
-        <Card className="overflow-hidden border-slate-200/80 shadow-none">
+        <Card className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
           <CardHeader className="border-b border-slate-100 px-4 py-3">
             <CardTitle className="text-sm font-semibold text-slate-800">Promotion Tools</CardTitle>
             <CardDescription className="text-xs text-slate-500">

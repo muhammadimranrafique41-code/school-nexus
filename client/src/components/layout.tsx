@@ -8,6 +8,7 @@ import { LogOut, Bell, ChevronRight } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useLocation } from "wouter";
 import { applyDocumentBranding } from "@/lib/utils";
+export { ResponsivePageShell } from "@/components/layout/ResponsivePageShell";
 
 const toTitleCase = (value: string) =>
   value.split("-").filter(Boolean).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");

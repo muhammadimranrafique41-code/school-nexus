@@ -24,6 +24,7 @@ import {
   Users,
   Calendar,
   CreditCard,
+  Receipt,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -112,7 +113,8 @@ function StatCard({
   accent?: string;
 }) {
   return (
-    <Card className="border-slate-200/80 shadow-none">
+    <Card className="rounded-xl border-slate-200/80 bg-white shadow-sm overflow-hidden">
+      <div className="h-1" style={{ background: accent ?? "#7c3aed" }} />
       <CardContent className="flex items-center gap-3 p-4">
         <div
           className="flex h-9 w-9 items-center justify-center rounded-lg"
@@ -176,7 +178,7 @@ export default function FamilyVoucherPage() {
   const backUrl = `/admin/finance/vouchers/preview?months=${billingMonths.join(",")}`;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6">
+    <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
       {/* ── Page header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
@@ -188,6 +190,9 @@ export default function FamilyVoucherPage() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-500 text-white shadow-md shadow-violet-200">
+            <Receipt className="h-5 w-5" />
+          </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold text-slate-900">
@@ -316,7 +321,7 @@ export default function FamilyVoucherPage() {
           </div>
 
           {/* Bottom action bar */}
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-slate-50 px-4 py-3">
             <p className="text-xs text-slate-500">
               Generated: {new Date(query.data.generatedAt).toLocaleString("en-PK")}
             </p>

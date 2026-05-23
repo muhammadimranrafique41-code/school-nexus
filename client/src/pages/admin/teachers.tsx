@@ -14,7 +14,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, Plus, Edit2, Trash2 } from "lucide-react";
+import { Loader2, Plus, Edit2, Trash2, Users } from "lucide-react";
 
 const teacherSchema = z.object({
     name: z.string().min(1, "Name is required"),
@@ -81,16 +81,21 @@ export default function TeacherManagement() {
 
     return (
         <Layout>
-            <div className="space-y-6">
-                <div className="flex justify-between items-center">
-                    <div>
-                        <h1 className="text-3xl font-bold">Teachers Management</h1>
-                        <p className="text-muted-foreground mt-1">Manage all teachers in the system.</p>
+            <div className="p-4 md:p-6 space-y-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+                            <Users className="h-5 w-5" />
+                        </div>
+                        <div>
+                            <h1 className="text-xl font-bold tracking-tight text-slate-900">Teachers Management</h1>
+                            <p className="mt-0.5 text-[12px] text-slate-400">Manage all teachers in the system.</p>
+                        </div>
                     </div>
                     <Dialog open={isOpen} onOpenChange={setIsOpen}>
                         <DialogTrigger asChild>
-                            <Button onClick={() => { setEditingId(null); form.reset({ name: "", email: "", password: "", subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "" }); }}>
-                                <Plus className="mr-2 h-4 w-4" /> Add Teacher
+                            <Button size="sm" onClick={() => { setEditingId(null); form.reset({ name: "", email: "", password: "", subject: "", designation: "", department: "", employeeId: "", teacherPhotoUrl: "" }); }}>
+                                <Plus className="mr-1.5 h-3.5 w-3.5" />Add Teacher
                             </Button>
                         </DialogTrigger>
                         <DialogContent>
@@ -101,61 +106,61 @@ export default function TeacherManagement() {
                                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
                                     <FormField control={form.control} name="name" render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Name</FormLabel>
-                                            <FormControl><Input {...field} /></FormControl>
-                                            <FormMessage />
+                                            <FormLabel className="text-xs font-medium text-slate-700">Name</FormLabel>
+                                            <FormControl><Input className="h-8 w-full text-sm" {...field} /></FormControl>
+                                            <FormMessage className="text-[11px]" />
                                         </FormItem>
                                     )} />
                                     <FormField control={form.control} name="email" render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Email</FormLabel>
-                                            <FormControl><Input type="email" {...field} /></FormControl>
-                                            <FormMessage />
+                                            <FormLabel className="text-xs font-medium text-slate-700">Email</FormLabel>
+                                            <FormControl><Input type="email" className="h-8 w-full text-sm" {...field} /></FormControl>
+                                            <FormMessage className="text-[11px]" />
                                         </FormItem>
                                     )} />
                                     <FormField control={form.control} name="password" render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>{editingId ? "New Password (optional)" : "Password"}</FormLabel>
-                                            <FormControl><Input type="password" {...field} /></FormControl>
-                                            <FormMessage />
+                                            <FormLabel className="text-xs font-medium text-slate-700">{editingId ? "New Password (optional)" : "Password"}</FormLabel>
+                                            <FormControl><Input type="password" className="h-8 w-full text-sm" {...field} /></FormControl>
+                                            <FormMessage className="text-[11px]" />
                                         </FormItem>
                                     )} />
                                     <FormField control={form.control} name="subject" render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Subject</FormLabel>
-                                            <FormControl><Input {...field} /></FormControl>
-                                            <FormMessage />
+                                            <FormLabel className="text-xs font-medium text-slate-700">Subject</FormLabel>
+                                            <FormControl><Input className="h-8 w-full text-sm" {...field} /></FormControl>
+                                            <FormMessage className="text-[11px]" />
                                         </FormItem>
                                     )} />
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <FormField control={form.control} name="designation" render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Designation</FormLabel>
-                                                <FormControl><Input placeholder="Senior Teacher" {...field} value={field.value ?? ""} /></FormControl>
-                                                <FormMessage />
+                                                <FormLabel className="text-xs font-medium text-slate-700">Designation</FormLabel>
+                                                <FormControl><Input placeholder="Senior Teacher" className="h-8 w-full text-sm" {...field} value={field.value ?? ""} /></FormControl>
+                                                <FormMessage className="text-[11px]" />
                                             </FormItem>
                                         )} />
                                         <FormField control={form.control} name="department" render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Department</FormLabel>
-                                                <FormControl><Input placeholder="Science Department" {...field} value={field.value ?? ""} /></FormControl>
-                                                <FormMessage />
+                                                <FormLabel className="text-xs font-medium text-slate-700">Department</FormLabel>
+                                                <FormControl><Input placeholder="Science Department" className="h-8 w-full text-sm" {...field} value={field.value ?? ""} /></FormControl>
+                                                <FormMessage className="text-[11px]" />
                                             </FormItem>
                                         )} />
                                     </div>
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <FormField control={form.control} name="employeeId" render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Employee ID</FormLabel>
-                                                <FormControl><Input placeholder="SNX-T-001" {...field} value={field.value ?? ""} /></FormControl>
-                                                <FormMessage />
+                                                <FormLabel className="text-xs font-medium text-slate-700">Employee ID</FormLabel>
+                                                <FormControl><Input placeholder="SNX-T-001" className="h-8 w-full text-sm" {...field} value={field.value ?? ""} /></FormControl>
+                                                <FormMessage className="text-[11px]" />
                                             </FormItem>
                                         )} />
                                         <FormField control={form.control} name="teacherPhotoUrl" render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Teacher Photo URL</FormLabel>
-                                                <FormControl><Input placeholder="https://example.com/teacher-photo.jpg" {...field} value={field.value ?? ""} /></FormControl>
-                                                <FormMessage />
+                                                <FormLabel className="text-xs font-medium text-slate-700">Teacher Photo URL</FormLabel>
+                                                <FormControl><Input placeholder="https://example.com/teacher-photo.jpg" className="h-8 w-full text-sm" {...field} value={field.value ?? ""} /></FormControl>
+                                                <FormMessage className="text-[11px]" />
                                             </FormItem>
                                         )} />
                                     </div>
@@ -168,7 +173,8 @@ export default function TeacherManagement() {
                     </Dialog>
                 </div>
 
-                <div className="bg-white dark:bg-card border rounded-2xl overflow-hidden shadow-sm">
+                <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+                    <div className="overflow-x-auto">
                     <Table>
                         <TableHeader className="bg-slate-50/50 dark:bg-slate-900/50">
                             <TableRow>
@@ -202,6 +208,7 @@ export default function TeacherManagement() {
                             )}
                         </TableBody>
                     </Table>
+                    </div>
                 </div>
             </div>
         </Layout>

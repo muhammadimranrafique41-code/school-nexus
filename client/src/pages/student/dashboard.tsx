@@ -51,7 +51,7 @@ export default function StudentDashboard() {
   if (statsLoading || attendanceLoading || attendanceSummaryLoading || resultsLoading || timetableLoading || feesLoading) {
     return (
       <Layout>
-        <div className="space-y-4 pb-8">
+        <div className="space-y-4 p-4 md:p-6">
           <Skeleton className="h-14 rounded-xl" />
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
@@ -71,7 +71,7 @@ export default function StudentDashboard() {
 
   return (
     <Layout>
-      <div className="space-y-4 pb-8">
+      <div className="space-y-4 p-4 md:p-6">
 
         {/* ── Page header ─────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -150,18 +150,18 @@ export default function StudentDashboard() {
           ].map((item) => (
             <div
               key={item.label}
-              className={cn(
-                "flex flex-col items-center justify-center gap-2 rounded-xl border bg-white px-3 py-4 text-center shadow-none transition-shadow hover:shadow-sm",
-                item.border,
-              )}
+              className="flex flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm transition-shadow hover:shadow-md"
             >
-              <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg", item.color)}>
-                <item.icon className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold leading-none text-slate-900">{item.value}</p>
-                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{item.label}</p>
-                <p className="mt-0.5 text-[11px] text-slate-400">{item.hint}</p>
+              <div className={cn("h-1 w-full shrink-0", item.color.split(" ")[1])} />
+              <div className="flex flex-col items-center justify-center gap-2 px-3 py-4 text-center">
+                <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg", item.color)}>
+                  <item.icon className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold leading-none text-slate-900">{item.value}</p>
+                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{item.label}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">{item.hint}</p>
+                </div>
               </div>
             </div>
           ))}
@@ -201,7 +201,7 @@ export default function StudentDashboard() {
               iconColor: "text-emerald-600",
             },
           ].map((item) => (
-            <Card key={item.title} className="border-slate-200/80 bg-white shadow-none transition-shadow hover:shadow-sm">
+            <Card key={item.title} className="rounded-xl border border-slate-200/80 bg-white shadow-sm transition-shadow hover:shadow-md">
               <CardContent className="p-4">
                 {/* Icon + title */}
                 <div className="flex items-center gap-2.5 mb-3">
@@ -237,7 +237,7 @@ export default function StudentDashboard() {
         <div className="grid gap-4 lg:grid-cols-7">
 
           {/* Recent attendance */}
-          <Card className="overflow-hidden border-slate-200/80 bg-white shadow-none lg:col-span-4">
+          <Card className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm lg:col-span-4">
             <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 px-4 py-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-50">
@@ -298,7 +298,7 @@ export default function StudentDashboard() {
           </Card>
 
           {/* Fee invoice summary */}
-          <Card className="border-slate-200/80 bg-white shadow-none lg:col-span-3">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm lg:col-span-3">
             <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 px-4 py-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50">
@@ -371,7 +371,7 @@ export default function StudentDashboard() {
         </div>
 
         {/* ── Recent results ───────────────────────────────────────────── */}
-        <Card className="border-slate-200/80 bg-white shadow-none">
+        <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 px-4 py-3">
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50">

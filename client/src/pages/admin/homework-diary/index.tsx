@@ -159,7 +159,7 @@ export default function HomeworkDiaryPage() {
 
   return (
     <Layout>
-      <div className="space-y-4 pb-8">
+      <div className="p-4 md:p-6 space-y-4 pb-8">
 
         {/* ── Page header ─────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -185,7 +185,7 @@ export default function HomeworkDiaryPage() {
         </section>
 
         {/* ── Controls ─────────────────────────────────────────────────── */}
-        <Card className="border-slate-200/80 bg-white shadow-none">
+        <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
           <CardContent className="p-4">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto]">
               {/* Class */}
@@ -229,7 +229,7 @@ export default function HomeworkDiaryPage() {
           </Card>
 
         ) : loading ? (
-          <Card className="border-slate-200/80 bg-white shadow-none">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <CardContent className="flex flex-col items-center gap-3 py-14">
               <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
               <p className="text-[12px] text-slate-400">Loading diary…</p>
@@ -239,7 +239,7 @@ export default function HomeworkDiaryPage() {
         ) : (
           <>
             {/* ── Diary entries card ────────────────────────────────────── */}
-            <Card className="overflow-hidden border-slate-200/80 bg-white shadow-none">
+            <Card className="rounded-xl overflow-hidden border border-slate-200/80 bg-white shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                 <div className="flex items-center gap-2">
                   <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50">

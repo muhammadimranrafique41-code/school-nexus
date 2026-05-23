@@ -69,7 +69,7 @@ function FeedbackBanner({ feedback }: { feedback: ScanFeedback }) {
   }[feedback.tone];
   const Icon = cfg.icon;
   return (
-    <div className={`flex items-start gap-3 rounded-2xl border px-4 py-3 ${cfg.border}`}>
+    <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${cfg.border}`}>
       <Icon className={`h-4 w-4 shrink-0 mt-0.5 ${cfg.iconCls}`} />
       <div>
         <p className={`text-xs font-bold ${cfg.title}`}>{feedback.title}</p>
@@ -341,11 +341,11 @@ export default function TeacherQrAttendance() {
   /* ═══════════════════════════════════════════════════════════════ */
   return (
     <Layout>
-      <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-screen-xl px-4 py-6 space-y-5">
+        <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-screen-xl p-4 md:p-6 space-y-5">
 
           {/* ── Hero ── */}
-          <div className="relative overflow-hidden rounded-2xl bg-amber-500 px-5 py-5 text-white shadow-lg shadow-amber-100">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 px-5 py-5 text-white shadow-lg shadow-amber-100">
             <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/5" />
             <div className="absolute right-14 top-16 h-20 w-20 rounded-full bg-white/5" />
             <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
@@ -388,7 +388,7 @@ export default function TeacherQrAttendance() {
 
           {/* ── Offline queue banner ── */}
           {queuedScans.length > 0 && (
-            <div className={`rounded-2xl border px-5 py-4 ${isOnline ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}>
+            <div className={`rounded-xl border px-5 py-4 ${isOnline ? "border-sky-200 bg-sky-50" : "border-amber-200 bg-amber-50"}`}>
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div className="flex items-start gap-3">
                   {isOnline
@@ -428,7 +428,7 @@ export default function TeacherQrAttendance() {
           <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
 
             {/* ── Left: Scanner ── */}
-            <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+            <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
               <div className="px-5 pt-5 pb-4 border-b border-slate-50">
                 <div className="flex items-center gap-2">
                   <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-50">
@@ -446,7 +446,7 @@ export default function TeacherQrAttendance() {
                 {scanFeedback && <FeedbackBanner feedback={scanFeedback} />}
 
                 {/* Mode toggle */}
-                <div className="flex rounded-2xl border border-slate-200 bg-slate-50 p-1 gap-1">
+                <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1">
                   {(["camera", "manual"] as ScannerMode[]).map(mode => (
                     <button key={mode} onClick={() => setScanMode(mode)}
                       className={cn(
@@ -578,7 +578,7 @@ export default function TeacherQrAttendance() {
                 </div>
 
                 {/* Safeguards info */}
-                <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 space-y-1.5">
+                <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 space-y-1.5">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Scanner Safeguards</p>
                   {[
                     "Same token+direction suppressed for 2 seconds in browser",
@@ -595,7 +595,7 @@ export default function TeacherQrAttendance() {
             </div>
 
             {/* ── Right: Teacher QR Card ── */}
-            <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+            <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
               <div className="px-5 pt-5 pb-4 border-b border-slate-50">
                 <div className="flex items-center gap-2">
                   <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-50">
@@ -628,7 +628,7 @@ export default function TeacherQrAttendance() {
                     </div>
 
                     {/* token display */}
-                    <div className="flex items-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+                    <div className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
                       <p className="flex-1 break-all font-mono text-[10px] text-slate-600">{myCard.token}</p>
                       <button onClick={handleCopyMyToken}
                         className="shrink-0 flex items-center justify-center h-7 w-7 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition-colors shadow-sm">
@@ -655,7 +655,7 @@ export default function TeacherQrAttendance() {
           </div>
 
           {/* ── QR History ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-50">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">QR Attendance History</h2>
@@ -717,7 +717,7 @@ export default function TeacherQrAttendance() {
                   const isIn = event.direction === "Check In";
                   return (
                     <div key={event.id}
-                      className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-3">
+                      className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
                       <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border
                         ${isIn ? "bg-emerald-50 border-emerald-200" : "bg-sky-50 border-sky-200"}`}>
                         <ScanLine className={`h-4 w-4 ${isIn ? "text-emerald-500" : "text-sky-500"}`} />

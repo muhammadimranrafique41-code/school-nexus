@@ -108,7 +108,7 @@ export default function AdminClasses() {
 
   return (
     <Layout>
-      <div className="space-y-4 pb-8">
+      <div className="space-y-4 p-4 md:p-6">
 
         {/* ── Page header ─────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -137,7 +137,7 @@ export default function AdminClasses() {
             <div
               key={item.label}
               className={cn(
-                "flex flex-col items-center justify-center gap-2 rounded-xl border bg-white px-3 py-4 text-center shadow-none",
+                "flex flex-col items-center justify-center gap-2 rounded-xl border border-slate-200/80 bg-white px-3 py-4 text-center shadow-sm",
                 item.border,
               )}
             >
@@ -153,7 +153,7 @@ export default function AdminClasses() {
         </section>
 
         {/* ── Table card ──────────────────────────────────────────────── */}
-        <Card className="overflow-hidden border-slate-200/80 bg-white shadow-none">
+        <Card className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
 
           {/* Toolbar */}
           <CardHeader className="flex flex-col gap-2 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">

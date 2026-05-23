@@ -153,7 +153,7 @@ export default function StudentHomeworkDiaryPage() {
   return (
     <Layout>
       <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-2xl px-4 py-5 space-y-4">
+        <div className="mx-auto max-w-2xl p-4 md:p-6 space-y-4">
 
           {/* ── Top nav bar ── */}
           <div className="flex items-center justify-between">
@@ -226,7 +226,7 @@ export default function StudentHomeworkDiaryPage() {
           </div>
 
           {/* ── Week strip ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm p-3">
             <div className="grid grid-cols-6 gap-1">
               {weekDays.map(day => {
                 const dStr = format(day, "yyyy-MM-dd");
@@ -296,7 +296,7 @@ export default function StudentHomeworkDiaryPage() {
 
           {/* ── Diary entries ── */}
           {!currentDiary ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-14 text-center shadow-sm">
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200/80 bg-white py-14 text-center shadow-sm">
               <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
                 <BookOpen className="h-6 w-6 text-slate-300" />
               </div>
@@ -325,7 +325,7 @@ export default function StudentHomeworkDiaryPage() {
                 return (
                   <div
                     key={`${entry.subject}-${index}`}
-                    className={`flex gap-0 rounded-2xl border border-slate-100 bg-white overflow-hidden shadow-sm
+                    className={`flex gap-0 rounded-xl border border-slate-200/80 bg-white overflow-hidden shadow-sm
                       hover:shadow-md transition-shadow`}
                   >
                     {/* coloured left accent bar */}

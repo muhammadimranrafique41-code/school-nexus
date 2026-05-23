@@ -222,19 +222,19 @@ export default function StudentTimetable() {
     <Layout>
       {/* ── Page wrapper ── */}
       <div className="min-h-screen bg-slate-50 font-sans">
-        <div className="mx-auto max-w-screen-xl px-4 py-6 space-y-6">
+        <div className="mx-auto max-w-screen-xl p-4 md:p-6 space-y-6">
 
           {/* ── Header ── */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 shadow-md shadow-indigo-200">
-                <CalendarDays className="h-5 w-5 text-white" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+                <CalendarDays className="h-5 w-5" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold tracking-tight text-slate-900 leading-tight">
+                <h1 className="text-xl font-bold tracking-tight text-slate-900">
                   My Timetable
                 </h1>
-                <p className="text-sm text-slate-500">
+                <p className="text-[12px] text-slate-400">
                   {data?.className ? (
                     <span className="inline-flex items-center gap-1">
                       <GraduationCap className="h-3.5 w-3.5" />
@@ -271,13 +271,16 @@ export default function StudentTimetable() {
               { icon: Clock3, label: "First Class", value: summary.firstClass, accent: "text-amber-600 bg-amber-50" },
             ].map(stat => (
               <div key={stat.label}
-                className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${stat.accent}`}>
-                  <stat.icon className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">{stat.label}</p>
-                  <p className="text-lg font-bold text-slate-900 leading-tight">{stat.value}</p>
+                className="flex flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+                <div className={`h-1 w-full shrink-0 ${stat.accent.split(" ")[1]}`} />
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${stat.accent}`}>
+                    <stat.icon className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">{stat.label}</p>
+                    <p className="text-lg font-bold text-slate-900 leading-tight">{stat.value}</p>
+                  </div>
                 </div>
               </div>
             ))}
@@ -285,7 +288,7 @@ export default function StudentTimetable() {
 
           {/* ── DESKTOP MATRIX ─────────────────────────────────── */}
           <div className="hidden lg:block">
-            <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+            <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
               {/* Sticky header row */}
               <div className="overflow-x-auto">
                 {busy ? (
@@ -473,7 +476,7 @@ export default function StudentTimetable() {
 
                   return (
                     <div key={period.key}
-                      className="flex gap-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+                      className="flex gap-3 rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm">
                       {/* time strip */}
                       <div className="flex flex-col items-center gap-1 pt-0.5 w-12 shrink-0">
                         <p className="text-[10px] font-bold text-slate-500">{period.periodLabel.replace("Period ", "P")}</p>
@@ -518,7 +521,7 @@ export default function StudentTimetable() {
 
           {/* ── Subject legend ─────────────────────────────────── */}
           {!busy && Object.keys(subjectColorMap).length > 0 && (
-            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Subjects</p>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(subjectColorMap).map(([subject, colors]) => (

@@ -205,7 +205,7 @@ export default function StudentStatementPage() {
   return (
     <Layout>
       <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-screen-xl px-4 py-6 space-y-5">
+        <div className="mx-auto max-w-screen-xl p-4 md:p-6 space-y-5">
 
           {/* ── Page header ── */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -276,21 +276,24 @@ export default function StudentStatementPage() {
             {/* Summary stats */}
             <div className="grid grid-cols-2 gap-3 content-start">
               {[
-                { icon: TrendingUp, label: "Total Billed", value: formatCurrency(summary.totalBilled), accent: "bg-slate-100 text-slate-600" },
-                { icon: CheckCircle2, label: "Total Paid", value: formatCurrency(summary.totalPaid), accent: "bg-emerald-50 text-emerald-600" },
-                { icon: Clock4, label: "Outstanding", value: formatCurrency(summary.totalOutstanding), accent: summary.totalOutstanding > 0 ? "bg-amber-50 text-amber-600" : "bg-slate-50 text-slate-400" },
-                { icon: AlertTriangle, label: "Overdue", value: formatCurrency(summary.totalOverdue), accent: summary.totalOverdue > 0 ? "bg-red-50 text-red-600" : "bg-slate-50 text-slate-400" },
+                { icon: TrendingUp, label: "Total Billed", value: formatCurrency(summary.totalBilled), accent: "bg-slate-100 text-slate-600", bar: "bg-slate-400" },
+                { icon: CheckCircle2, label: "Total Paid", value: formatCurrency(summary.totalPaid), accent: "bg-emerald-50 text-emerald-600", bar: "bg-emerald-500" },
+                { icon: Clock4, label: "Outstanding", value: formatCurrency(summary.totalOutstanding), accent: summary.totalOutstanding > 0 ? "bg-amber-50 text-amber-600" : "bg-slate-50 text-slate-400", bar: summary.totalOutstanding > 0 ? "bg-amber-500" : "bg-slate-300" },
+                { icon: AlertTriangle, label: "Overdue", value: formatCurrency(summary.totalOverdue), accent: summary.totalOverdue > 0 ? "bg-red-50 text-red-600" : "bg-slate-50 text-slate-400", bar: summary.totalOverdue > 0 ? "bg-red-500" : "bg-slate-300" },
               ].map((stat) => (
                 <div
                   key={stat.label}
-                  className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3.5 shadow-sm"
+                  className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden"
                 >
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${stat.accent}`}>
-                    <stat.icon className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] text-slate-500 truncate">{stat.label}</p>
-                    <p className="text-sm font-bold text-slate-900 leading-tight">{stat.value}</p>
+                  <div className={`h-1 ${stat.bar}`} />
+                  <div className="flex items-center gap-3 px-4 py-3.5">
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${stat.accent}`}>
+                      <stat.icon className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-slate-500 truncate">{stat.label}</p>
+                      <p className="text-sm font-bold text-slate-900 leading-tight">{stat.value}</p>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -298,7 +301,7 @@ export default function StudentStatementPage() {
           </div>
 
           {/* ── Activity feed ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-50">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">Activity Feed</h2>
@@ -431,7 +434,7 @@ export default function StudentStatementPage() {
                   if (item.kind === "fee") {
                     const sc = getStatusConfig(item.status);
                     return (
-                      <div key={`fee-${item.id}`} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3.5 space-y-2">
+                      <div key={`fee-${item.id}`} className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5 space-y-2">
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <p className="text-sm font-bold text-slate-900">{item.label}</p>
@@ -461,7 +464,7 @@ export default function StudentStatementPage() {
 
                   const isDebit = item.txType === "fee_payment";
                   return (
-                    <div key={`tx-${item.id}`} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 px-3.5 py-3">
+                    <div key={`tx-${item.id}`} className="flex items-center gap-3 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3.5 py-3">
                       <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${isDebit ? "bg-red-50" : "bg-emerald-50"}`}>
                         <Wallet className={`h-3.5 w-3.5 ${isDebit ? "text-red-500" : "text-emerald-600"}`} />
                       </div>

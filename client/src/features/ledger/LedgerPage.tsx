@@ -76,32 +76,36 @@ export default function LedgerPage() {
 
         {/* ── Tabs ────────────────────────────────────────────────────────── */}
         <Tabs defaultValue="cash-flow" className="space-y-4">
-          <TabsList className="h-9 rounded-lg bg-slate-100 p-1">
-            <TabsTrigger
-              value="cash-flow"
-              className="rounded-md px-3 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm"
-            >
-              Cash Flow
-            </TabsTrigger>
-            <TabsTrigger
-              value="ledger-register"
-              className="rounded-md px-3 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm"
-            >
-              Ledger Register
-            </TabsTrigger>
-            <TabsTrigger
-              value="fee-collection"
-              className="rounded-md px-3 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm"
-            >
-              Fee Collection
-            </TabsTrigger>
-            <TabsTrigger
-              value="wallet-ledger"
-              className="rounded-md px-3 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm"
-            >
-              Wallet Ledger
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto -mx-4 md:-mx-0">
+            <div className="px-4 md:px-0 min-w-max">
+              <TabsList className="h-9 rounded-lg bg-slate-100 p-1">
+                <TabsTrigger
+                  value="cash-flow"
+                  className="rounded-md px-3 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm"
+                >
+                  Cash Flow
+                </TabsTrigger>
+                <TabsTrigger
+                  value="ledger-register"
+                  className="rounded-md px-3 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm"
+                >
+                  Ledger Register
+                </TabsTrigger>
+                <TabsTrigger
+                  value="fee-collection"
+                  className="rounded-md px-3 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm"
+                >
+                  Fee Collection
+                </TabsTrigger>
+                <TabsTrigger
+                  value="wallet-ledger"
+                  className="rounded-md px-3 text-xs font-medium data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm"
+                >
+                  Wallet Ledger
+                </TabsTrigger>
+              </TabsList>
+            </div>
+          </div>
 
           <TabsContent value="cash-flow" className="mt-0">
             <Suspense fallback={<TabSkeleton />}>

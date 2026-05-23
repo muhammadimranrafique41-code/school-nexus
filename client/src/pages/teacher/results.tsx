@@ -157,11 +157,11 @@ export default function TeacherResults() {
   /* ═══════════════════════════════════════════════════════════════ */
   return (
     <Layout>
-      <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-screen-xl px-4 py-6 space-y-5">
+        <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-screen-xl p-4 md:p-6 space-y-5">
 
           {/* ── Hero ── */}
-          <div className="relative overflow-hidden rounded-2xl bg-amber-500 px-5 py-5 text-white shadow-lg shadow-amber-100">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 px-5 py-5 text-white shadow-lg shadow-amber-100">
             <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/5" />
             <div className="absolute right-14 top-16 h-20 w-20 rounded-full bg-white/5" />
             <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
@@ -213,7 +213,7 @@ export default function TeacherResults() {
 
           {/* no subject warning */}
           {!subjectName && (
-            <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
               <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
               <p className="text-xs text-amber-700 font-semibold">
                 No subject is assigned to this teacher account yet. Ask your admin to assign a subject before managing results.
@@ -222,7 +222,7 @@ export default function TeacherResults() {
           )}
 
           {/* ── Results table / cards ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
             {/* toolbar */}
             <div className="flex flex-wrap items-center gap-3 px-5 pt-5 pb-4 border-b border-slate-50">
               <div className="relative flex-1 min-w-[180px]">
@@ -313,7 +313,7 @@ export default function TeacherResults() {
                   const gc = gradeConfig(record.grade);
                   return (
                     <div key={record.id}
-                      className="rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-3 space-y-2.5">
+                      className="rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3 space-y-2.5">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${gc.border} ${gc.bg}`}>
@@ -396,7 +396,7 @@ export default function TeacherResults() {
 
       {/* ── Add / Edit Dialog ── */}
       <Dialog open={isOpen} onOpenChange={open => { setIsOpen(open); if (!open) { setEditingResult(null); resetForm(); } }}>
-        <DialogContent className="max-w-sm bg-white border-slate-100 rounded-2xl shadow-2xl p-0 overflow-hidden">
+        <DialogContent className="max-w-sm bg-white border-slate-200/80 rounded-xl shadow-2xl p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-50">
@@ -412,7 +412,7 @@ export default function TeacherResults() {
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 {/* Subject (read-only) */}
-                <div className="flex items-center gap-2 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-2.5">
+                <div className="flex items-center gap-2 rounded-xl border border-amber-100 bg-amber-50 px-4 py-2.5">
                   <BookOpen className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                   <p className="text-xs text-amber-700 font-semibold">
                     Subject: <span className="font-black">{subjectName || "Not assigned"}</span>
@@ -494,9 +494,9 @@ export default function TeacherResults() {
 
       {/* ── Delete Confirm ── */}
       <AlertDialog open={!!resultToDelete} onOpenChange={open => !open && setResultToDelete(null)}>
-        <AlertDialogContent className="max-w-sm bg-white border-slate-100 rounded-2xl shadow-2xl">
+        <AlertDialogContent className="max-w-sm bg-white border-slate-200/80 rounded-xl shadow-2xl">
           <AlertDialogHeader>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 border border-red-200 mb-1">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-50 border border-red-200 mb-1">
               <Trash2 className="h-5 w-5 text-red-500" />
             </div>
             <AlertDialogTitle className="text-base font-bold text-slate-900">Delete result?</AlertDialogTitle>

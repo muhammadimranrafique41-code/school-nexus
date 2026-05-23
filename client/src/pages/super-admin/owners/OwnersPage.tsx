@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -58,11 +58,16 @@ export default function OwnersPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Owner Management</h1>
-          <p className="text-sm text-slate-500">Create, view, and manage all platform owners.</p>
+    <div className="space-y-4 md:space-y-6 p-4 md:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-white">
+            <Building2 className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-slate-950 md:text-2xl">Owner Management</h1>
+            <p className="text-sm text-slate-500">Create, view, and manage all platform owners.</p>
+          </div>
         </div>
         <Button onClick={() => { setEditingOwner(null); setFormOpen(true); }}>
           <Plus className="h-4 w-4 mr-2" />
@@ -70,8 +75,8 @@ export default function OwnersPage() {
         </Button>
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1 max-w-sm w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <Input
             placeholder="Search owners..."
@@ -81,7 +86,7 @@ export default function OwnersPage() {
           />
         </div>
         <select
-          className="rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white"
+          className="rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white w-full sm:w-auto"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
         >
@@ -93,7 +98,7 @@ export default function OwnersPage() {
         </select>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-sm">
         <OwnerTable
           owners={filtered}
           isLoading={isLoading}

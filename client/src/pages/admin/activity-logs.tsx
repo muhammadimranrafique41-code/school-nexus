@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollText } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { useActivityLogs, useActivityLogDetail, usePruneActivityLogs, type ActivityLog, type ActivityLogAction } from "@/hooks/use-activity-logs";
@@ -101,18 +102,23 @@ export default function ActivityLogsPage() {
 
   return (
     <Layout>
-      <div className="container mx-auto py-6 space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold">Activity Logs</h1>
-            <p className="text-muted-foreground">Audit trail for accountability and security</p>
+      <div className="container mx-auto p-4 md:p-6 space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+              <ScrollText className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">Activity Logs</h1>
+              <p className="text-[12px] text-slate-400">Audit trail for accountability and security</p>
+            </div>
           </div>
           <Button variant="outline" onClick={() => setShowPruneDialog(true)}>
             Prune Old Logs
           </Button>
         </div>
 
-        <Card>
+        <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
           <CardHeader>
             <CardTitle>Filters</CardTitle>
           </CardHeader>
@@ -186,7 +192,7 @@ export default function ActivityLogsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
           <CardContent className="p-0">
             <Table>
               <TableHeader>

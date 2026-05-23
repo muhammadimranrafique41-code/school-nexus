@@ -414,14 +414,19 @@ export default function AdminSessions() {
 
   return (
     <Layout>
-      <div className="space-y-5 pb-8">
+      <div className="space-y-5 p-4 md:p-6">
         {/* ── Page header ─────────────────────────────────────────────── */}
         <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">Academic Sessions</h1>
-            <p className="mt-0.5 text-sm text-slate-500">
-              Manage school years and set the active academic session.
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+              <CalendarDays className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">Academic Sessions</h1>
+              <p className="text-[12px] text-slate-400">
+                Manage school years and set the active academic session.
+              </p>
+            </div>
           </div>
           <Button
             onClick={() => setIsCreateOpen(true)}
@@ -458,7 +463,7 @@ export default function AdminSessions() {
               bg: "bg-slate-50",
             },
           ].map((item) => (
-            <Card key={item.label} className="border-slate-200/80 shadow-none">
+            <Card key={item.label} className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
               <CardContent className="flex items-center gap-3 p-4">
                 <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", item.bg)}>
                   {item.icon}
@@ -475,7 +480,7 @@ export default function AdminSessions() {
         </section>
 
         {/* ── Sessions list ────────────────────────────────────────────── */}
-        <Card className="overflow-hidden border-slate-200/80 shadow-none">
+        <Card className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
           <CardHeader className="border-b border-slate-100 px-4 py-3">
             <CardTitle className="text-sm font-semibold text-slate-800">All Sessions</CardTitle>
             <CardDescription className="text-xs text-slate-500">

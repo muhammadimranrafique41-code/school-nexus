@@ -78,7 +78,7 @@ function SummaryCard({
   loading?: boolean;
 }) {
   return (
-    <Card className="border-slate-100 shadow-sm">
+    <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm font-medium text-slate-500">{title}</CardTitle>
         <Icon className="h-4 w-4 text-slate-400" />
@@ -113,7 +113,7 @@ function FeeSummaryChart({ data, loading }: { data?: MonthlyFeeSummaryRow[]; loa
   );
 
   return (
-    <Card className="border-slate-100 shadow-sm">
+    <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-semibold text-slate-700">Monthly Fee Summary</CardTitle>
         <CardDescription className="text-xs">Total billed, collected, and outstanding per month</CardDescription>
@@ -165,7 +165,7 @@ function FundsSummaryChart({ data, loading }: { data?: MonthlyFundSummaryRow[]; 
   }, [data, fundTypes]);
 
   return (
-    <Card className="border-slate-100 shadow-sm">
+    <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-semibold text-slate-700">Monthly Funds Summary</CardTitle>
         <CardDescription className="text-xs">Collections broken down by fund type</CardDescription>
@@ -210,7 +210,7 @@ function PnLChart({ data, loading }: { data?: MonthlyPnLRow[]; loading?: boolean
   );
 
   return (
-    <Card className="border-slate-100 shadow-sm">
+    <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-semibold text-slate-700">Monthly Profit & Loss</CardTitle>
         <CardDescription className="text-xs">Fee revenue vs school expenditures</CardDescription>
@@ -252,7 +252,7 @@ function OverdueFeesTable({ data, loading }: { data?: OverdueFeeEntry[]; loading
   }, [data, search]);
 
   return (
-    <Card className="border-slate-100 shadow-sm">
+    <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div>
@@ -264,7 +264,7 @@ function OverdueFeesTable({ data, loading }: { data?: OverdueFeeEntry[]; loading
               <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <Input
                 placeholder="Search..."
-                className="h-8 w-48 pl-8 text-xs"
+                className="h-8 w-full pl-8 text-xs"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -299,7 +299,7 @@ function OverdueFeesTable({ data, loading }: { data?: OverdueFeeEntry[]; loading
         ) : !data || data.length === 0 ? (
           <div className="flex h-32 items-center justify-center text-sm text-slate-400">No overdue fees found.</div>
         ) : (
-          <div className="rounded-md border">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -355,7 +355,7 @@ function DailyCollectionTable({ data, loading }: { data?: DailyFeeCollectionRow[
   }, [data, search]);
 
   return (
-    <Card className="border-slate-100 shadow-sm">
+    <Card className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div>
@@ -367,7 +367,7 @@ function DailyCollectionTable({ data, loading }: { data?: DailyFeeCollectionRow[
               <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <Input
                 placeholder="Search..."
-                className="h-8 w-48 pl-8 text-xs"
+                className="h-8 w-full pl-8 text-xs"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -402,7 +402,7 @@ function DailyCollectionTable({ data, loading }: { data?: DailyFeeCollectionRow[
         ) : !data || data.length === 0 ? (
           <div className="flex h-32 items-center justify-center text-sm text-slate-400">No payment records found.</div>
         ) : (
-          <div className="rounded-md border">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -449,7 +449,7 @@ function LoadingSkeleton() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         {[...Array(4)].map((_, i) => (
-          <Card key={i} className="border-slate-100 shadow-sm">
+          <Card key={i} className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
             <CardHeader className="pb-2">
               <Skeleton className="h-4 w-24" />
             </CardHeader>
@@ -497,18 +497,21 @@ export default function FinancialReportsPage() {
 
   return (
     <Layout>
-      <div className="mb-6">
-        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-          <BarChart3 className="h-6 w-6 text-indigo-500" />
-          Financial Reports
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Dashboard overview of fee collections, funds breakdown, profit & loss, and payment activity.
-        </p>
-      </div>
+      <div className="space-y-6 p-4 md:p-6">
+        <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+              <BarChart3 className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">Financial Reports</h1>
+              <p className="mt-0.5 text-[12px] text-slate-400">Dashboard overview of fee collections, funds breakdown, profit & loss, and payment activity.</p>
+            </div>
+          </div>
+        </section>
 
       {hasError && (
-        <Card className="mb-6 border-rose-200 bg-rose-50">
+        <Card className="rounded-xl border border-rose-200 bg-rose-50 shadow-sm">
           <CardContent className="flex items-center gap-3 py-4">
             <AlertTriangle className="h-5 w-5 text-rose-500 shrink-0" />
             <p className="text-sm text-rose-700">
@@ -556,6 +559,7 @@ export default function FinancialReportsPage() {
           </Tabs>
         </div>
       )}
+      </div>
     </Layout>
   );
 }

@@ -3,7 +3,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, ArrowRight, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, X } from "lucide-react";
 import { useMonthSelector } from "@/hooks/use-consolidated-vouchers";
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -23,7 +23,7 @@ export default function MonthSelectorPage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-6">
       {/* Back button */}
       <div className="mb-4">
         <Button
@@ -41,9 +41,14 @@ export default function MonthSelectorPage() {
 
       {/* Header */}
       <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Select Months</h1>
-          <p className="text-slate-500 text-sm mt-1">Check months to include in this batch.</p>
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+            <CalendarDays className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Select Months</h1>
+            <p className="text-slate-500 text-sm mt-1">Check months to include in this batch.</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Select onValueChange={(v) => setAllYear(Number(v))} defaultValue={String(CURRENT_YEAR)}>
@@ -62,7 +67,7 @@ export default function MonthSelectorPage() {
       </div>
 
       {/* Table */}
-      <div className="border border-slate-200 rounded-lg overflow-hidden">
+      <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
@@ -123,7 +128,7 @@ export default function MonthSelectorPage() {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-4 py-3">
+      <div className="flex items-center justify-between bg-white rounded-xl border border-slate-200/80 shadow-sm px-4 py-3">
         <div className="flex items-center gap-3">
           <Badge className="bg-blue-100 text-blue-700 border-blue-200 font-semibold">
             {selectedCount} month{selectedCount !== 1 ? "s" : ""} selected

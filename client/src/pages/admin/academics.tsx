@@ -18,7 +18,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { BookOpen, Download, Loader2, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
-import { downloadCsv, getErrorMessage, paginateItems } from "@/lib/utils";
+import { cn, downloadCsv, getErrorMessage, paginateItems } from "@/lib/utils";
 
 type ListedAcademic = {
   id: number;
@@ -183,37 +183,43 @@ export default function Academics() {
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="text-3xl font-display font-bold">Academics</h1>
-            <p className="mt-1 text-muted-foreground">Manage class subjects, assigned teachers, and curriculum coverage.</p>
+      <div className="space-y-4 md:space-y-6 p-4 md:p-6">
+        <section className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 text-white shadow-md shadow-indigo-200">
+              <BookOpen className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">Academics</h1>
+              <p className="mt-0.5 text-[12px] text-slate-400">Manage class subjects, assigned teachers, and curriculum coverage.</p>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Button variant="outline" onClick={exportAcademics} disabled={filteredAcademics.length === 0} data-testid="academics-export-button">
-              <Download className="mr-2 h-4 w-4" /> Export CSV
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={exportAcademics} disabled={filteredAcademics.length === 0} data-testid="academics-export-button">
+              <Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV
             </Button>
-            <Button onClick={openCreateDialog} data-testid="academics-add-button">
-              <Plus className="mr-2 h-4 w-4" /> Add Subject
+            <Button size="sm" onClick={openCreateDialog} data-testid="academics-add-button">
+              <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Subject
             </Button>
           </div>
-        </div>
+        </section>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {[
-            { label: "Subjects", value: summary.total, icon: BookOpen },
-            { label: "Assigned teachers", value: summary.assignedTeachers, icon: Users },
-            { label: "Active classes", value: summary.activeClasses, icon: BookOpen },
-            { label: "Unassigned", value: summary.unassigned, icon: Users },
+            { label: "Subjects", value: summary.total, icon: BookOpen, accent: "bg-indigo-500" },
+            { label: "Assigned teachers", value: summary.assignedTeachers, icon: Users, accent: "bg-emerald-500" },
+            { label: "Active classes", value: summary.activeClasses, icon: BookOpen, accent: "bg-amber-500" },
+            { label: "Unassigned", value: summary.unassigned, icon: Users, accent: "bg-slate-400" },
           ].map((item) => (
-            <Card key={item.label} className="shadow-sm">
-              <CardContent className="flex items-center justify-between p-5">
-                <div>
-                  <p className="text-sm text-muted-foreground">{item.label}</p>
-                  <p className="mt-1 text-3xl font-display font-bold">{item.value}</p>
+            <Card key={item.label} className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+              <div className={cn("h-1 w-full", item.accent)} />
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                  <item.icon className="h-4 w-4" />
                 </div>
-                <div className="rounded-2xl bg-primary/10 p-3 text-primary">
-                  <item.icon className="h-5 w-5" />
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{item.label}</p>
+                  <p className="mt-0.5 text-2xl font-bold leading-tight text-slate-900">{item.value}</p>
                 </div>
               </CardContent>
             </Card>
@@ -328,7 +334,7 @@ export default function Academics() {
           </DialogContent>
         </Dialog>
 
-        <div className="rounded-2xl border bg-card shadow-sm">
+        <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-2">
               <Search className="h-4 w-4 text-muted-foreground" />
@@ -355,6 +361,7 @@ export default function Academics() {
             </Select>
           </div>
 
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-muted/40">
               <TableRow>
@@ -406,6 +413,7 @@ export default function Academics() {
               )}
             </TableBody>
           </Table>
+          </div>
 
           {filteredAcademics.length > 0 && (
             <div className="flex flex-col gap-3 border-t p-4 md:flex-row md:items-center md:justify-between">

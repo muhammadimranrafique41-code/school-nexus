@@ -77,15 +77,16 @@ export default function CampusesPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">
-            Campuses
-          </h1>
-          <p className="text-sm text-slate-500">
-            Manage your school campuses and branches.
-          </p>
+    <div className="space-y-4 md:space-y-6 p-4 md:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-white">
+            <Building2 className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-slate-950 md:text-2xl">Campuses</h1>
+            <p className="text-sm text-slate-500">Manage your school campuses and branches.</p>
+          </div>
         </div>
         <Button
           onClick={() => {
@@ -109,14 +110,16 @@ export default function CampusesPage() {
         onEndDateChange={setEndDate}
       />
 
-      <CampusTable
-        campuses={campuses}
-        isLoading={isLoading}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        onManage={handleManage}
-        filterCampusId={selectedCampusId}
-      />
+      <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-sm">
+        <CampusTable
+          campuses={campuses}
+          isLoading={isLoading}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onManage={handleManage}
+          filterCampusId={selectedCampusId}
+        />
+      </div>
 
       <CampusFormDialog
         open={dialogOpen}

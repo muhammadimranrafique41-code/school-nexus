@@ -136,15 +136,15 @@ export default function TeacherDashboard() {
   if (isLoading) {
     return (
       <Layout>
-        <div className="min-h-screen bg-slate-50 p-4 space-y-4">
-          <Skeleton className="h-40 rounded-2xl" />
+        <div className="min-h-screen bg-slate-50 p-4 md:p-6 space-y-4">
+          <Skeleton className="h-40 rounded-xl" />
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
           </div>
-          <Skeleton className="h-72 rounded-2xl" />
+          <Skeleton className="h-72 rounded-xl" />
           <div className="grid gap-4 lg:grid-cols-3">
-            <Skeleton className="h-64 rounded-2xl lg:col-span-2" />
-            <Skeleton className="h-64 rounded-2xl" />
+            <Skeleton className="h-64 rounded-xl lg:col-span-2" />
+            <Skeleton className="h-64 rounded-xl" />
           </div>
         </div>
       </Layout>
@@ -154,11 +154,11 @@ export default function TeacherDashboard() {
   /* ════════════════════════════════════════════════════════════════ */
   return (
     <Layout>
-      <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-screen-xl px-4 py-6 space-y-5">
+        <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-screen-xl p-4 md:p-6 space-y-5">
 
           {/* ── Hero header ── */}
-          <div className="relative overflow-hidden rounded-2xl bg-amber-500 px-5 py-5 text-white shadow-lg shadow-amber-100">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 px-5 py-5 text-white shadow-lg shadow-amber-100">
             {/* decorative rings */}
             <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/5" />
             <div className="absolute right-14 top-16 h-20 w-20 rounded-full bg-white/5" />
@@ -222,20 +222,23 @@ export default function TeacherDashboard() {
               { icon: BookOpenCheck, label: "Results", value: subjectResults.length, accent: "bg-emerald-50 text-emerald-600" },
             ].map(s => (
               <div key={s.label}
-                className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${s.accent}`}>
-                  <s.icon className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] text-slate-500 truncate">{s.label}</p>
-                  <p className="text-base font-bold text-slate-900 leading-tight truncate">{s.value}</p>
+                className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+                <div className={`h-1 w-full rounded-t-xl ${s.accent.split(' ')[0].replace('50', '400')}`} />
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${s.accent}`}>
+                    <s.icon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] text-slate-500 truncate">{s.label}</p>
+                    <p className="text-base font-bold text-slate-900 leading-tight truncate">{s.value}</p>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
 
           {/* ── Teaching Pulse ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
             {/* pulse header */}
             <div className="flex flex-wrap items-center justify-between gap-4 px-5 pt-5 pb-4 border-b border-slate-50">
               <div className="flex items-center gap-4">
@@ -273,10 +276,10 @@ export default function TeacherDashboard() {
             <div className="p-4 space-y-2.5">
               {pulseLoading ? (
                 <div className="space-y-2">
-                  {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-2xl" />)}
+                  {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
                 </div>
               ) : (pulse?.periods.length ?? 0) === 0 ? (
-                <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-10 text-center">
+                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 py-10 text-center">
                   <Zap className="h-7 w-7 text-slate-300" />
                   <p className="text-sm font-semibold text-slate-500">No periods scheduled today</p>
                   <p className="text-xs text-slate-400">Your teaching pulse will appear here once generated.</p>
@@ -287,7 +290,7 @@ export default function TeacherDashboard() {
                   const StatusIcon = cfg.icon;
                   return (
                     <div key={period.id}
-                      className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-3">
+                      className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
 
                       {/* status icon */}
                       <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border
@@ -342,7 +345,7 @@ export default function TeacherDashboard() {
           <div className="grid gap-5 lg:grid-cols-3">
 
             {/* Assigned classes */}
-            <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden lg:col-span-2">
+            <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden lg:col-span-2">
               <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-50">
                 <div>
                   <h2 className="text-sm font-bold text-slate-900">Assigned Classes</h2>
@@ -354,7 +357,7 @@ export default function TeacherDashboard() {
               </div>
               <div className="p-4 space-y-2.5">
                 {assignedSubjects.length === 0 ? (
-                  <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-10 text-center">
+                  <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 py-10 text-center">
                     <CalendarDays className="h-7 w-7 text-slate-300" />
                     <p className="text-sm font-semibold text-slate-500">No classes assigned yet</p>
                     <p className="text-xs text-slate-400">Academic assignments will appear here.</p>
@@ -362,7 +365,7 @@ export default function TeacherDashboard() {
                 ) : (
                   assignedSubjects.map(item => (
                     <div key={item.id}
-                      className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-3">
+                      className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3">
                       {/* colour dot */}
                       <div className="h-2 w-2 shrink-0 rounded-full bg-amber-400" />
                       <div className="flex-1 min-w-0">
@@ -379,7 +382,7 @@ export default function TeacherDashboard() {
             </div>
 
             {/* Quick actions */}
-            <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+            <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
               <div className="px-5 pt-5 pb-3 border-b border-slate-50">
                 <h2 className="text-sm font-bold text-slate-900">Quick Actions</h2>
                 <p className="text-xs text-slate-400 mt-0.5">Common workflows</p>
@@ -404,7 +407,7 @@ export default function TeacherDashboard() {
                   },
                 ].map(action => (
                   <Link key={action.href} href={action.href}>
-                    <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-3.5 hover:bg-slate-100/60 transition-colors cursor-pointer group">
+                    <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3.5 hover:bg-slate-100/60 transition-colors cursor-pointer group">
                       <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${action.accent} ${action.border}`}>
                         <action.icon className="h-4.5 w-4.5" />
                       </div>
@@ -438,7 +441,7 @@ export default function TeacherDashboard() {
           </div>
 
           {/* ── Recent Results ── */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-50">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">Recent Result Activity</h2>
@@ -456,7 +459,7 @@ export default function TeacherDashboard() {
             </div>
             <div className="p-4 space-y-2.5">
               {recentResults.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-10 text-center">
+                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 py-10 text-center">
                   <BookOpenCheck className="h-7 w-7 text-slate-300" />
                   <p className="text-sm font-semibold text-slate-500">No results recorded yet</p>
                   <p className="text-xs text-slate-400">Marks will appear here once entered.</p>
@@ -465,7 +468,7 @@ export default function TeacherDashboard() {
                 <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                   {recentResults.map(result => (
                     <div key={result.id}
-                      className="rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-3 space-y-2">
+                      className="rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3 space-y-2">
                       {/* top */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">

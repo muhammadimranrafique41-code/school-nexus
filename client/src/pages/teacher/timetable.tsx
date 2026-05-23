@@ -87,14 +87,14 @@ export default function TeacherTimetable() {
   if (isLoading || isSettingsLoading || !settings) {
     return (
       <Layout>
-        <div className="min-h-screen bg-slate-50 p-4 space-y-4">
-          <Skeleton className="h-40 rounded-2xl" />
+        <div className="min-h-screen bg-slate-50 p-4 md:p-6 space-y-4">
+          <Skeleton className="h-40 rounded-xl" />
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
           </div>
-          <Skeleton className="h-12 rounded-2xl" />
+          <Skeleton className="h-12 rounded-xl" />
           <div className="space-y-2.5">
-            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
           </div>
         </div>
       </Layout>
@@ -104,11 +104,11 @@ export default function TeacherTimetable() {
   /* ═══════════════════════════════════════════════════════════════ */
   return (
     <Layout>
-      <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-screen-xl px-4 py-6 space-y-5">
+        <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-screen-xl p-4 md:p-6 space-y-5">
 
           {/* ── Hero header ── */}
-          <div className="relative overflow-hidden rounded-2xl bg-amber-500 px-5 py-5 text-white shadow-lg shadow-amber-100">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 px-5 py-5 text-white shadow-lg shadow-amber-100">
             <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/5" />
             <div className="absolute right-14 top-16 h-20 w-20 rounded-full bg-white/5" />
             <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
@@ -158,8 +158,8 @@ export default function TeacherTimetable() {
 
           {/* ── Empty state ── */}
           {(periods ?? []).length === 0 && (
-            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-center shadow-sm">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-slate-200 bg-white py-16 text-center shadow-sm">
+              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100">
                 <CalendarDays className="h-6 w-6 text-slate-300" />
               </div>
               <p className="font-bold text-slate-700">No timetable assigned yet</p>
@@ -171,7 +171,7 @@ export default function TeacherTimetable() {
             <>
               {/* ── DESKTOP: full matrix grid ─────────────────────── */}
               <div className="hidden lg:block">
-                <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+                <div className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full border-collapse">
                       <thead>
@@ -287,7 +287,7 @@ export default function TeacherTimetable() {
                     <ChevronLeft className="h-4 w-4" />
                   </button>
 
-                  <div className="flex flex-1 gap-1 overflow-x-auto scrollbar-none rounded-2xl border border-slate-100 bg-white p-1 shadow-sm">
+                  <div className="flex flex-1 gap-1 overflow-x-auto scrollbar-none rounded-xl border border-slate-200/80 bg-white p-1 shadow-sm">
                     {activeDays.map((day: { num: number, short: string, label: string }) => {
                       const dayPeriods = byDay[day.num] ?? [];
                       const isActive = activeDay === day.num;
@@ -364,7 +364,7 @@ export default function TeacherTimetable() {
 
                     return (
                       <div key={`p-${slot.periodNumber}`}
-                        className="flex gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+                        className="flex gap-3 rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm">
                         {/* time strip */}
                         <div className="flex flex-col items-center gap-1 pt-0.5 w-12 shrink-0">
                           <p className="text-[10px] font-black text-slate-500">P{slot.periodNumber}</p>
@@ -405,7 +405,7 @@ export default function TeacherTimetable() {
 
               {/* ── Class colour legend ─────────────────────────── */}
               {colorMap.size > 0 && (
-                <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
                   <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">Classes</p>
                   <div className="flex flex-wrap gap-2">
                     {Array.from(colorMap.entries()).map(([className, idx]) => {

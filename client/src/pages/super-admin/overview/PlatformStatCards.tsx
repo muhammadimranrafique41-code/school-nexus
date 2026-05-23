@@ -13,6 +13,18 @@ function formatPKR(paise: number): string {
   return `Rs. ${(paise / 100).toLocaleString()}`;
 }
 
+const accentMap: Record<string, string> = {
+  "bg-blue-50 text-blue-700": "bg-blue-500",
+  "bg-indigo-50 text-indigo-700": "bg-indigo-500",
+  "bg-cyan-50 text-cyan-700": "bg-cyan-500",
+  "bg-teal-50 text-teal-700": "bg-teal-500",
+  "bg-emerald-50 text-emerald-700": "bg-emerald-500",
+  "bg-amber-50 text-amber-700": "bg-amber-500",
+  "bg-red-50 text-red-700": "bg-red-500",
+  "bg-purple-50 text-purple-700": "bg-purple-500",
+  "bg-orange-50 text-orange-700": "bg-orange-500",
+};
+
 export function PlatformStatCards({ stats }: { stats: PlatformStats }) {
   const cards: StatCard[] = [
     { label: "Total Schools", value: stats.totalOwners, Icon: Building2, colorClass: "bg-blue-50 text-blue-700" },
@@ -27,14 +39,20 @@ export function PlatformStatCards({ stats }: { stats: PlatformStats }) {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-      {cards.map((card) => (
-        <div key={card.label} className={cn("rounded-2xl p-5", card.colorClass)}>
-          <card.Icon className="mb-3 h-7 w-7 opacity-70" />
-          <p className="text-sm font-medium opacity-80">{card.label}</p>
-          <p className="text-2xl font-bold">{card.value}</p>
-        </div>
-      ))}
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+      {cards.map((card) => {
+        const accentColor = accentMap[card.colorClass] ?? "bg-slate-500";
+        return (
+          <div key={card.label} className="rounded-xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+            <div className={cn("h-1.5", accentColor)} />
+            <div className="p-3 md:p-4">
+              <card.Icon className={cn("mb-2 h-5 w-5 md:h-6 md:w-6", card.colorClass.split(" ")[1] ?? "text-slate-700")} />
+              <p className="text-xs md:text-sm font-medium text-slate-500">{card.label}</p>
+              <p className="text-lg md:text-xl font-bold text-slate-900">{card.value}</p>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
